@@ -60,15 +60,16 @@ extra_javascript:
   - https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js
 
 extra_css:
+  - stylesheets/extra.css
   - stylesheets/tag_search.css
 
 nav:
-  - 🏠 首页: index.md
-  - 🏷️ 标签: tags.md
-  - 📚 论文阅读:
+  - 首页: index.md
+  - 标签: tags.md
+  - 论文阅读:
     - 导读: paper_reading/index.md
     - SkyReels-V2: paper_reading/skyreels_v2.md
-  - 💻 代码分析:
+  - 代码分析:
     - 导读: code_analysis/index.md
     - Native Sparse Attention:
       - 总览: code_analysis/native_sparse_attention/00_overview.md
