@@ -15,15 +15,13 @@ theme:
     - content.code.copy
     - content.code.annotate
   palette:
-    - media: "(prefers-color-scheme: dark)"
-      scheme: slate
+    - scheme: slate
       primary: black
       accent: teal
       toggle:
         icon: material/brightness-4
         name: 切换到亮色模式
-    - media: "(prefers-color-scheme: light)"
-      scheme: default
+    - scheme: default
       primary: blue grey
       accent: teal
       toggle:

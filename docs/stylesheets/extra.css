@@ -132,3 +132,17 @@
 [data-md-color-scheme="slate"] .tag-search-card:hover {
   border-color: rgba(255, 255, 255, 0.15);
 }
+
+/* === MkDocs tags plugin list (below search box) === */
+[data-md-color-scheme="slate"] .md-tags a.md-tag {
+  background: #1a1a1a;
+  color: var(--md-default-fg-color--light);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 4px;
+  transition: border-color 0.15s, color 0.15s;
+}
+
+[data-md-color-scheme="slate"] .md-tags a.md-tag:hover {
+  border-color: #4fd1c5;
+  color: #4fd1c5;
+}
