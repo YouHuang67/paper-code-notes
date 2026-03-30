@@ -1,0 +1,79 @@
+site_name: 知识库 | Paper & Code Notes
+site_description: 记录论文阅读与代码沉淀
+site_author: YouHuang67
+site_url: https://YouHuang67.github.io/paper-code-notes/
+
+theme:
+  name: material
+  language: zh
+  features:
+    - navigation.tabs
+    - navigation.top
+    - navigation.tracking
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.code.annotate
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: 切换到暗色模式
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: 切换到亮色模式
+
+plugins:
+  - search
+  - tags:
+      tags_file: tags.md
+
+markdown_extensions:
+  - meta
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.arithmatex:
+      generic: true
+  - attr_list
+  - md_in_html
+
+extra_javascript:
+  - javascripts/mathjax.js
+  - javascripts/tag_search.js
+  - https://polyfill.io/v3/polyfill.min.js?features=es6
+  - https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js
+
+extra_css:
+  - stylesheets/tag_search.css
+
+nav:
+  - 🏠 首页: index.md
+  - 🏷️ 标签: tags.md
+  - 📚 论文阅读:
+    - 导读: paper_reading/index.md
+    - SkyReels-V2: paper_reading/skyreels_v2.md
+  - 💻 代码分析:
+    - 导读: code_analysis/index.md
+    - Native Sparse Attention:
+      - 总览: code_analysis/native_sparse_attention/00_overview.md
+      - 数学公式: code_analysis/native_sparse_attention/01_math_formulation.md
+      - 压缩注意力: code_analysis/native_sparse_attention/02_compression_attention.md
+      - Top-k 选择: code_analysis/native_sparse_attention/03_topk_selection.md
+      - 选择注意力: code_analysis/native_sparse_attention/04_selected_attention.md
+      - 滑动窗口: code_analysis/native_sparse_attention/05_sliding_window.md

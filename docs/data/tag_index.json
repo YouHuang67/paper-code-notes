@@ -1,0 +1,51 @@
+[
+  {
+    "title": "SkyReels-V2",
+    "path": "paper_reading/skyreels_v2.md",
+    "type": "论文阅读",
+    "tags": ["Video Generation", "Diffusion Model", "Reinforcement Learning", "Diffusion Forcing", "Flow Matching"],
+    "summary": "无限时长电影级视频生成，通过结构化标注 + Flow-DPO 运动优化 + Diffusion Forcing 后训练实现"
+  },
+  {
+    "title": "Native Sparse Attention - 总览",
+    "path": "code_analysis/native_sparse_attention/00_overview.md",
+    "type": "代码分析",
+    "tags": ["Triton", "Sparse Attention"],
+    "summary": "NSA 三路注意力融合（压缩 + 选择 + 滑动窗口）的整体架构与内核索引"
+  },
+  {
+    "title": "Native Sparse Attention - 数学公式",
+    "path": "code_analysis/native_sparse_attention/01_math_formulation.md",
+    "type": "代码分析",
+    "tags": ["Online Softmax"],
+    "summary": "标准注意力、Online Softmax、NSA 三路融合的数学推导"
+  },
+  {
+    "title": "Native Sparse Attention - 压缩注意力",
+    "path": "code_analysis/native_sparse_attention/02_compression_attention.md",
+    "type": "代码分析",
+    "tags": ["Triton", "Sparse Attention"],
+    "summary": "Mean Pooling 压缩 + 前向/反向 Triton 内核实现"
+  },
+  {
+    "title": "Native Sparse Attention - Top-k 选择",
+    "path": "code_analysis/native_sparse_attention/03_topk_selection.md",
+    "type": "代码分析",
+    "tags": ["Triton", "Sparse Attention", "Bitonic Sort"],
+    "summary": "Online Top-k 选择内核，Bitonic Sort 实现块级稀疏索引"
+  },
+  {
+    "title": "Native Sparse Attention - 选择注意力",
+    "path": "code_analysis/native_sparse_attention/04_selected_attention.md",
+    "type": "代码分析",
+    "tags": ["Triton", "Sparse Attention"],
+    "summary": "Block-wise 稀疏注意力前向/反向内核与 Block Mask 机制"
+  },
+  {
+    "title": "Native Sparse Attention - 滑动窗口",
+    "path": "code_analysis/native_sparse_attention/05_sliding_window.md",
+    "type": "代码分析",
+    "tags": ["Flash Attention", "Sliding Window"],
+    "summary": "FlashAttention 滑动窗口集成与三路门控融合"
+  }
+]

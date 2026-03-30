@@ -1,0 +1,29 @@
+# MkDocs build output
+site/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# MkDocs cache
+.cache/
+
+# References (not tracked)
+refs/
+
+# IDE/Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# System
+.DS_Store
+Thumbs.db
+
+# Temporary files
+_tmp*
+*.log
