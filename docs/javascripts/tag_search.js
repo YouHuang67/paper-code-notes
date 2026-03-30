@@ -5,10 +5,23 @@ document.addEventListener("DOMContentLoaded", function () {
 
   var docs = [];
 
-  var baseEl = document.querySelector('meta[name="base_url"]');
-  var siteBase = baseEl ? baseEl.getAttribute("content").replace(/\/$/, "") : "";
+  // find base URL from this script's own src path
+  var scripts = document.getElementsByTagName("script");
+  var siteBase = "";
+  for (var i = 0; i < scripts.length; i++) {
+    var src = scripts[i].src;
+    var idx = src.indexOf("/javascripts/tag_search.js");
+    if (idx !== -1) {
+      siteBase = src.substring(0, idx);
+      break;
+    }
+  }
+
   fetch(siteBase + "/data/tag_index.json")
-    .then(function (r) { return r.json(); })
+    .then(function (r) {
+      if (!r.ok) throw new Error(r.status);
+      return r.json();
+    })
     .then(function (data) { docs = data; })
     .catch(function () {
       results.innerHTML = '<p class="tag-search-error">索引加载失败</p>';
