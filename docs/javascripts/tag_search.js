@@ -5,14 +5,9 @@ document.addEventListener("DOMContentLoaded", function () {
 
   var docs = [];
 
-  fetch(document.querySelector('link[rel="canonical"]')
-    ? new URL("data/tag_index.json", document.querySelector('link[rel="canonical"]').href).href
-    : "data/tag_index.json")
-    .catch(function () {
-      var base = document.querySelector("meta[name='base_url']");
-      var baseUrl = base ? base.getAttribute("content") : "";
-      return fetch(baseUrl + "data/tag_index.json");
-    })
+  var baseEl = document.querySelector('meta[name="base_url"]');
+  var siteBase = baseEl ? baseEl.getAttribute("content").replace(/\/$/, "") : "";
+  fetch(siteBase + "/data/tag_index.json")
     .then(function (r) { return r.json(); })
     .then(function (data) { docs = data; })
     .catch(function () {
@@ -60,13 +55,7 @@ document.addEventListener("DOMContentLoaded", function () {
       return;
     }
 
-    var base = "";
-    var canonical = document.querySelector('link[rel="canonical"]');
-    if (canonical) {
-      var href = canonical.href;
-      var idx = href.lastIndexOf("/");
-      base = href.substring(0, idx + 1);
-    }
+    var linkBase = siteBase + "/";
 
     var html = "";
     all.forEach(function (item) {
@@ -77,7 +66,7 @@ document.addEventListener("DOMContentLoaded", function () {
       }).join(" ");
 
       html += '<div class="tag-search-card">'
-        + '<a class="tag-search-title" href="' + base + doc.path + '">' + doc.title + '</a>'
+        + '<a class="tag-search-title" href="' + linkBase + doc.path + '">' + doc.title + '</a>'
         + '<span class="tag-search-type">' + doc.type + '</span>'
         + '<div class="tag-search-tags">' + tagsHtml + '</div>'
         + '<p class="tag-search-summary">' + doc.summary + '</p>'
