@@ -33,11 +33,11 @@ document.addEventListener("DOMContentLoaded", function () {
 
   function renderList(items, base) {
     if (items.length === 0) return "";
-    var html = "<ul>";
+    var html = '<div class="home-items">';
     items.forEach(function (d) {
-      html += '<li><a href="' + base + "/" + d.path + '">' + d.title + "</a></li>";
+      html += '<a class="home-item" href="' + base + "/" + d.path + '">' + d.title + "</a>";
     });
-    html += "</ul>";
+    html += "</div>";
     return html;
   }
 });

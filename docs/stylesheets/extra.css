@@ -133,6 +133,31 @@
   border-color: rgba(255, 255, 255, 0.15);
 }
 
+/* === Homepage inline items === */
+.home-items {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0.8rem 0;
+}
+
+.home-item {
+  display: inline-block;
+  padding: 0.3rem 0.8rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+  font-size: 0.9rem;
+  color: var(--md-default-fg-color) !important;
+  text-decoration: none !important;
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.home-item:hover {
+  border-color: #4fd1c5;
+  color: #4fd1c5 !important;
+  opacity: 1 !important;
+}
+
 /* === MkDocs tags plugin list (below search box) === */
 [data-md-color-scheme="slate"] .md-tags a.md-tag {
   background: #1a1a1a;
