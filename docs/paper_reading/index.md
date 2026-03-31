@@ -2,6 +2,12 @@
 
 这里收录各领域的论文阅读笔记。
 
+## Vision Language Model
+
+- [Qwen2.5-VL](qwen25_vl.md) - Qwen VLM 旗舰，ViT Window Attention + MRoPE 绝对时间对齐 + 4.1T token 预训练，72B 达 GPT-4o 水平
+- [Qwen3-VL](qwen3_vl.md) - Qwen VLM 最强版本，Interleaved MRoPE + DeepStack 多层 ViT 注入 + 256K 原生长上下文，dense/MoE 六规模
+- [Qwen3-Omni](qwen3_omni.md) - 首个四模态零退化单一模型，Thinker-Talker MoE + AuT 音频编码器 + 多 Codebook 流式语音，234ms 首包延迟
+
 ## Sparse Attention
 
 - [HySparse](hysparse.md) - 混合稀疏注意力架构，full attention 层作为 oracle 选择 token 并共享 KV cache 给后续 sparse 层，80B MoE 仅 5 层 full attn 实现 10x KV cache 减少

@@ -82,6 +82,7 @@ for i_c in range(0, NC, BC):
 - `Video Generation` / `Diffusion Model` / `Diffusion Forcing` / `Flow Matching`
 - `Reinforcement Learning` / `DPO` / `GRPO` / `Reward Model`
 - `LLM Inference` / `KV Cache`
+- `VLM`
 
 ### Tag 补充规则
 - 粗粒度 tag（如 `Reinforcement Learning`）标识大方向，细粒度 tag（如 `DPO` / `GRPO`）标识具体方法

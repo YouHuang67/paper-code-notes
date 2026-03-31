@@ -119,6 +119,27 @@
     "summary": "从 prompt 优化角度对齐视频生成模型，文本级+视频级多反馈 DPO"
   },
   {
+    "title": "Qwen2.5-VL",
+    "path": "paper_reading/qwen25_vl.md",
+    "type": "论文阅读",
+    "tags": ["VLM"],
+    "summary": "Qwen VLM 旗舰，ViT Window Attention + MRoPE 绝对时间对齐 + 4.1T token，72B 达 GPT-4o 水平"
+  },
+  {
+    "title": "Qwen3-VL",
+    "path": "paper_reading/qwen3_vl.md",
+    "type": "论文阅读",
+    "tags": ["VLM"],
+    "summary": "Qwen VLM 最强版本，Interleaved MRoPE + DeepStack + 256K 长上下文，dense/MoE 六规模"
+  },
+  {
+    "title": "Qwen3-Omni",
+    "path": "paper_reading/qwen3_omni.md",
+    "type": "论文阅读",
+    "tags": ["VLM"],
+    "summary": "首个四模态零退化单一模型，Thinker-Talker MoE + AuT + 多 Codebook 流式语音，234ms 首包延迟"
+  },
+  {
     "title": "Native Sparse Attention - 总览",
     "path": "code_analysis/native_sparse_attention/00_overview.md",
     "type": "代码分析",
