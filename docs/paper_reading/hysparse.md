@@ -2,6 +2,7 @@
 tags:
   - Sparse Attention
   - LLM Inference
+  - KV Cache
 ---
 
 # HySparse: Hybrid Sparse Attention with Oracle Token Selection and KV Cache Sharing

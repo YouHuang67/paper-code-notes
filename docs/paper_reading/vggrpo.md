@@ -4,6 +4,7 @@ tags:
   - Diffusion Model
   - Reinforcement Learning
   - Flow Matching
+  - GRPO
 ---
 
 # VGGRPO: Towards World-Consistent Video Generation with 4D Latent Reward

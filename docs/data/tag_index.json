@@ -3,70 +3,70 @@
     "title": "HySparse",
     "path": "paper_reading/hysparse.md",
     "type": "论文阅读",
-    "tags": ["Sparse Attention", "LLM Inference"],
+    "tags": ["Sparse Attention", "LLM Inference", "KV Cache"],
     "summary": "混合稀疏注意力架构，full attention 作为 oracle 选择 token 并共享 KV cache 给 sparse 层，80B MoE 仅 5 层 full attn 实现 10x KV 减少"
   },
   {
     "title": "IndexCache",
     "path": "paper_reading/indexcache.md",
     "type": "论文阅读",
-    "tags": ["Sparse Attention", "LLM Inference"],
+    "tags": ["Sparse Attention", "LLM Inference", "KV Cache"],
     "summary": "DSA indexer 跨层索引复用，贪心搜索或多层蒸馏去除 75% indexer 计算，prefill 1.82x 加速"
   },
   {
     "title": "Kascade",
     "path": "paper_reading/kascade.md",
     "type": "论文阅读",
-    "tags": ["Sparse Attention", "LLM Inference"],
+    "tags": ["Sparse Attention", "LLM Inference", "KV Cache"],
     "summary": "跨层 Top-k 复用的 training-free 稀疏注意力，anchor-reuse 架构 + head remapping + DP 自动选层"
   },
   {
     "title": "SkyReels-V2",
     "path": "paper_reading/skyreels_v2.md",
     "type": "论文阅读",
-    "tags": ["Video Generation", "Diffusion Model", "Reinforcement Learning", "Diffusion Forcing", "Flow Matching"],
+    "tags": ["Video Generation", "Diffusion Model", "Reinforcement Learning", "Diffusion Forcing", "Flow Matching", "DPO"],
     "summary": "无限时长电影级视频生成，通过结构化标注 + Flow-DPO 运动优化 + Diffusion Forcing 后训练实现"
   },
   {
     "title": "VideoAlign",
     "path": "paper_reading/videoalign.md",
     "type": "论文阅读",
-    "tags": ["Video Generation", "Diffusion Model", "Reinforcement Learning", "Flow Matching"],
+    "tags": ["Video Generation", "Diffusion Model", "Reinforcement Learning", "Flow Matching", "DPO"],
     "summary": "完整视频生成偏好对齐流水线：182k 偏好数据集 + VideoReward (BTT) + Flow-DPO/RWR/NRG 三种对齐算法"
   },
   {
     "title": "VideoDPO",
     "path": "paper_reading/videodpo.md",
     "type": "论文阅读",
-    "tags": ["Video Generation", "Diffusion Model", "Reinforcement Learning"],
+    "tags": ["Video Generation", "Diffusion Model", "Reinforcement Learning", "DPO"],
     "summary": "基于 OmniScore 多维度评分的视频 DPO，自动构造偏好对无需人工标注"
   },
   {
     "title": "DenseDPO",
     "path": "paper_reading/densedpo.md",
     "type": "论文阅读",
-    "tags": ["Video Generation", "Diffusion Model", "Reinforcement Learning"],
+    "tags": ["Video Generation", "Diffusion Model", "Reinforcement Learning", "DPO"],
     "summary": "段级密集偏好标注 + 引导采样构造困难负例，细粒度 DPO 对齐"
   },
   {
     "title": "DeDPO",
     "path": "paper_reading/dedpo.md",
     "type": "论文阅读",
-    "tags": ["Video Generation", "Diffusion Model", "Reinforcement Learning"],
+    "tags": ["Video Generation", "Diffusion Model", "Reinforcement Learning", "DPO"],
     "summary": "半监督 DPO 用双重稳健估计器去偏，解决视频偏好标注中的运动偏差问题"
   },
   {
     "title": "SAGE-GRPO",
     "path": "paper_reading/sage_grpo.md",
     "type": "论文阅读",
-    "tags": ["Video Generation", "Diffusion Model", "Reinforcement Learning", "Flow Matching"],
+    "tags": ["Video Generation", "Diffusion Model", "Reinforcement Learning", "Flow Matching", "GRPO"],
     "summary": "精确流形感知 SDE + 梯度范数均衡器 + 双信赖域（周期移动锚 + 逐步 KL）GRPO"
   },
   {
     "title": "VGGRPO",
     "path": "paper_reading/vggrpo.md",
     "type": "论文阅读",
-    "tags": ["Video Generation", "Diffusion Model", "Reinforcement Learning", "Flow Matching"],
+    "tags": ["Video Generation", "Diffusion Model", "Reinforcement Learning", "Flow Matching", "GRPO"],
     "summary": "Latent Geometry Model 拼接 VAE latent 到 Any4D，几何重投影一致性 reward + GRPO"
   },
   {
@@ -80,28 +80,28 @@
     "title": "PRFL",
     "path": "paper_reading/prfl.md",
     "type": "论文阅读",
-    "tags": ["Video Generation", "Diffusion Model", "Reinforcement Learning", "Flow Matching"],
+    "tags": ["Video Generation", "Diffusion Model", "Reinforcement Learning", "Flow Matching", "Reward Model"],
     "summary": "视频生成模型自身作为 latent reward 模型（PAVRM），过程级监督无需 VAE 解码"
   },
   {
     "title": "VR-Thinker",
     "path": "paper_reading/vr_thinker.md",
     "type": "论文阅读",
-    "tags": ["Video Generation", "Reinforcement Learning"],
+    "tags": ["Video Generation", "Reinforcement Learning", "Reward Model"],
     "summary": "Thinking-with-Image 框架，推理时主动检索帧 + 窗口记忆的视频 reward 模型"
   },
   {
     "title": "REACT",
     "path": "paper_reading/react.md",
     "type": "论文阅读",
-    "tags": ["Video Generation", "Reinforcement Learning"],
+    "tags": ["Video Generation", "Reinforcement Learning", "Reward Model"],
     "summary": "帧级结构性失真评估 reward 模型，8 类失真分类 + masked SFT + GRPO with BTT pairwise reward"
   },
   {
     "title": "PhysMaster",
     "path": "paper_reading/physmaster.md",
     "type": "论文阅读",
-    "tags": ["Video Generation", "Diffusion Model", "Reinforcement Learning", "Flow Matching"],
+    "tags": ["Video Generation", "Diffusion Model", "Reinforcement Learning", "Flow Matching", "DPO"],
     "summary": "PhysEncoder 物理表征学习 + 三阶段顺序 Flow-DPO（SFT → DPO-DiT → DPO-PhysEncoder）"
   },
   {

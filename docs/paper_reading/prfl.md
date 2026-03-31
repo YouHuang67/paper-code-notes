@@ -4,6 +4,7 @@ tags:
   - Diffusion Model
   - Reinforcement Learning
   - Flow Matching
+  - Reward Model
 ---
 
 # PRFL: Video Generation Models Are Good Latent Reward Models

@@ -5,6 +5,7 @@ tags:
   - Reinforcement Learning
   - Diffusion Forcing
   - Flow Matching
+  - DPO
 ---
 # SkyReels-V2: Infinite-Length Film Generative Model
 

@@ -80,8 +80,13 @@ for i_c in range(0, NC, BC):
 - `Triton` / `Sparse Attention` / `Flash Attention` / `Sliding Window`
 - `Online Softmax` / `Bitonic Sort`
 - `Video Generation` / `Diffusion Model` / `Diffusion Forcing` / `Flow Matching`
-- `Reinforcement Learning`
-- `LLM Inference`
+- `Reinforcement Learning` / `DPO` / `GRPO` / `Reward Model`
+- `LLM Inference` / `KV Cache`
+
+### Tag 补充规则
+- 粗粒度 tag（如 `Reinforcement Learning`）标识大方向，细粒度 tag（如 `DPO` / `GRPO`）标识具体方法
+- 一篇文档同时使用粗粒度和细粒度 tag，方便从不同维度检索
+- 新增细粒度 tag 的判断标准：**至少 2 篇文档**共享同一具体方法/概念时才值得新增
 
 ### 索引维护：新增/修改文档时的完整流程
 

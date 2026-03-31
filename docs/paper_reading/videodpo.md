@@ -3,6 +3,7 @@ tags:
   - Video Generation
   - Diffusion Model
   - Reinforcement Learning
+  - DPO
 ---
 
 # VideoDPO: Omni-Preference Alignment for Video Diffusion Generation

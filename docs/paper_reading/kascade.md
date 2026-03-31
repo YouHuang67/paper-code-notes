@@ -2,6 +2,7 @@
 tags:
   - Sparse Attention
   - LLM Inference
+  - KV Cache
 ---
 # Kascade: A Practical Sparse Attention Method for Long-Context LLM Inference
 

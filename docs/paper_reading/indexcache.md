@@ -2,6 +2,7 @@
 tags:
   - Sparse Attention
   - LLM Inference
+  - KV Cache
 ---
 
 # IndexCache: Accelerating Sparse Attention via Cross-Layer Index Reuse

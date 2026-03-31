@@ -2,6 +2,7 @@
 tags:
   - Diffusion Model
   - Reinforcement Learning
+  - DPO
 ---
 
 # DeDPO: Debiased Direct Preference Optimization for Diffusion Models

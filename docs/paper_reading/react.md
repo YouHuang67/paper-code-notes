@@ -2,6 +2,7 @@
 tags:
   - Video Generation
   - Reinforcement Learning
+  - Reward Model
 ---
 
 # REACT: Thinking with Frames — Generative Video Distortion Evaluation via Frame Reward Model

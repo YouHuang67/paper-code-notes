@@ -4,6 +4,7 @@ tags:
   - Diffusion Model
   - Reinforcement Learning
   - Flow Matching
+  - DPO
 ---
 
 # VideoAlign: Improving Video Generation with Human Feedback

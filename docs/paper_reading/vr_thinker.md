@@ -2,6 +2,7 @@
 tags:
   - Video Generation
   - Reinforcement Learning
+  - Reward Model
 ---
 
 # VR-Thinker: Boosting Video Reward Models through Thinking-with-Image Reasoning

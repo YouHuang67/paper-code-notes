@@ -4,6 +4,7 @@ tags:
   - Diffusion Model
   - Reinforcement Learning
   - Flow Matching
+  - GRPO
 ---
 
 # SAGE-GRPO: Manifold-Aware Exploration for Reinforcement Learning in Video Generation

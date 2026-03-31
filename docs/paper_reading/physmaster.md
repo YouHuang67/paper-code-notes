@@ -4,6 +4,7 @@ tags:
   - Diffusion Model
   - Reinforcement Learning
   - Flow Matching
+  - DPO
 ---
 
 # PhysMaster: Physics Representation Learning for Video Generation
