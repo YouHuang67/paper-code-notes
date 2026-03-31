@@ -117,6 +117,11 @@ for i_c in range(0, NC, BC):
 - 禁止出现 AI 工具标识（Co-Authored-By 等）
 - type 常用：`init` / `add` / `update` / `fix` / `refactor` / `docs`
 
+## 前端缓存
+
+- `mkdocs.yml` 中自定义 JS/CSS 文件带 `?v=N` 版本号参数
+- **修改 JS 或 CSS 文件后，必须递增对应的版本号**（如 `?v=2` → `?v=3`），否则浏览器会加载旧缓存
+
 ## 目录结构
 
 ```

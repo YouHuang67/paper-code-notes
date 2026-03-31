@@ -22,10 +22,20 @@ document.addEventListener("DOMContentLoaded", function () {
     .then(function (docs) {
       var papers = [];
       var code = [];
+      var codeProjects = {};
       docs.forEach(function (d) {
-        if (d.type === "论文阅读") papers.push(d);
-        else if (d.type === "代码分析") code.push(d);
+        if (d.type === "论文阅读") {
+          papers.push(d);
+        } else if (d.type === "代码分析") {
+          // group by project: use first path segment under code_analysis/
+          var parts = d.path.split("/");
+          var project = parts.length >= 3 ? parts[1] : parts[0];
+          if (!codeProjects[project]) {
+            codeProjects[project] = d;
+          }
+        }
       });
+      for (var k in codeProjects) code.push(codeProjects[k]);
       if (papersEl) papersEl.innerHTML = renderList(papers, base);
       if (codeEl) codeEl.innerHTML = renderList(code, base);
     })
@@ -35,7 +45,8 @@ document.addEventListener("DOMContentLoaded", function () {
     if (items.length === 0) return "";
     var html = '<div class="home-items">';
     items.forEach(function (d) {
-      html += '<a class="home-item" href="' + base + "/" + d.path + '">' + d.title + "</a>";
+      var label = d.title.indexOf(" - ") !== -1 ? d.title.split(" - ")[0] : d.title;
+      html += '<a class="home-item" href="' + base + "/" + d.path + '">' + label + "</a>";
     });
     html += "</div>";
     return html;
