@@ -34,24 +34,63 @@ SAGE-GRPO（Stable Alignment via Exploration）解决视频 GRPO 训练中的稳
 
 #### 精确流形感知 SDE
 
-对于扩散系数 $\varepsilon_t = \eta\sqrt{\sigma_t/(1-\sigma_t)}$ 的保边际 SDE，在步长 $[\sigma_{t+1}, \sigma_t]$ 上积分方差而非使用面积近似：
+**第一阶段：从 ODE 到保边缘 SDE**
 
-$$\Sigma_t = \eta^2\left[-({\sigma_t - \sigma_{t+1}}) + \log\frac{1-\sigma_{t+1}}{1-\sigma_t}\right]$$
+Rectified Flow 预训练的速度场 $v_\theta$ 定义了确定性 ODE 轨迹：
 
-对数修正项 $\log\frac{1-\sigma_{t+1}}{1-\sigma_t}$ 捕捉了信号系数 $(1-\sigma_t)$ 的几何收缩，线性近似无法表示。取平方根得到噪声标准差 $\Sigma_t^{1/2}$。
+$$dx_t = v_\theta(x_t, t) dt$$
 
-对比现有方法的噪声标准差：
-- DanceGRPO：$\eta\sqrt{\sigma_t - \sigma_{t+1}}$
-- FlowGRPO：$\eta\sqrt{\frac{\sigma_t}{1-\sigma_t}(\sigma_t - \sigma_{t+1})}$
-- SAGE（精确）：$\eta\sqrt{-(\sigma_t - \sigma_{t+1}) + \log\frac{1-\sigma_{t+1}}{1-\sigma_t}}$
+为 RL 探索注入布朗运动 $dw_t$，强度由扩散系数 $\varepsilon_t$ 控制。为抵消噪声引起的分布偏移，根据 Fokker-Planck 方程在漂移项中加入基于分数函数 $s_\theta(x_t)$ 的 Itô 校正，形成保边缘概率的 SDE：
 
-精确 SDE 产生更小方差，探索区域（蓝色椭球体）紧贴流轨迹，而非传统方法的大范围偏离流形的探索区域（红色球体）。
+$$dx_t = \left( v_\theta(x_t, t) - \frac{1}{2}\varepsilon_t^2 s_\theta(x_t) \right) dt + \varepsilon_t dw_t$$
 
-Euler-Maruyama 离散化：
+流形感知的扩散系数：让注入噪声与 Flow 轨迹的信号/噪声几何收缩率匹配：
+
+$$\varepsilon_t = \eta \sqrt{\frac{\sigma_t}{1-\sigma_t}}$$
+
+**第二阶段：SDE 离散化与 $\Sigma_t$ 的本质**
+
+对连续 SDE 在时间区间 $[\sigma_{t+1}, \sigma_t]$（步长 $\Delta t = \sigma_t - \sigma_{t+1}$）上求定积分：
+
+$$x_{t+\Delta t} - x_t = \underbrace{\int_{\sigma_{t+1}}^{\sigma_t} v_\theta(x_s, s) ds}_{\text{速度场积分}} - \underbrace{\int_{\sigma_{t+1}}^{\sigma_t} \frac{1}{2}\varepsilon_s^2 s_\theta(x_s) ds}_{\text{Itô 校正项积分}} + \underbrace{\int_{\sigma_{t+1}}^{\sigma_t} \varepsilon_s dw_s}_{\text{随机噪声积分}}$$
+
+确定性积分的欧拉近似：$\Delta t$ 足够短，$v_\theta$ 和 $s_\theta$ 视为常数。速度场积分 $\approx v_\theta(x_t, t) \Delta t$，Itô 校正项积分 $\approx -\frac{1}{2} s_\theta(x_t) \int_{\sigma_{t+1}}^{\sigma_t} \varepsilon_s^2 ds$。
+
+随机噪声积分的精确处理：布朗运动微分 $dw_s \sim \mathcal{N}(0, ds)$，无数独立微小高斯增量的累加仍为高斯分布，均值为 0。根据 **Itô 等距同构定理**，独立高斯变量相加的总方差等于各部分方差的积分，即累积方差严格定义为：
+
+$$\Sigma_t = \int_{\sigma_{t+1}}^{\sigma_t} \varepsilon_s^2 ds$$
+
+因此随机噪声积分服从 $\mathcal{N}(0, \Sigma_t I)$，可用 $\Sigma_t^{1/2}\epsilon$（$\epsilon \sim \mathcal{N}(0, I)$）等效替换。注意 Itô 校正项的积分同样是 $\Sigma_t$，合并后得到离散更新公式：
 
 $$x_{t+\Delta t} = x_t + v_\theta(x_t, t)\Delta t + \frac{\Sigma_t}{2}s_\theta(x_t) + \Sigma_t^{1/2}\epsilon$$
 
-其中 $\frac{\Sigma_t}{2}s_\theta(x_t)$ 是 Itô 修正项，确保与 Rectified Flow 的边际分布一致。
+**第三阶段：精确求解 $\Sigma_t$**
+
+代入 $\varepsilon_t = \eta\sqrt{\sigma_t/(1-\sigma_t)}$：
+
+$$\Sigma_t = \eta^2 \int_{\sigma_{t+1}}^{\sigma_t} \frac{\sigma}{1-\sigma} d\sigma$$
+
+加一减一分离被积函数：$\frac{\sigma}{1-\sigma} = -1 + \frac{1}{1-\sigma}$
+
+求原函数（第二项令 $u = 1-\sigma$，$d\sigma = -du$）：
+
+$$\int \left( -1 + \frac{1}{1-\sigma} \right) d\sigma = -\sigma - \ln(1-\sigma)$$
+
+代入上下限（Newton-Leibniz）：
+
+$$\Sigma_t = \eta^2 \left[ -\sigma - \ln(1-\sigma) \right]_{\sigma_{t+1}}^{\sigma_t} = \eta^2 \left[ -(\sigma_t - \sigma_{t+1}) + \ln\frac{1-\sigma_{t+1}}{1-\sigma_t} \right]$$
+
+对数修正项 $\ln\frac{1-\sigma_{t+1}}{1-\sigma_t}$ 捕捉了信号系数 $(1-\sigma_t)$ 的几何收缩，线性近似无法表示。取平方根得到噪声标准差：
+
+$$\Sigma_t^{1/2} = \eta\sqrt{-(\sigma_t - \sigma_{t+1}) + \ln\frac{1-\sigma_{t+1}}{1-\sigma_t}}$$
+
+**对比现有方法的噪声标准差**：
+
+- DanceGRPO：$\eta\sqrt{\sigma_t - \sigma_{t+1}}$
+- FlowGRPO：$\eta\sqrt{\frac{\sigma_t}{1-\sigma_t}(\sigma_t - \sigma_{t+1})}$
+- SAGE（精确）：$\eta\sqrt{-(\sigma_t - \sigma_{t+1}) + \ln\frac{1-\sigma_{t+1}}{1-\sigma_t}}$
+
+精确 SDE 产生更小方差，探索区域紧贴流轨迹，而非传统一阶近似的大范围偏离流形。$\ln$ 曲率修正项解决了传统线性近似在高噪声区引发的方差爆炸问题。
 
 #### 梯度范数均衡器
 
