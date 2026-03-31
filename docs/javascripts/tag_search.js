@@ -70,6 +70,10 @@ document.addEventListener("DOMContentLoaded", function () {
 
     var linkBase = siteBase + "/";
 
+    function mdToUrl(p) {
+      return p.replace(/\.md$/, "/");
+    }
+
     var html = "";
     all.forEach(function (item) {
       var doc = item.doc;
@@ -79,7 +83,7 @@ document.addEventListener("DOMContentLoaded", function () {
       }).join(" ");
 
       html += '<div class="tag-search-card">'
-        + '<a class="tag-search-title" href="' + linkBase + doc.path + '">' + doc.title + '</a>'
+        + '<a class="tag-search-title" href="' + linkBase + mdToUrl(doc.path) + '">' + doc.title + '</a>'
         + '<span class="tag-search-type">' + doc.type + '</span>'
         + '<div class="tag-search-tags">' + tagsHtml + '</div>'
         + '<p class="tag-search-summary">' + doc.summary + '</p>'

@@ -68,7 +68,7 @@
 
 /* === Header bar === */
 .md-header {
-  background-color: #0a1219;
+  background-color: #0f1923;
   box-shadow: 0 1px 0 rgba(92, 224, 210, 0.06);
 }
 
@@ -97,7 +97,7 @@
 
 /* === Nav tabs === */
 .md-tabs {
-  background-color: #0a1219;
+  background-color: #0f1923;
 }
 
 /* === Search === */
@@ -107,7 +107,7 @@
 
 /* === Footer === */
 .md-footer {
-  background-color: #0a1219;
+  background-color: #0f1923;
 }
 
 /* === Tag search === */

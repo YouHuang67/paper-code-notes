@@ -46,7 +46,8 @@ document.addEventListener("DOMContentLoaded", function () {
     var html = '<div class="home-items">';
     items.forEach(function (d) {
       var label = d.title.indexOf(" - ") !== -1 ? d.title.split(" - ")[0] : d.title;
-      html += '<a class="home-item" href="' + base + "/" + d.path + '">' + label + "</a>";
+      var url = base + "/" + d.path.replace(/\.md$/, "/");
+      html += '<a class="home-item" href="' + url + '">' + label + "</a>";
     });
     html += "</div>";
     return html;
