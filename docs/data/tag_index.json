@@ -1,5 +1,12 @@
 [
   {
+    "title": "IndexCache",
+    "path": "paper_reading/indexcache.md",
+    "type": "论文阅读",
+    "tags": ["Sparse Attention", "LLM Inference"],
+    "summary": "DSA indexer 跨层索引复用，贪心搜索或多层蒸馏去除 75% indexer 计算，prefill 1.82x 加速"
+  },
+  {
     "title": "Kascade",
     "path": "paper_reading/kascade.md",
     "type": "论文阅读",

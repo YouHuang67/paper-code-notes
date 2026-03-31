@@ -5,6 +5,7 @@
 ## Sparse Attention
 
 - [Kascade](kascade.md) - 跨层 Top-k 复用的 training-free 稀疏注意力，decode 4.1x / prefill 2.2x 加速
+- [IndexCache](indexcache.md) - DSA indexer 跨层索引复用，去除 75% indexer 计算，prefill 1.82x / decode 1.48x 加速
 
 ## 视频生成
 
