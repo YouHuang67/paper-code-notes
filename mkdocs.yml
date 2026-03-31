@@ -68,6 +68,19 @@ nav:
   - 论文阅读:
     - 导读: paper_reading/index.md
     - SkyReels-V2: paper_reading/skyreels_v2.md
+    - VideoAlign: paper_reading/videoalign.md
+    - VideoDPO: paper_reading/videodpo.md
+    - DenseDPO: paper_reading/densedpo.md
+    - DeDPO: paper_reading/dedpo.md
+    - SAGE-GRPO: paper_reading/sage_grpo.md
+    - VGGRPO: paper_reading/vggrpo.md
+    - Reward-Forcing: paper_reading/reward_forcing.md
+    - PRFL: paper_reading/prfl.md
+    - VR-Thinker: paper_reading/vr_thinker.md
+    - REACT: paper_reading/react.md
+    - PhysMaster: paper_reading/physmaster.md
+    - RLGF: paper_reading/rlgf.md
+    - VPO: paper_reading/vpo.md
     - Kascade: paper_reading/kascade.md
     - IndexCache: paper_reading/indexcache.md
     - HySparse: paper_reading/hysparse.md
