@@ -45,7 +45,7 @@ def download_pdf(arxiv_id: str, save_dir: Path) -> Path:
     try:
         resp = urlopen(req, timeout=60)
     except HTTPError as e:
-        raise RuntimeError(f"HTTP {e.code}")
+        raise RuntimeError(f"HTTP {e.code} (paper may be withdrawn or ID invalid)")
 
     data = resp.read()
     if len(data) < 1024:
