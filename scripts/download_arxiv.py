@@ -83,9 +83,12 @@ def process_one(raw: str) -> bool:
 
 
 def main():
-    if len(sys.argv) < 2:
+    if len(sys.argv) < 2 or sys.argv[1] in ("-h", "--help"):
         print("Usage: python scripts/download_arxiv.py <url_or_id> [url_or_id ...]")
-        sys.exit(1)
+        print("\nExamples:")
+        print("  python scripts/download_arxiv.py https://arxiv.org/abs/1706.03762")
+        print("  python scripts/download_arxiv.py 2504.13074 2501.12345")
+        sys.exit(0)
 
     args = sys.argv[1:]
     total = len(args)
