@@ -1,5 +1,12 @@
 [
   {
+    "title": "Kascade",
+    "path": "paper_reading/kascade.md",
+    "type": "论文阅读",
+    "tags": ["Sparse Attention", "LLM Inference"],
+    "summary": "跨层 Top-k 复用的 training-free 稀疏注意力，anchor-reuse 架构 + head remapping + DP 自动选层"
+  },
+  {
     "title": "SkyReels-V2",
     "path": "paper_reading/skyreels_v2.md",
     "type": "论文阅读",

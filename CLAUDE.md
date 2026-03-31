@@ -59,6 +59,7 @@ for i_c in range(0, NC, BC):
 - 格式简洁直接：纯 Markdown + 分点罗列，不用 admonition / tabs 等扩展语法
 - 表格仅用于实验数据对比，其他场景用分点罗列
 - 详略分明：开头概述让人快速了解全貌，正文按原始顺序详细展开不省略关键细节
+- **禁止在阅读论文和分析代码过程中直接访问网址**（WebFetch / WebSearch 等），所有素材必须来自本地文件（PDF、源码、用户提供的信息）
 
 ## 分类与检索
 
@@ -78,6 +79,7 @@ for i_c in range(0, NC, BC):
 - `Online Softmax` / `Bitonic Sort`
 - `Video Generation` / `Diffusion Model` / `Diffusion Forcing` / `Flow Matching`
 - `Reinforcement Learning`
+- `LLM Inference`
 
 ### 索引维护：新增/修改文档时的完整流程
 
