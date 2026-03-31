@@ -1,5 +1,12 @@
 [
   {
+    "title": "HySparse",
+    "path": "paper_reading/hysparse.md",
+    "type": "论文阅读",
+    "tags": ["Sparse Attention", "LLM Inference"],
+    "summary": "混合稀疏注意力架构，full attention 作为 oracle 选择 token 并共享 KV cache 给 sparse 层，80B MoE 仅 5 层 full attn 实现 10x KV 减少"
+  },
+  {
     "title": "IndexCache",
     "path": "paper_reading/indexcache.md",
     "type": "论文阅读",
