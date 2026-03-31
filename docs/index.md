@@ -4,13 +4,13 @@
 
 ## 论文阅读
 
-- [SkyReels-V2](paper_reading/skyreels_v2.md) - 无限时长电影级视频生成
+<div id="home-papers"></div>
 
 [更多 →](paper_reading/index.md)
 
 ## 代码分析
 
-- [Native Sparse Attention](code_analysis/native_sparse_attention/00_overview.md) - 硬件友好的稀疏注意力 Triton 实现
+<div id="home-code"></div>
 
 [更多 →](code_analysis/index.md)
 
