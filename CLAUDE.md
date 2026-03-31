@@ -108,7 +108,10 @@ for i_c in range(0, NC, BC):
    - 论文 → `docs/paper_reading/index.md`（按研究主题分类）
    - 代码 → `docs/code_analysis/index.md`（按技术方向分类）
 
-**检查项**：三处的 tag 列表必须完全一致（名称、大小写、数量）
+4. **`mkdocs.yml` 的 nav 目录**
+   - 新增文档必须加入 nav，否则左侧导航不显示
+
+**检查项**：三处的 tag 列表必须完全一致（名称、大小写、数量），nav 必须包含所有文档
 
 ## Git 规范
 

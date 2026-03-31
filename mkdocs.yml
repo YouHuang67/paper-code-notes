@@ -54,12 +54,12 @@ markdown_extensions:
 extra_javascript:
   - javascripts/mathjax.js
   - javascripts/tag_search.js?v=2
-  - javascripts/home.js?v=2
+  - javascripts/home.js?v=3
   - https://polyfill.io/v3/polyfill.min.js?features=es6
   - https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js
 
 extra_css:
-  - stylesheets/extra.css?v=2
+  - stylesheets/extra.css?v=3
   - stylesheets/tag_search.css?v=2
 
 nav:
@@ -68,6 +68,9 @@ nav:
   - 论文阅读:
     - 导读: paper_reading/index.md
     - SkyReels-V2: paper_reading/skyreels_v2.md
+    - Kascade: paper_reading/kascade.md
+    - IndexCache: paper_reading/indexcache.md
+    - HySparse: paper_reading/hysparse.md
   - 代码分析:
     - 导读: code_analysis/index.md
     - Native Sparse Attention:
