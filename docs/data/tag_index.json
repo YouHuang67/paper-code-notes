@@ -11,7 +11,8 @@
     "summary": "混合稀疏注意力架构，full attention 作为 oracle 选择 token 并共享 KV cache 给 sparse 层，80B MoE 仅 5 层 full attn 实现 10x KV 减少",
     "category": "Sparse Attention",
     "date_arxiv": "2026-02",
-    "date_added": "2026-03-31"
+    "date_added": "2026-03-31",
+    "organizations": "小米 LLM-Core"
   },
   {
     "title": "IndexCache",
@@ -25,7 +26,8 @@
     "summary": "DSA indexer 跨层索引复用，贪心搜索或多层蒸馏去除 75% indexer 计算，prefill 1.82x 加速",
     "category": "Sparse Attention",
     "date_arxiv": "2026-03",
-    "date_added": "2026-03-31"
+    "date_added": "2026-03-31",
+    "organizations": "清华大学 + Z.ai（GLM 团队）"
   },
   {
     "title": "Kascade",
@@ -39,7 +41,8 @@
     "summary": "跨层 Top-k 复用的 training-free 稀疏注意力，anchor-reuse 架构 + head remapping + DP 自动选层",
     "category": "Sparse Attention",
     "date_arxiv": "2025-12",
-    "date_added": "2026-03-31"
+    "date_added": "2026-03-31",
+    "organizations": "Microsoft Research India"
   },
   {
     "title": "SkyReels-V2",
@@ -56,7 +59,8 @@
     "summary": "无限时长电影级视频生成，通过结构化标注 + Flow-DPO 运动优化 + Diffusion Forcing 后训练实现",
     "category": "视频生成架构",
     "date_arxiv": "2025-04",
-    "date_added": "2026-03-30"
+    "date_added": "2026-03-30",
+    "organizations": "Skywork AI"
   },
   {
     "title": "VideoAlign",
@@ -72,7 +76,8 @@
     "summary": "完整视频生成偏好对齐流水线：182k 偏好数据集 + VideoReward (BTT) + Flow-DPO/RWR/NRG 三种对齐算法",
     "category": "视频生成对齐（RL / Human Feedback）",
     "date_arxiv": "2025-01",
-    "date_added": "2026-03-31"
+    "date_added": "2026-03-31",
+    "organizations": "MMLab CUHK, Tsinghua University, Kling Team (Kuaishou), Shanghai AI Lab"
   },
   {
     "title": "VideoDPO",
@@ -87,7 +92,8 @@
     "summary": "基于 OmniScore 多维度评分的视频 DPO，自动构造偏好对无需人工标注",
     "category": "视频生成对齐（RL / Human Feedback）",
     "date_arxiv": "2024-12",
-    "date_added": "2026-03-31"
+    "date_added": "2026-03-31",
+    "organizations": "HKUST, Renmin University of China, Johns Hopkins University"
   },
   {
     "title": "DenseDPO",
@@ -102,7 +108,8 @@
     "summary": "段级密集偏好标注 + 引导采样构造困难负例，细粒度 DPO 对齐",
     "category": "视频生成对齐（RL / Human Feedback）",
     "date_arxiv": "2025-06",
-    "date_added": "2026-03-31"
+    "date_added": "2026-03-31",
+    "organizations": "Snap Research, University of Toronto, Vector Institute"
   },
   {
     "title": "DeDPO",
@@ -117,7 +124,8 @@
     "summary": "半监督 DPO 用双重稳健估计器去偏，解决视频偏好标注中的运动偏差问题",
     "category": "视频生成对齐（RL / Human Feedback）",
     "date_arxiv": "2026-02",
-    "date_added": "2026-03-31"
+    "date_added": "2026-03-31",
+    "organizations": "Cornell University, Rutgers University, NYU"
   },
   {
     "title": "SAGE-GRPO",
@@ -133,7 +141,8 @@
     "summary": "精确流形感知 SDE + 梯度范数均衡器 + 双信赖域（周期移动锚 + 逐步 KL）GRPO",
     "category": "视频生成对齐（RL / Human Feedback）",
     "date_arxiv": "2026-03",
-    "date_added": "2026-03-31"
+    "date_added": "2026-03-31",
+    "organizations": "HKUST, Tencent Hunyuan"
   },
   {
     "title": "VGGRPO",
@@ -149,7 +158,8 @@
     "summary": "Latent Geometry Model 拼接 VAE latent 到 Any4D，几何重投影一致性 reward + GRPO",
     "category": "视频生成对齐（RL / Human Feedback）",
     "date_arxiv": "2026-03",
-    "date_added": "2026-03-31"
+    "date_added": "2026-03-31",
+    "organizations": "Google, University of Copenhagen, University of Oxford, CREST-ENSAE"
   },
   {
     "title": "Reward-Forcing",
@@ -163,7 +173,8 @@
     "summary": "自回归视频生成：少量 ODE 轨迹学运动先验 + ImageReward 引导纹理，解耦运动和纹理训练",
     "category": "视频生成对齐（RL / Human Feedback）",
     "date_arxiv": "2026-01",
-    "date_added": "2026-03-31"
+    "date_added": "2026-03-31",
+    "organizations": "UCLA"
   },
   {
     "title": "PRFL",
@@ -179,7 +190,8 @@
     "summary": "视频生成模型自身作为 latent reward 模型（PAVRM），过程级监督无需 VAE 解码",
     "category": "视频生成对齐（RL / Human Feedback）",
     "date_arxiv": "2025-11",
-    "date_added": "2026-03-31"
+    "date_added": "2026-03-31",
+    "organizations": "UCAS, Tencent Hunyuan, PKU, SJTU, THU, NJU"
   },
   {
     "title": "VR-Thinker",
@@ -193,7 +205,8 @@
     "summary": "Thinking-with-Image 框架，推理时主动检索帧 + 窗口记忆的视频 reward 模型",
     "category": "视频 Reward 模型",
     "date_arxiv": "2025-10",
-    "date_added": "2026-03-31"
+    "date_added": "2026-03-31",
+    "organizations": "CUHK MMLab, Kling Team (Kuaishou), Nanjing University"
   },
   {
     "title": "REACT",
@@ -207,7 +220,8 @@
     "summary": "帧级结构性失真评估 reward 模型，8 类失真分类 + masked SFT + GRPO with BTT pairwise reward",
     "category": "视频 Reward 模型",
     "date_arxiv": "2026-01",
-    "date_added": "2026-03-31"
+    "date_added": "2026-03-31",
+    "organizations": "USTC, Kling Team (Kuaishou), Institute of Software CAS"
   },
   {
     "title": "PhysMaster",
@@ -223,7 +237,8 @@
     "summary": "PhysEncoder 物理表征学习 + 三阶段顺序 Flow-DPO（SFT → DPO-DiT → DPO-PhysEncoder）",
     "category": "视频生成对齐（RL / Human Feedback）",
     "date_arxiv": "2025-10",
-    "date_added": "2026-03-31"
+    "date_added": "2026-03-31",
+    "organizations": "Tsinghua University, Kuaishou Technology"
   },
   {
     "title": "RLGF",
@@ -237,7 +252,8 @@
     "summary": "自动驾驶视频生成的层级几何 reward（点-线-面-体素-特征）+ latent 空间滑动窗口 RL",
     "category": "自动驾驶视频生成",
     "date_arxiv": "2025-09",
-    "date_added": "2026-03-31"
+    "date_added": "2026-03-31",
+    "organizations": "University of Macau, Li Auto Inc."
   },
   {
     "title": "VPO",
@@ -250,7 +266,8 @@
     "summary": "从 prompt 优化角度对齐视频生成模型，文本级+视频级多反馈 DPO",
     "category": "视频生成对齐（RL / Human Feedback）",
     "date_arxiv": "2025-03",
-    "date_added": "2026-03-31"
+    "date_added": "2026-03-31",
+    "organizations": "Tsinghua University (CoAI Group + KEG), Zhipu AI"
   },
   {
     "title": "Qwen2.5-VL",
@@ -262,7 +279,8 @@
     "summary": "Qwen VLM 旗舰，ViT Window Attention + MRoPE 绝对时间对齐 + 4.1T token，72B 达 GPT-4o 水平",
     "category": "Vision Language Model",
     "date_arxiv": "2025-02",
-    "date_added": "2026-03-31"
+    "date_added": "2026-03-31",
+    "organizations": "Qwen Team, Alibaba Group"
   },
   {
     "title": "Qwen3-VL",
@@ -274,7 +292,8 @@
     "summary": "Qwen VLM 最强版本，Interleaved MRoPE + DeepStack + 256K 长上下文，dense/MoE 六规模",
     "category": "Vision Language Model",
     "date_arxiv": "2025-11",
-    "date_added": "2026-03-31"
+    "date_added": "2026-03-31",
+    "organizations": "Qwen Team, Alibaba Group"
   },
   {
     "title": "Qwen3-Omni",
@@ -286,7 +305,8 @@
     "summary": "首个四模态零退化单一模型，Thinker-Talker MoE + AuT + 多 Codebook 流式语音，234ms 首包延迟",
     "category": "Vision Language Model",
     "date_arxiv": "2025-09",
-    "date_added": "2026-03-31"
+    "date_added": "2026-03-31",
+    "organizations": "Qwen Team, Alibaba Group"
   },
   {
     "title": "Native Sparse Attention - 总览",
@@ -362,7 +382,8 @@
     "summary": "视频生成 GRPO 框架：多粒度 reward + 帧级/视频级双层 GRPO",
     "category": "视频生成对齐（RL / Human Feedback）",
     "date_arxiv": "2026-03",
-    "date_added": "2026-04-02"
+    "date_added": "2026-04-02",
+    "organizations": "南开大学, 北京邮电大学, École Polytechnique (IP Paris)"
   },
   {
     "title": "TeleBoost",
@@ -376,7 +397,8 @@
     "summary": "Telescoping Boosting：多智能体迭代蒸馏，每轮 reward 提升后重新蒸馏少步模型",
     "category": "视频生成对齐（RL / Human Feedback）",
     "date_arxiv": "2026-02",
-    "date_added": "2026-04-02"
+    "date_added": "2026-04-02",
+    "organizations": "TeleBoost Team（通讯作者 Xuelong Li）"
   },
   {
     "title": "PISCES",
@@ -391,7 +413,8 @@
     "summary": "双鱼对抗系统：verifier + falsifier 对抗训练的视频生成对齐",
     "category": "视频生成对齐（RL / Human Feedback）",
     "date_arxiv": "2026-02",
-    "date_added": "2026-04-02"
+    "date_added": "2026-04-02",
+    "organizations": "Microsoft, Stony Brook University"
   },
   {
     "title": "Seedance 1.5",
@@ -406,7 +429,8 @@
     "summary": "音视频联合生成：Native AV-DiT + 多维 RLHF + 10× 推理加速",
     "category": "视频生成架构",
     "date_arxiv": "2025-12",
-    "date_added": "2026-04-02"
+    "date_added": "2026-04-02",
+    "organizations": "字节跳动 Seed（ByteDance Seed）"
   },
   {
     "title": "DDRL",
@@ -421,7 +445,8 @@
     "summary": "数据正则化扩散 RL：前向 KL 锚定数据分布防止 reward hacking",
     "category": "视频生成对齐（RL / Human Feedback）",
     "date_arxiv": "2025-12",
-    "date_added": "2026-04-02"
+    "date_added": "2026-04-02",
+    "organizations": "Stanford University, NVIDIA（Cosmos2.5 团队，含 James Zou、Stefano Ermon 等）"
   },
   {
     "title": "CAMVERSE",
@@ -435,7 +460,8 @@
     "summary": "高质量 I2V + 可控运动：MoRA 运动适配器 + 精细镜头运动控制",
     "category": "视频生成架构",
     "date_arxiv": "2025-12",
-    "date_added": "2026-04-02"
+    "date_added": "2026-04-02",
+    "organizations": "AIsphere, NUS, NTU"
   },
   {
     "title": "Kandinsky 5.0",
@@ -450,7 +476,8 @@
     "summary": "统一图像/视频/音频生成基础模型族，多阶段课程训练 + RLHF",
     "category": "视频生成架构",
     "date_arxiv": "2025-11",
-    "date_added": "2026-04-02"
+    "date_added": "2026-04-02",
+    "organizations": "Kandinsky Lab"
   },
   {
     "title": "DreaMontage",
@@ -465,7 +492,8 @@
     "summary": "多参考图对齐视频生成：CLIP-I2T reward 驱动 GRPO",
     "category": "视频生成对齐（RL / Human Feedback）",
     "date_arxiv": "2025-12",
-    "date_added": "2026-04-02"
+    "date_added": "2026-04-02",
+    "organizations": "ByteDance"
   },
   {
     "title": "RealDPO",
@@ -479,7 +507,8 @@
     "summary": "真实视频锚定 DPO：用真实视频作为偏好锚点，避免合成数据偏差",
     "category": "视频生成对齐（RL / Human Feedback）",
     "date_arxiv": "2025-10",
-    "date_added": "2026-04-02"
+    "date_added": "2026-04-02",
+    "organizations": "Shanghai AI Lab, NTU"
   },
   {
     "title": "Euphonium",
@@ -495,7 +524,8 @@
     "summary": "过程 Reward 梯度注入 SDE 漂移项 + 双重 Reward GRPO，统一 Flow-GRPO 和 DanceGRPO",
     "category": "视频生成对齐（RL / Human Feedback）",
     "date_arxiv": "2026-02",
-    "date_added": "2026-04-02"
+    "date_added": "2026-04-02",
+    "organizations": "上海交通大学, 腾讯混元"
   },
   {
     "title": "TAGRPO",
@@ -510,7 +540,8 @@
     "summary": "记忆库对比 I2V 对齐：高质量记忆库渐进提升生成下界",
     "category": "视频生成对齐（RL / Human Feedback）",
     "date_arxiv": "2026-01",
-    "date_added": "2026-04-02"
+    "date_added": "2026-04-02",
+    "organizations": "香港大学, 腾讯混元"
   },
   {
     "title": "What Happens Next",
@@ -526,7 +557,8 @@
     "summary": "统一视频理解+生成的下一场景预测，因果一致性 reward + GRPO",
     "category": "视频生成对齐（RL / Human Feedback）",
     "date_arxiv": "2025-12",
-    "date_added": "2026-04-02"
+    "date_added": "2026-04-02",
+    "organizations": "Penn State University, Amazon"
   },
   {
     "title": "DPP-GRPO",
@@ -541,7 +573,8 @@
     "summary": "行列式点过程 GRPO：DPP 采样替代随机采样增加组内多样性",
     "category": "视频生成对齐（RL / Human Feedback）",
     "date_arxiv": "2025-11",
-    "date_added": "2026-04-02"
+    "date_added": "2026-04-02",
+    "organizations": "Virginia Tech"
   },
   {
     "title": "AR-CoPO",
@@ -556,7 +589,8 @@
     "summary": "流式 AR 模型 chunk-level forking + semi-on-policy 训练，解决 few-step CM 的 SDE 失效",
     "category": "视频生成对齐（RL / Human Feedback）",
     "date_arxiv": "2026-03",
-    "date_added": "2026-04-02"
+    "date_added": "2026-04-02",
+    "organizations": "CUHK MMLab, Vivix Group Limited, HKUST"
   },
   {
     "title": "VideoScore2",
@@ -572,7 +606,8 @@
     "summary": "CoT 推理式视频评估：三维度评分 + SFT → GRPO 两阶段训练",
     "category": "视频 Reward 模型",
     "date_arxiv": "2025-09",
-    "date_added": "2026-04-02"
+    "date_added": "2026-04-02",
+    "organizations": "UIUC, University of Waterloo, M-A-P, University of Toronto"
   },
   {
     "title": "McSc",
@@ -588,7 +623,8 @@
     "summary": "多维 self-critic 推理式 RM + 运动校正 DPO，解决运动偏差 reward hacking",
     "category": "视频生成对齐（RL / Human Feedback）",
     "date_arxiv": "2025-11",
-    "date_added": "2026-04-02"
+    "date_added": "2026-04-02",
+    "organizations": "Tongyi Lab, Alibaba Group"
   },
   {
     "title": "MapReduce LoRA",
@@ -604,7 +640,8 @@
     "summary": "迭代式 LoRA 专家合并的多偏好对齐，Pareto 前沿逐步推进",
     "category": "视频生成对齐（RL / Human Feedback）",
     "date_arxiv": "2025-11",
-    "date_added": "2026-04-02"
+    "date_added": "2026-04-02",
+    "organizations": "Georgia Tech, Adobe"
   },
   {
     "title": "VANS",
@@ -620,7 +657,8 @@
     "summary": "Joint-GRPO 对齐 VLM+VDM，视频作为答案的下一事件预测",
     "category": "视频生成对齐（RL / Human Feedback）",
     "date_arxiv": "2025-11",
-    "date_added": "2026-04-02"
+    "date_added": "2026-04-02",
+    "organizations": "City University of Hong Kong, Kling Team (Kuaishou)"
   },
   {
     "title": "Identity-GRPO",
@@ -636,7 +674,8 @@
     "summary": "多人身份保持 GRPO：专用身份 RM + BTT + 大组差异化噪声采样",
     "category": "视频生成对齐（RL / Human Feedback）",
     "date_arxiv": "2025-10",
-    "date_added": "2026-04-02"
+    "date_added": "2026-04-02",
+    "organizations": "Alibaba Group, Fudan University"
   },
   {
     "title": "GRPO Survey",
@@ -654,7 +693,8 @@
     "summary": "Flow-GRPO 及后续 200+ 论文综述：reward 设计、credit assignment、采样效率、多样性保持",
     "category": "视频生成对齐综述",
     "date_arxiv": "2026-03",
-    "date_added": "2026-04-02"
+    "date_added": "2026-04-02",
+    "organizations": "SJTU, THU, CUHK"
   },
   {
     "title": "AR-Drag",
@@ -669,7 +709,8 @@
     "summary": "Self-Rollout + selective stochasticity 实现 few-step AR 视频实时运动控制",
     "category": "视频生成对齐（RL / Human Feedback）",
     "date_arxiv": "2025-10",
-    "date_added": "2026-04-02"
+    "date_added": "2026-04-02",
+    "organizations": "NTU, Xmax.AI, ZJU, SMU"
   },
   {
     "title": "RewardDance",
@@ -684,7 +725,8 @@
     "summary": "生成式 reward 范式：VLM 预测 yes 概率做 reward，1B→26B 系统化扩展",
     "category": "视频 Reward 模型",
     "date_arxiv": "2025-09",
-    "date_added": "2026-04-02"
+    "date_added": "2026-04-02",
+    "organizations": "ByteDance Seed"
   },
   {
     "title": "CPS",
@@ -699,7 +741,8 @@
     "summary": "系数保持采样器消除 Flow-SDE 噪声伪影，更准确的 reward 建模",
     "category": "视频生成对齐（RL / Human Feedback）",
     "date_arxiv": "2025-09",
-    "date_added": "2026-04-02"
+    "date_added": "2026-04-02",
+    "organizations": "CreateAI"
   },
   {
     "title": "LocalDPO",
@@ -713,6 +756,7 @@
     "summary": "局部化偏好优化：真实视频 vs 局部腐蚀修复构建偏好对，region-aware DPO",
     "category": "视频生成对齐（RL / Human Feedback）",
     "date_arxiv": "2026-01",
-    "date_added": "2026-04-02"
+    "date_added": "2026-04-02",
+    "organizations": "Harbin Institute of Technology, Alibaba Group (Taobao & Tmall)"
   }
 ]

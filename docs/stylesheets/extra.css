@@ -244,10 +244,24 @@
 }
 
 .paper-summary {
+  display: block;
   margin: 0.3rem 0 0 0;
   font-size: 0.88rem;
-  color: var(--md-default-fg-color--light);
+  color: var(--md-default-fg-color--light) !important;
   line-height: 1.5;
+  text-decoration: none !important;
+  transition: color 0.15s;
+}
+
+.paper-summary:hover {
+  color: var(--md-default-fg-color) !important;
+}
+
+.paper-org {
+  display: block;
+  margin-top: 0.2rem;
+  font-size: 0.8rem;
+  color: var(--md-default-fg-color--lighter);
 }
 
 /* === Hide right TOC on homepage === */

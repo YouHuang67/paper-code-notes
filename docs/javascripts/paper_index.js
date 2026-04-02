@@ -72,12 +72,14 @@ document.addEventListener("DOMContentLoaded", function () {
       groups[cat].forEach(function (d) {
         var url = base + "/" + d.path.replace(/\.md$/, "/");
         var dateLabel = currentSort === "arxiv" ? d.date_arxiv : d.date_added;
+        var orgHtml = d.organizations ? '<span class="paper-org">' + d.organizations + '</span>' : '';
         html += '<div class="paper-item">'
           + '<div class="paper-item-header">'
           + '<a href="' + url + '">' + d.title + '</a>'
           + '<span class="paper-date">' + (dateLabel || "") + '</span>'
           + '</div>'
-          + '<p class="paper-summary">' + (d.summary || "") + '</p>'
+          + orgHtml
+          + '<a class="paper-summary" href="' + url + '">' + (d.summary || "") + '</a>'
           + '</div>';
       });
       html += '</div>';
