@@ -109,16 +109,32 @@ for i_c in range(0, NC, BC):
    - 新增文档：追加一条记录
    - 修改文档：更新对应记录的 tags / summary
    - 字段：`title`、`path`（相对于 docs/ 的路径）、`type`（论文阅读/代码分析）、`tags`（数组，与 frontmatter 一致）、`summary`（一句话描述）
-   - 此文件被 `docs/javascripts/tag_search.js` 读取，驱动标签页的实时搜索
+   - 论文阅读额外字段：
+     - `category`：分类名，从「当前 Category 列表」中选取
+     - `date_added`：入库日期 `YYYY-MM-DD`（当天日期）
+     - `date_arxiv`：arXiv 发布月 `YYYY-MM`（从论文 arXiv ID 前四位提取，如 `2504.13074` → `2025-04`）
+   - 此文件被 JS 读取，驱动标签搜索、论文阅读页、首页的动态渲染
 
-3. **对应的 index.md 分类列表**
-   - 论文 → `docs/paper_reading/index.md`（按研究主题分类）
-   - 代码 → `docs/code_analysis/index.md`（按技术方向分类）
+3. **论文阅读页 `docs/paper_reading/index.md`**
+   - 由 JS 从 tag_index.json 动态渲染，按 category 分组显示
+   - 新增论文只需更新 tag_index.json，无需手动编辑 index.md
+   - 代码分析页 `docs/code_analysis/index.md` 仍为手动维护
 
 4. **`mkdocs.yml` 的 nav 目录**
    - 新增文档必须加入 nav，否则左侧导航不显示
 
-**检查项**：三处的 tag 列表必须完全一致（名称、大小写、数量），nav 必须包含所有文档
+### 当前 Category 列表（论文阅读）
+- `Vision Language Model`
+- `Sparse Attention`
+- `视频生成对齐（RL / Human Feedback）`
+- `视频生成对齐综述`
+- `视频 Reward 模型`
+- `自动驾驶视频生成`
+- `视频生成架构`
+
+新增 category 需与用户确认。
+
+**检查项**：tag 列表三处一致，nav 包含所有文档，论文记录必须有 category / date_added / date_arxiv
 
 ## Git 规范
 

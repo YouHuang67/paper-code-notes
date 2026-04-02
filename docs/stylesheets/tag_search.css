@@ -75,3 +75,17 @@
   color: var(--md-default-fg-color--light);
   font-style: italic;
 }
+
+.tag-search-count {
+  font-size: 0.85rem;
+  color: var(--md-default-fg-color--light);
+  margin-bottom: 0.6rem;
+}
+
+.tag-search-dates {
+  margin-top: 0.3rem;
+  font-size: 0.78rem;
+  color: var(--md-default-fg-color--lighter);
+  display: flex;
+  gap: 1rem;
+}
