@@ -73,8 +73,11 @@ document.addEventListener("DOMContentLoaded", function () {
         var url = base + "/" + d.path.replace(/\.md$/, "/");
         var dateLabel = currentSort === "arxiv" ? d.date_arxiv : d.date_added;
         html += '<div class="paper-item">'
+          + '<div class="paper-item-header">'
           + '<a href="' + url + '">' + d.title + '</a>'
           + '<span class="paper-date">' + (dateLabel || "") + '</span>'
+          + '</div>'
+          + '<p class="paper-summary">' + (d.summary || "") + '</p>'
           + '</div>';
       });
       html += '</div>';
