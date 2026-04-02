@@ -11,7 +11,7 @@ tags:
 # Euphonium: Process Reward Guided Flow Matching for Video Generation
 
 - 论文：https://arxiv.org/abs/2602.04928
-- 团队：上海交通大学, 腾讯混元
+- 团队：SJTU, Tencent Hunyuan
 
 ## 概述
 

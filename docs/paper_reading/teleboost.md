@@ -11,7 +11,7 @@ tags:
 
 - 论文：https://arxiv.org/abs/2602.07595
 - 代码：https://github.com/Tele-AI
-- 团队：TeleBoost Team（通讯作者 Xuelong Li）
+- 团队：Northwestern Polytechnical University
 
 ## 概述
 

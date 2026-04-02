@@ -10,7 +10,7 @@ tags:
 # DDRL: Data-regularized Reinforcement Learning for Diffusion Models at Scale
 
 - 论文：https://arxiv.org/abs/2512.04332
-- 团队：Stanford University, NVIDIA（Cosmos2.5 团队，含 James Zou、Stefano Ermon 等）
+- 团队：Stanford University, NVIDIA
 
 ## 概述
 

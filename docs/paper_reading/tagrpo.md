@@ -10,7 +10,7 @@ tags:
 # TAGRPO: Trajectory-Aligned GRPO for Diffusion Model Post-Training
 
 - 论文：https://arxiv.org/abs/2601.05729
-- 团队：香港大学, 腾讯混元
+- 团队：HKU, Tencent Hunyuan
 
 ## 概述
 

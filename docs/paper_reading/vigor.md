@@ -11,7 +11,7 @@ tags:
 
 - 论文：https://arxiv.org/abs/2603.16271
 - 代码：https://vigor-geometry-reward.com/
-- 团队：南开大学, 北京邮电大学, École Polytechnique (IP Paris)
+- 团队：Nankai University, BUPT, École Polytechnique
 
 ## 概述
 

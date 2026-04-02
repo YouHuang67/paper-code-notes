@@ -12,7 +12,7 @@
     "category": "Sparse Attention",
     "date_arxiv": "2026-02",
     "date_added": "2026-03-31",
-    "organizations": "小米 LLM-Core"
+    "organizations": "Xiaomi"
   },
   {
     "title": "IndexCache",
@@ -27,7 +27,7 @@
     "category": "Sparse Attention",
     "date_arxiv": "2026-03",
     "date_added": "2026-03-31",
-    "organizations": "清华大学 + Z.ai（GLM 团队）"
+    "organizations": "Tsinghua University, Zhipu AI"
   },
   {
     "title": "Kascade",
@@ -383,7 +383,7 @@
     "category": "视频生成对齐（RL / Human Feedback）",
     "date_arxiv": "2026-03",
     "date_added": "2026-04-02",
-    "organizations": "南开大学, 北京邮电大学, École Polytechnique (IP Paris)"
+    "organizations": "Nankai University, BUPT, École Polytechnique"
   },
   {
     "title": "TeleBoost",
@@ -398,7 +398,7 @@
     "category": "视频生成对齐（RL / Human Feedback）",
     "date_arxiv": "2026-02",
     "date_added": "2026-04-02",
-    "organizations": "TeleBoost Team（通讯作者 Xuelong Li）"
+    "organizations": "Northwestern Polytechnical University"
   },
   {
     "title": "PISCES",
@@ -430,7 +430,7 @@
     "category": "视频生成架构",
     "date_arxiv": "2025-12",
     "date_added": "2026-04-02",
-    "organizations": "字节跳动 Seed（ByteDance Seed）"
+    "organizations": "ByteDance Seed"
   },
   {
     "title": "DDRL",
@@ -446,7 +446,7 @@
     "category": "视频生成对齐（RL / Human Feedback）",
     "date_arxiv": "2025-12",
     "date_added": "2026-04-02",
-    "organizations": "Stanford University, NVIDIA（Cosmos2.5 团队，含 James Zou、Stefano Ermon 等）"
+    "organizations": "Stanford University, NVIDIA"
   },
   {
     "title": "CAMVERSE",
@@ -525,7 +525,7 @@
     "category": "视频生成对齐（RL / Human Feedback）",
     "date_arxiv": "2026-02",
     "date_added": "2026-04-02",
-    "organizations": "上海交通大学, 腾讯混元"
+    "organizations": "SJTU, Tencent Hunyuan"
   },
   {
     "title": "TAGRPO",
@@ -541,7 +541,7 @@
     "category": "视频生成对齐（RL / Human Feedback）",
     "date_arxiv": "2026-01",
     "date_added": "2026-04-02",
-    "organizations": "香港大学, 腾讯混元"
+    "organizations": "HKU, Tencent Hunyuan"
   },
   {
     "title": "What Happens Next",

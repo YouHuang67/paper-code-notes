@@ -8,7 +8,7 @@ tags:
 # HySparse: Hybrid Sparse Attention with Oracle Token Selection and KV Cache Sharing
 
 - 论文：arXiv 2602.03560
-- 团队：小米 LLM-Core
+- 团队：Xiaomi
 - 代码：未开源
 
 ## 概述

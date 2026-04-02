@@ -8,7 +8,7 @@ tags:
 # Seedance 1.5 pro: A Native Audio-Visual Joint Generation Foundation Model
 
 - 论文：https://arxiv.org/abs/2512.13507
-- 团队：字节跳动 Seed（ByteDance Seed）
+- 团队：ByteDance Seed
 
 ## 概述
 

@@ -8,7 +8,7 @@ tags:
 # IndexCache: Accelerating Sparse Attention via Cross-Layer Index Reuse
 
 - 论文：[arXiv 2603.12201](https://arxiv.org/abs/2603.12201)（2026.03）
-- 团队：清华大学 + Z.ai（GLM 团队）
+- 团队：Tsinghua University, Zhipu AI
 - 模型：GLM-4.7-Flash（30B-A3B MoE）、GLM-5（744B-40B）
 
 ## 概述
