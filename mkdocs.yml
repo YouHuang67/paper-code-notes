@@ -71,6 +71,9 @@ nav:
     - Qwen3-VL: paper_reading/qwen3_vl.md
     - Qwen3-Omni: paper_reading/qwen3_omni.md
     - SkyReels-V2: paper_reading/skyreels_v2.md
+    - Seedance 1.5: paper_reading/seedance15.md
+    - CAMVERSE: paper_reading/camverse.md
+    - Kandinsky 5.0: paper_reading/kandinsky5.md
     - VideoAlign: paper_reading/videoalign.md
     - VideoDPO: paper_reading/videodpo.md
     - DenseDPO: paper_reading/densedpo.md
@@ -81,9 +84,30 @@ nav:
     - PRFL: paper_reading/prfl.md
     - VR-Thinker: paper_reading/vr_thinker.md
     - REACT: paper_reading/react.md
+    - VideoScore2: paper_reading/videoscore2.md
+    - RewardDance: paper_reading/rewarddance.md
     - PhysMaster: paper_reading/physmaster.md
     - RLGF: paper_reading/rlgf.md
     - VPO: paper_reading/vpo.md
+    - VIGOR: paper_reading/vigor.md
+    - TeleBoost: paper_reading/teleboost.md
+    - PISCES: paper_reading/pisces.md
+    - DDRL: paper_reading/ddrl.md
+    - Euphonium: paper_reading/euphonium.md
+    - RealDPO: paper_reading/realdpo.md
+    - TAGRPO: paper_reading/tagrpo.md
+    - DreaMontage: paper_reading/dreamontage.md
+    - DPP-GRPO: paper_reading/dppgrpo.md
+    - AR-CoPO: paper_reading/arcopo.md
+    - What Happens Next: paper_reading/whathappensnext.md
+    - McSc: paper_reading/mcsc.md
+    - MapReduce LoRA: paper_reading/mapreducelora.md
+    - VANS: paper_reading/vans.md
+    - Identity-GRPO: paper_reading/identitygrpo.md
+    - AR-Drag: paper_reading/ardrag.md
+    - LocalDPO: paper_reading/localdpo.md
+    - CPS: paper_reading/cps.md
+    - GRPO Survey: paper_reading/grposurvey.md
     - Kascade: paper_reading/kascade.md
     - IndexCache: paper_reading/indexcache.md
     - HySparse: paper_reading/hysparse.md

@@ -180,5 +180,173 @@
     "type": "代码分析",
     "tags": ["Flash Attention", "Sliding Window"],
     "summary": "FlashAttention 滑动窗口集成与三路门控融合"
+  },
+  {
+    "title": "VIGOR",
+    "path": "paper_reading/vigor.md",
+    "type": "论文阅读",
+    "tags": ["Video Generation", "Reinforcement Learning", "GRPO", "Reward Model", "Flow Matching"],
+    "summary": "视频生成 GRPO 框架：多粒度 reward + 帧级/视频级双层 GRPO"
+  },
+  {
+    "title": "TeleBoost",
+    "path": "paper_reading/teleboost.md",
+    "type": "论文阅读",
+    "tags": ["Video Generation", "Reinforcement Learning", "Flow Matching"],
+    "summary": "Telescoping Boosting：多智能体迭代蒸馏，每轮 reward 提升后重新蒸馏少步模型"
+  },
+  {
+    "title": "PISCES",
+    "path": "paper_reading/pisces.md",
+    "type": "论文阅读",
+    "tags": ["Video Generation", "Reinforcement Learning", "GRPO", "Flow Matching"],
+    "summary": "双鱼对抗系统：verifier + falsifier 对抗训练的视频生成对齐"
+  },
+  {
+    "title": "Seedance 1.5",
+    "path": "paper_reading/seedance15.md",
+    "type": "论文阅读",
+    "tags": ["Video Generation", "Diffusion Model", "Reinforcement Learning", "Flow Matching"],
+    "summary": "音视频联合生成：Native AV-DiT + 多维 RLHF + 10× 推理加速"
+  },
+  {
+    "title": "DDRL",
+    "path": "paper_reading/ddrl.md",
+    "type": "论文阅读",
+    "tags": ["Video Generation", "Reinforcement Learning", "Diffusion Model", "Flow Matching"],
+    "summary": "数据正则化扩散 RL：前向 KL 锚定数据分布防止 reward hacking"
+  },
+  {
+    "title": "CAMVERSE",
+    "path": "paper_reading/camverse.md",
+    "type": "论文阅读",
+    "tags": ["Video Generation", "Diffusion Model", "Flow Matching"],
+    "summary": "高质量 I2V + 可控运动：MoRA 运动适配器 + 精细镜头运动控制"
+  },
+  {
+    "title": "Kandinsky 5.0",
+    "path": "paper_reading/kandinsky5.md",
+    "type": "论文阅读",
+    "tags": ["Video Generation", "Diffusion Model", "Reinforcement Learning", "Flow Matching"],
+    "summary": "统一图像/视频/音频生成基础模型族，多阶段课程训练 + RLHF"
+  },
+  {
+    "title": "DreaMontage",
+    "path": "paper_reading/dreamontage.md",
+    "type": "论文阅读",
+    "tags": ["Video Generation", "Reinforcement Learning", "GRPO", "Flow Matching"],
+    "summary": "多参考图对齐视频生成：CLIP-I2T reward 驱动 GRPO"
+  },
+  {
+    "title": "RealDPO",
+    "path": "paper_reading/realdpo.md",
+    "type": "论文阅读",
+    "tags": ["Video Generation", "DPO", "Flow Matching"],
+    "summary": "真实视频锚定 DPO：用真实视频作为偏好锚点，避免合成数据偏差"
+  },
+  {
+    "title": "Euphonium",
+    "path": "paper_reading/euphonium.md",
+    "type": "论文阅读",
+    "tags": ["Video Generation", "Reinforcement Learning", "GRPO", "Flow Matching", "Reward Model"],
+    "summary": "过程 Reward 梯度注入 SDE 漂移项 + 双重 Reward GRPO，统一 Flow-GRPO 和 DanceGRPO"
+  },
+  {
+    "title": "TAGRPO",
+    "path": "paper_reading/tagrpo.md",
+    "type": "论文阅读",
+    "tags": ["Video Generation", "Reinforcement Learning", "GRPO", "Flow Matching"],
+    "summary": "记忆库对比 I2V 对齐：高质量记忆库渐进提升生成下界"
+  },
+  {
+    "title": "What Happens Next",
+    "path": "paper_reading/whathappensnext.md",
+    "type": "论文阅读",
+    "tags": ["Video Generation", "Reinforcement Learning", "GRPO", "Flow Matching", "VLM"],
+    "summary": "统一视频理解+生成的下一场景预测，因果一致性 reward + GRPO"
+  },
+  {
+    "title": "DPP-GRPO",
+    "path": "paper_reading/dppgrpo.md",
+    "type": "论文阅读",
+    "tags": ["Video Generation", "Reinforcement Learning", "GRPO", "Flow Matching"],
+    "summary": "行列式点过程 GRPO：DPP 采样替代随机采样增加组内多样性"
+  },
+  {
+    "title": "AR-CoPO",
+    "path": "paper_reading/arcopo.md",
+    "type": "论文阅读",
+    "tags": ["Video Generation", "Reinforcement Learning", "GRPO", "Flow Matching"],
+    "summary": "流式 AR 模型 chunk-level forking + semi-on-policy 训练，解决 few-step CM 的 SDE 失效"
+  },
+  {
+    "title": "VideoScore2",
+    "path": "paper_reading/videoscore2.md",
+    "type": "论文阅读",
+    "tags": ["Video Generation", "Reward Model", "Reinforcement Learning", "GRPO", "VLM"],
+    "summary": "CoT 推理式视频评估：三维度评分 + SFT → GRPO 两阶段训练"
+  },
+  {
+    "title": "McSc",
+    "path": "paper_reading/mcsc.md",
+    "type": "论文阅读",
+    "tags": ["Video Generation", "Reinforcement Learning", "DPO", "GRPO", "Reward Model"],
+    "summary": "多维 self-critic 推理式 RM + 运动校正 DPO，解决运动偏差 reward hacking"
+  },
+  {
+    "title": "MapReduce LoRA",
+    "path": "paper_reading/mapreducelora.md",
+    "type": "论文阅读",
+    "tags": ["Video Generation", "Reinforcement Learning", "GRPO", "DPO", "Diffusion Model"],
+    "summary": "迭代式 LoRA 专家合并的多偏好对齐，Pareto 前沿逐步推进"
+  },
+  {
+    "title": "VANS",
+    "path": "paper_reading/vans.md",
+    "type": "论文阅读",
+    "tags": ["Video Generation", "Reinforcement Learning", "GRPO", "Flow Matching", "VLM"],
+    "summary": "Joint-GRPO 对齐 VLM+VDM，视频作为答案的下一事件预测"
+  },
+  {
+    "title": "Identity-GRPO",
+    "path": "paper_reading/identitygrpo.md",
+    "type": "论文阅读",
+    "tags": ["Video Generation", "Reinforcement Learning", "GRPO", "Flow Matching", "Reward Model"],
+    "summary": "多人身份保持 GRPO：专用身份 RM + BTT + 大组差异化噪声采样"
+  },
+  {
+    "title": "GRPO Survey",
+    "path": "paper_reading/grposurvey.md",
+    "type": "论文阅读",
+    "tags": ["Video Generation", "Reinforcement Learning", "GRPO", "Flow Matching", "Diffusion Model", "DPO", "Reward Model"],
+    "summary": "Flow-GRPO 及后续 200+ 论文综述：reward 设计、credit assignment、采样效率、多样性保持"
+  },
+  {
+    "title": "AR-Drag",
+    "path": "paper_reading/ardrag.md",
+    "type": "论文阅读",
+    "tags": ["Video Generation", "Reinforcement Learning", "GRPO", "Flow Matching"],
+    "summary": "Self-Rollout + selective stochasticity 实现 few-step AR 视频实时运动控制"
+  },
+  {
+    "title": "RewardDance",
+    "path": "paper_reading/rewarddance.md",
+    "type": "论文阅读",
+    "tags": ["Video Generation", "Reward Model", "Reinforcement Learning", "VLM"],
+    "summary": "生成式 reward 范式：VLM 预测 yes 概率做 reward，1B→26B 系统化扩展"
+  },
+  {
+    "title": "CPS",
+    "path": "paper_reading/cps.md",
+    "type": "论文阅读",
+    "tags": ["Reinforcement Learning", "GRPO", "Flow Matching", "Diffusion Model"],
+    "summary": "系数保持采样器消除 Flow-SDE 噪声伪影，更准确的 reward 建模"
+  },
+  {
+    "title": "LocalDPO",
+    "path": "paper_reading/localdpo.md",
+    "type": "论文阅读",
+    "tags": ["Video Generation", "DPO", "Diffusion Model"],
+    "summary": "局部化偏好优化：真实视频 vs 局部腐蚀修复构建偏好对，region-aware DPO"
   }
 ]
