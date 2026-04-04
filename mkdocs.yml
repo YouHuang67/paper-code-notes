@@ -112,6 +112,16 @@ nav:
     - Kascade: paper_reading/kascade.md
     - IndexCache: paper_reading/indexcache.md
     - HySparse: paper_reading/hysparse.md
+    - PISA: paper_reading/pisa.md
+    - SnapGen++: paper_reading/snapgenplusplus.md
+    - RainFusion2.0: paper_reading/rainfusion2.md
+    - LLSA: paper_reading/llsa.md
+    - HilbertA: paper_reading/hilberta.md
+    - HMAR: paper_reading/hmar.md
+    - Cobra: paper_reading/cobra.md
+    - MonarchRT: paper_reading/monarchrt.md
+    - GRAT: paper_reading/grat.md
+    - LLaDA-o: paper_reading/llada_o.md
   - 代码分析:
     - 导读: code_analysis/index.md
     - Native Sparse Attention:

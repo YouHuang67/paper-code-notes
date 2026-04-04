@@ -758,5 +758,149 @@
     "date_arxiv": "2026-01",
     "date_added": "2026-04-02",
     "organizations": "Harbin Institute of Technology, Alibaba Group (Taobao & Tmall)"
+  },
+  {
+    "title": "PISA",
+    "path": "paper_reading/pisa.md",
+    "type": "论文阅读",
+    "tags": [
+      "Sparse Attention",
+      "Diffusion Model",
+      "Video Generation"
+    ],
+    "summary": "块级 Taylor 展开近似非关键 KV 块（exact-or-approximate），协方差感知路由 + 4 阶段 kernel，Wan2.1-14B 1.91× / Hunyuan 2.57×",
+    "category": "Sparse Attention",
+    "date_arxiv": "2026-02",
+    "date_added": "2026-04-04",
+    "organizations": "HKUST (Guangzhou)"
+  },
+  {
+    "title": "SnapGen++",
+    "path": "paper_reading/snapgenplusplus.md",
+    "type": "论文阅读",
+    "tags": [
+      "Sparse Attention",
+      "Diffusion Model"
+    ],
+    "summary": "移动端 DiT 三件套：ASSA 全局-局部稀疏注意力 + 弹性训练 supernetwork + K-DMD 步骤蒸馏，iPhone 1.8s 生成 1024×1024",
+    "category": "Sparse Attention",
+    "date_arxiv": "2026-01",
+    "date_added": "2026-04-04",
+    "organizations": "Snap Inc., University of Melbourne"
+  },
+  {
+    "title": "RainFusion2.0",
+    "path": "paper_reading/rainfusion2.md",
+    "type": "论文阅读",
+    "tags": [
+      "Sparse Attention",
+      "Video Generation",
+      "Diffusion Model"
+    ],
+    "summary": "NPU 兼容块稀疏注意力：块均值代表 token + 3D 窗口排列 + First Frame Sink，Wan2.2 720p 1.57× 加速",
+    "category": "Sparse Attention",
+    "date_arxiv": "2025-12",
+    "date_added": "2026-04-04",
+    "organizations": "Huawei Technologies, HKUST"
+  },
+  {
+    "title": "LLSA",
+    "path": "paper_reading/llsa.md",
+    "type": "论文阅读",
+    "tags": [
+      "Sparse Attention",
+      "Diffusion Model"
+    ],
+    "summary": "分层 Top-K 将选择阶段从 O(N²) 降至 O(N) + KV 增强保全全局上下文，pixel-space DiT FID 20.41 超越全量注意力",
+    "category": "Sparse Attention",
+    "date_arxiv": "2025-12",
+    "date_added": "2026-04-04",
+    "organizations": "Nanyang Technological University S-Lab, Peking University"
+  },
+  {
+    "title": "HilbertA",
+    "path": "paper_reading/hilberta.md",
+    "type": "论文阅读",
+    "tags": [
+      "Sparse Attention",
+      "Diffusion Model"
+    ],
+    "summary": "Hilbert 曲线重排保证 2D 局部性 + 内存连续访问 + Sliding+Shared Region 实现全局感受野，Flux 2048×2048 注意力 4.17×",
+    "category": "Sparse Attention",
+    "date_arxiv": "2025-09",
+    "date_added": "2026-04-04",
+    "organizations": "New York University"
+  },
+  {
+    "title": "HMAR",
+    "path": "paper_reading/hmar.md",
+    "type": "论文阅读",
+    "tags": [
+      "Sparse Attention",
+      "Diffusion Model"
+    ],
+    "summary": "VAR 的 Markovian 重表述使注意力模式从 block-causal → block-diagonal，MaskGIT 式掩码预测 + log-normal 尺度加权，FID 1.95 IS 334.5",
+    "category": "Sparse Attention",
+    "date_arxiv": "2025-06",
+    "date_added": "2026-04-04",
+    "organizations": "Stanford, NVIDIA, CUHK, HKU, NTU, UCSD"
+  },
+  {
+    "title": "Cobra",
+    "path": "paper_reading/cobra.md",
+    "type": "论文阅读",
+    "tags": [
+      "Sparse Attention",
+      "Diffusion Model"
+    ],
+    "summary": "漫画线稿上色 200+ 参考图：去除参考图间 pairwise 注意力 + 因果注意力 KV Cache 将参考图开销从 O(T) 降至 O(1)",
+    "category": "Sparse Attention",
+    "date_arxiv": "2025-04",
+    "date_added": "2026-04-04",
+    "organizations": "Tsinghua University, CUHK, Tencent ARC Lab"
+  },
+  {
+    "title": "MonarchRT",
+    "path": "paper_reading/monarchrt.md",
+    "type": "论文阅读",
+    "tags": [
+      "Sparse Attention",
+      "Video Generation",
+      "Diffusion Model"
+    ],
+    "summary": "Monarch 矩阵参数化 3D 视频注意力（rank-1 块表示位置结构），空时对齐块 + Tiled Monarch + 微调，95% 稀疏率 RTX5090 11.8× 加速实现 16FPS",
+    "category": "Sparse Attention",
+    "date_arxiv": "2026-02",
+    "date_added": "2026-04-04",
+    "organizations": "Carnegie Mellon University, University at Buffalo, Morpheus AI"
+  },
+  {
+    "title": "GRAT",
+    "path": "paper_reading/grat.md",
+    "type": "论文阅读",
+    "tags": [
+      "Sparse Attention",
+      "Diffusion Model",
+      "Video Generation"
+    ],
+    "summary": "分组共享 KV 的无训练稀疏注意力：GRAT-B 邻近块组 35.8× 加速，GRAT-X criss-cross 11.6× 加速且质量等于全量注意力",
+    "category": "Sparse Attention",
+    "date_arxiv": "2025-05",
+    "date_added": "2026-04-04",
+    "organizations": "Johns Hopkins University"
+  },
+  {
+    "title": "LLaDA-o",
+    "path": "paper_reading/llada_o.md",
+    "type": "论文阅读",
+    "tags": [
+      "Diffusion Model",
+      "VLM"
+    ],
+    "summary": "Mixture of Diffusion 统一多模态：离散掩码扩散理解 + 连续扩散生成 + 块内双向/跨块因果注意力 5.9× 加速 + 自适应长度增广，DPG-Bench 87.04",
+    "category": "Vision Language Model",
+    "date_arxiv": "2026-03",
+    "date_added": "2026-04-04",
+    "organizations": "Renmin University of China, Ant Group"
   }
 ]
