@@ -53,7 +53,7 @@ markdown_extensions:
 
 extra_javascript:
   - javascripts/mathjax.js
-  - javascripts/tag_search.js?v=4
+  - javascripts/tag_search.js?v=5
   - javascripts/home.js?v=4
   - javascripts/paper_index.js?v=3
   - https://polyfill.io/v3/polyfill.min.js?features=es6
@@ -61,7 +61,7 @@ extra_javascript:
 
 extra_css:
   - stylesheets/extra.css?v=8
-  - stylesheets/tag_search.css?v=3
+  - stylesheets/tag_search.css?v=4
 
 nav:
   - 首页: index.md

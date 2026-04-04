@@ -89,3 +89,18 @@
   display: flex;
   gap: 1rem;
 }
+
+.tag-search-hint {
+  font-size: 0.8rem;
+  color: var(--md-default-fg-color--lighter);
+  margin-bottom: 0.75rem;
+  line-height: 1.6;
+}
+
+.tag-search-hint code {
+  font-size: 0.78rem;
+  padding: 0.05rem 0.3rem;
+  border-radius: 3px;
+  background: var(--md-default-fg-color--lightest);
+  color: var(--md-default-fg-color--light);
+}
