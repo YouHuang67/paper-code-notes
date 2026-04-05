@@ -6,4 +6,6 @@
   <button class="sort-btn active" data-sort="arxiv">arXiv 日期</button>
 </div>
 
+<div id="paper-tag-filter"></div>
+
 <div id="paper-index"></div>

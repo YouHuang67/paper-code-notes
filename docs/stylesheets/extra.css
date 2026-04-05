@@ -264,6 +264,42 @@
   color: var(--md-default-fg-color--lighter);
 }
 
+/* === Paper tag filter chips === */
+.filter-tag-area {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-bottom: 1rem;
+}
+
+.filter-tag-chip {
+  padding: 0.2rem 0.75rem;
+  border: 1px solid rgba(92, 224, 210, 0.15);
+  border-radius: 20px;
+  background: transparent;
+  color: var(--md-default-fg-color--light);
+  cursor: pointer;
+  font-size: 0.8rem;
+  transition: all 0.15s;
+}
+
+.filter-tag-chip:hover {
+  border-color: rgba(92, 224, 210, 0.4);
+  color: var(--md-default-fg-color);
+}
+
+.filter-tag-chip.active {
+  background: rgba(92, 224, 210, 0.12);
+  border-color: #5ce0d2;
+  color: #5ce0d2;
+}
+
+.filter-count {
+  font-size: 0.85rem;
+  color: var(--md-default-fg-color--light);
+  margin-bottom: 0.6rem;
+}
+
 /* === Hide right TOC on homepage === */
 .md-content[data-md-component="content"] .md-typeset h1:first-child {
   margin-top: 0;
