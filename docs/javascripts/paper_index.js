@@ -14,7 +14,7 @@ document.addEventListener("DOMContentLoaded", function () {
   }
 
   var docs = [];
-  var currentSort = "added";
+  var currentSort = "arxiv";
 
   fetch(base + "/data/tag_index.json")
     .then(function (r) {
