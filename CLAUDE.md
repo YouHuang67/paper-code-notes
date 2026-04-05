@@ -75,9 +75,12 @@ for i_c in range(0, NC, BC):
 ## 分类与检索
 
 ### Index 分类
-- `paper_reading/index.md`：按研究主题分类（如 视频生成 / Sparse Attention）
-- `code_analysis/index.md`：按技术方向分类（如 GPU Kernel / Model Architecture）
-- 新增论文或代码分析时同步更新对应 index
+- `paper_reading/index.md`：由 JS 动态渲染，支持两种视图：
+  - **无 tag 选中**：按 `category` 分组显示（如 Sparse Attention / 视频生成对齐）
+  - **有 tag 选中**：平铺列表，AND 过滤匹配所有选中 tag 的论文，按排序展示
+  - tag chip 从 `tag_index.json` 自动提取，无需手动维护
+- `code_analysis/index.md`：按技术方向分类（如 GPU Kernel / Model Architecture），手动维护
+- 新增论文只需更新 `tag_index.json` 和 `mkdocs.yml`，无需手动编辑 `paper_reading/index.md`
 
 ### Tag 规范
 - 用途：技术关键词，跨论文和代码通用，方便检索
@@ -124,8 +127,11 @@ for i_c in range(0, NC, BC):
    - 此文件被 JS 读取，驱动标签搜索、论文阅读页、首页的动态渲染
 
 3. **论文阅读页 `docs/paper_reading/index.md`**
-   - 由 JS 从 tag_index.json 动态渲染，按 category 分组显示
-   - 新增论文只需更新 tag_index.json，无需手动编辑 index.md
+   - 由 JS 从 `tag_index.json` 动态渲染，无需手动编辑
+   - 无 tag 选中时：按 `category` 分组显示
+   - 有 tag 选中时：平铺列表，AND 过滤匹配论文
+   - `category` 决定分组归属，`tags` 决定过滤维度，**两者都要认真填写**
+   - 跨领域论文（如同时属于 Sparse Attention 和 Video Generation）：`category` 以主要技术贡献为准，`tags` 两个都打上，用户可通过 tag 组合过滤找到
    - 代码分析页 `docs/code_analysis/index.md` 仍为手动维护
 
 4. **`mkdocs.yml` 的 nav 目录**
