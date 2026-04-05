@@ -16,7 +16,13 @@ document.addEventListener("DOMContentLoaded", function () {
 
   var docs = [];
   var currentSort = "arxiv";
-  var selectedTags = [];
+  var STORAGE_KEY = "paper_index_selected_tags";
+  var selectedTags = (function () {
+    try {
+      var saved = sessionStorage.getItem(STORAGE_KEY);
+      return saved ? JSON.parse(saved) : [];
+    } catch (e) { return []; }
+  }());
 
   fetch(base + "/data/tag_index.json")
     .then(function (r) {
@@ -42,6 +48,10 @@ document.addEventListener("DOMContentLoaded", function () {
     });
   }
 
+  function saveSelectedTags() {
+    try { sessionStorage.setItem(STORAGE_KEY, JSON.stringify(selectedTags)); } catch (e) {}
+  }
+
   function renderTagFilter() {
     if (!filterArea) return;
     var tagSet = {};
@@ -59,6 +69,10 @@ document.addEventListener("DOMContentLoaded", function () {
 
     var chips = filterArea.querySelectorAll(".filter-tag-chip");
     for (var i = 0; i < chips.length; i++) {
+      // restore highlight for previously selected tags
+      if (selectedTags.indexOf(chips[i].getAttribute("data-tag")) !== -1) {
+        chips[i].classList.add("active");
+      }
       chips[i].addEventListener("click", function () {
         var tag = this.getAttribute("data-tag");
         var idx = selectedTags.indexOf(tag);
@@ -68,6 +82,7 @@ document.addEventListener("DOMContentLoaded", function () {
           selectedTags.splice(idx, 1);
         }
         this.classList.toggle("active", selectedTags.indexOf(tag) !== -1);
+        saveSelectedTags();
         render();
       });
     }
