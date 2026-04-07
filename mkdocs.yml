@@ -131,3 +131,7 @@ nav:
       - Top-k 选择: code_analysis/native_sparse_attention/03_topk_selection.md
       - 选择注意力: code_analysis/native_sparse_attention/04_selected_attention.md
       - 滑动窗口: code_analysis/native_sparse_attention/05_sliding_window.md
+    - xformers Memory Efficient Attention:
+      - 总览: code_analysis/xformers_memory_efficient_attention/00_overview.md
+      - Split-K 前向内核: code_analysis/xformers_memory_efficient_attention/01_splitk_forward.md
+      - Split-K 归约与合并: code_analysis/xformers_memory_efficient_attention/02_splitk_reduce.md

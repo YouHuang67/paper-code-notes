@@ -369,6 +369,41 @@
     "summary": "FlashAttention 滑动窗口集成与三路门控融合"
   },
   {
+    "title": "xformers Memory Efficient Attention - 总览",
+    "path": "code_analysis/xformers_memory_efficient_attention/00_overview.md",
+    "type": "代码分析",
+    "tags": [
+      "Triton",
+      "Flash Attention",
+      "Online Softmax",
+      "KV Cache",
+      "LLM Inference"
+    ],
+    "summary": "xformers Triton Split-K 前向推理内核的整体架构：API 分发、mask 体系、GQA/量化支持"
+  },
+  {
+    "title": "xformers Memory Efficient Attention - Split-K 前向内核",
+    "path": "code_analysis/xformers_memory_efficient_attention/01_splitk_forward.md",
+    "type": "代码分析",
+    "tags": [
+      "Triton",
+      "Flash Attention",
+      "Online Softmax",
+      "KV Cache"
+    ],
+    "summary": "Split-K 前向 kernel 核心逻辑：张量预处理、并行策略、mask 处理、INT4/FP8 量化融合"
+  },
+  {
+    "title": "xformers Memory Efficient Attention - Split-K 归约与合并",
+    "path": "code_analysis/xformers_memory_efficient_attention/02_splitk_reduce.md",
+    "type": "代码分析",
+    "tags": [
+      "Triton",
+      "Online Softmax"
+    ],
+    "summary": "Split-K partial attention/LSE 的归约数学推导、堆叠/varargs 两种归约 kernel 实现"
+  },
+  {
     "title": "VIGOR",
     "path": "paper_reading/vigor.md",
     "type": "论文阅读",
