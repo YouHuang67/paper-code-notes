@@ -10,7 +10,9 @@ tags:
 
 **源码仓库**: [facebookresearch/xformers](https://github.com/facebookresearch/xformers)
 
-xformers 的 Triton Split-K 后端是面向推理的高效注意力前向内核。与 FlashAttention 相同的数学基础（Online Softmax），但针对 decode 场景做了特化：将 KV 序列切分为多个 chunk 并行计算再归约，并在 kernel 内部融合了因果/局部/分页等 mask 操作以及 INT4/FP8 反量化。
+xformers 的 `memory_efficient_attention`（EMA）是一个统一的高效注意力 API，底层根据硬件和输入自动分发到不同后端（CUTLASS / FlashAttention / Triton / CK）。EMA 本身是通用的——数学上就是标准 attention 的 Online Softmax 实现，Q 数量不限。
+
+本文分析的 **Triton Split-K** 是 EMA 的一个后端实现，仅有前向无反向，主要优化 **decode 推理**（Q 极少、KV 极长）场景：此时 `batch × head` 的并行度可能不够打满 GPU，Split-K 将 KV 序列切分为多个 chunk 增加并行维度。此外 kernel 内部融合了因果/局部/分页等 mask 操作以及 INT4/FP8 反量化。Prefill 阶段（Q 很多）通常由 FlashAttention 后端处理，Split-K 后端 `split_k=1` 退化为普通 Online Softmax。
 
 ## 1. 数学基础
 
