@@ -10,9 +10,26 @@ tags:
 
 **源码仓库**: [facebookresearch/xformers](https://github.com/facebookresearch/xformers)
 
-xformers 的 `memory_efficient_attention`（EMA）是一个统一的高效注意力 API，底层根据硬件和输入自动分发到不同后端（CUTLASS / FlashAttention / Triton / CK）。EMA 本身是通用的——数学上就是标准 attention 的 Online Softmax 实现，Q 数量不限。
+xformers 的 `memory_efficient_attention`（EMA）是一个统一的高效注意力 API，底层根据硬件和输入自动分发到不同后端。EMA 本身是通用的——数学上就是标准 attention 的 Online Softmax 实现，Q 数量不限。
 
-本文分析的 **Triton Split-K** 是 EMA 的一个后端实现，仅有前向无反向，主要优化 **decode 推理**（Q 极少、KV 极长）场景：此时 `batch × head` 的并行度可能不够打满 GPU，Split-K 将 KV 序列切分为多个 chunk 增加并行维度。此外 kernel 内部融合了因果/局部/分页等 mask 操作以及 INT4/FP8 反量化。Prefill 阶段（Q 很多）通常由 FlashAttention 后端处理，Split-K 后端 `split_k=1` 退化为普通 Online Softmax。
+### 后端分发全景
+
+```
+xformers.ops.memory_efficient_attention(Q, K, V, attn_bias, ...)
+  → dispatch 根据 (硬件, dtype, Q/KV 长度, mask 类型) 自动选择:
+    ├─ cutlass.py    FwOp+BwOp  "cutlassF-pt"     SM50-90, 通用 prefill/训练
+    ├─ flash.py      FwOp+BwOp  "flshattF"         SM80+, FlashAttention v2
+    ├─ triton_splitk  FwOp      "tritonSplitKF"    SM80+, decode 推理专用 ← 本文
+    ├─ cutlass_blackwell FwOp+BwOp "cutlassF-blackwell" SM100+, Blackwell
+    └─ ck.py         FwOp+BwOp  (AMD ROCm, Composable Kernel)
+```
+
+所有后端实现相同的 Online Softmax 数学（§1.2），但针对不同场景做工程优化。其中 **CUTLASS 后端**的前向 kernel 分析见 [CUTLASS Memory Efficient Attention](../cutlass_mem_eff_attention/00_overview.md)，它与本文的 Triton Split-K 后端形成互补：
+
+- **Triton Split-K**（本文）：decode 推理专用，Split-K 并行 + 量化融合 + 分页注意力，无反向
+- **CUTLASS**：通用 prefill / 训练，支持反向传播、大 head_dim（最大 65536）、dropout，无量化/分页
+
+本文分析的 **Triton Split-K** 仅有前向无反向，主要优化 **decode 推理**（Q 极少、KV 极长）场景：此时 `batch × head` 的并行度可能不够打满 GPU，Split-K 将 KV 序列切分为多个 chunk 增加并行维度。此外 kernel 内部融合了因果/局部/分页等 mask 操作以及 INT4/FP8 反量化。Prefill 阶段（Q 很多）通常由 FlashAttention 后端处理，Split-K 后端 `split_k=1` 退化为普通 Online Softmax。
 
 ## 1. 数学基础
 

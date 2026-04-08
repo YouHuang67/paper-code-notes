@@ -133,3 +133,6 @@ nav:
       - 滑动窗口: code_analysis/native_sparse_attention/05_sliding_window.md
     - xformers Memory Efficient Attention:
       - 总览: code_analysis/xformers_memory_efficient_attention/00_overview.md
+    - CUTLASS Memory Efficient Attention:
+      - 总览: code_analysis/cutlass_mem_eff_attention/00_overview.md
+      - CUDA 与 CUTLASS 概念: code_analysis/cutlass_mem_eff_attention/01_cuda_cutlass_concepts.md

@@ -382,6 +382,27 @@
     "summary": "xformers Triton Split-K 前向推理内核：Split-K 并行、mask 融合、INT4/FP8 量化、GQA head-swapping、归约合并"
   },
   {
+    "title": "CUTLASS Memory Efficient Attention - 总览",
+    "path": "code_analysis/cutlass_mem_eff_attention/00_overview.md",
+    "type": "代码分析",
+    "tags": [
+      "CUTLASS",
+      "Flash Attention",
+      "Online Softmax"
+    ],
+    "summary": "PyTorch ATen CUTLASS 前向 kernel：模板分发、两阶段 GEMM、iterative_softmax、Epilogue 归一化"
+  },
+  {
+    "title": "CUDA 与 CUTLASS 核心概念",
+    "path": "code_analysis/cutlass_mem_eff_attention/01_cuda_cutlass_concepts.md",
+    "type": "代码分析",
+    "tags": [
+      "CUTLASS",
+      "CUDA"
+    ],
+    "summary": "CUDA 执行模型、CUTLASS 模板体系（GemmShape/OpClass/MMA 流水线/Epilogue）、warp shuffle、浮点原子操作"
+  },
+  {
     "title": "VIGOR",
     "path": "paper_reading/vigor.md",
     "type": "论文阅读",
