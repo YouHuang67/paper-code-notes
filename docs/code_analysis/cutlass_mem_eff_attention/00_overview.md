@@ -137,11 +137,15 @@ union (分时复用):
 
 主循环的整体结构与 [Triton Split-K 前向 kernel](../xformers_memory_efficient_attention/00_overview.md#2-前向-kernel) 完全对应——都是遍历 KV blocks，每次做 QK^T → softmax → PV，区别在于 Triton 版一个 chunk 内串行多个 block 然后跨 chunk 归约，CUTLASS 版则在一个 threadblock 内串行遍历所有 KV blocks。
 
-### 5.1 初始化
+对照 Triton Split-K 的关键差异：
 
-Online Softmax 状态写入 SMEM，输出累加器清零（寄存器）：
+- **MM0 (Q@K^T)**：Triton 中 Q 常驻寄存器、K 流式加载，一次 `tl.dot` 完成；CUTLASS 中 Q/K 均通过 IteratorA/B 从 GMEM→SMEM→寄存器，沿 head_dim 分 `gemm_k_iterations` 次迭代（[K-dim tiling](01_cuda_cutlass_concepts.md#24-mma-流水线)，支持 head_dim 最大 65536）
+- **Scale/Bias/Mask**：Triton 用 `qk *= qk_scale` + `tl.where`；CUTLASS 通过 `AccumLambdaIterator` 逐元素操作寄存器 fragment
+- **P 矩阵传递**：Triton 中 P 留在寄存器直接 `tl.dot`；CUTLASS 中 P 先写入 SMEM（`accumToSmem`），MM1 通过 `MmaFromSharedMemory` 从 SMEM 读取——这是 CUTLASS MMA 模板要求操作数经固定 Iterator 接口加载的结果
+- **MM1 (P@V)**：`kKeepOutputInRF=true`（小 head_dim）时 `accum_o` 常驻寄存器，循环结束后一次性写回；否则每次迭代经 Epilogue 写回 GMEM buffer，下次迭代读回做 rescale 累加
 
 ```cpp
+// ===== 初始化：Online Softmax 状态 (SMEM) + 输出累加器 (寄存器) =====
 if (thread_id() < kQueriesPerBlock) {
     s_prime[thread_id()] = 0;           // ℓ^(0) = 0
     m_prime[thread_id()] = -inf;        // m^(0) = -∞
@@ -150,105 +154,69 @@ if (thread_id() < kQueriesPerBlock) {
 }
 typename MM1::Mma::FragmentC accum_o;
 accum_o.clear();                        // a^(0) = 0
-```
 
-### 5.2 KV block 迭代
-
-```cpp
+// ===== KV block 主循环 =====
 for (int32_t iter_key_start = 0; iter_key_start < p.num_keys;
      iter_key_start += kKeysPerBlock) {
-```
+    // 窗口注意力优化：KV block 完全在窗口外时 continue 跳过
 
-窗口注意力优化：当前 KV block 完全在注意力窗口外时直接 `continue` 跳过。
+    // --- MM0: Q @ K^T ---
+    // Q/K 通过 IteratorA/B 从 GMEM 流式加载到 SMEM，再到寄存器执行 MMA
+    // gemm_k_iterations = ceil(head_dim / Shape::kK)，沿 head_dim 分次迭代
+    typename MM0::Mma mma(shared_storage.mm0, thread_id(), my_warp_id, my_lane_id);
+    typename MM0::Mma::FragmentC accum;
+    accum.clear();
+    auto gemm_k_iterations =
+        (head_dim + MM0::Mma::Shape::kK - 1) / MM0::Mma::Shape::kK;
+    mma(gemm_k_iterations, accum, iterator_A, iterator_B, accum);
+    __syncthreads();
 
-### 5.3 MM0: Q @ K^T
+    // Sm80+f16: MM0 完成后立即预取 V 到 SMEM (prologueV)，与 softmax 计算重叠
 
-对照 Triton Split-K 的 `qk = tl.dot(q, k)` 部分。Triton 中 Q 常驻寄存器（循环外一次性加载），K 在循环内流式加载；CUTLASS 中 Q 和 K 均通过 IteratorA/B 从 GMEM 流式加载到 SMEM，再到寄存器执行 MMA 指令。
+    // --- Scale + Bias + Mask ---
+    // AccumLambdaIterator 逐元素操作寄存器中的 accum fragment
+    accum *= p.scale;                                          // QK^T × scale
+    accum[idx] += bias_tensor_ref.at({accum_m, accum_n});      // additive bias (可选)
+    if (accum_n > query_start + accum_m + causal_diagonal_offset - iter_key_start)
+        accum[idx] = -inf;                                     // 因果 mask
+    if (accum_n <= accum_m + offset)
+        accum[idx] = -inf;                                     // 窗口 mask
 
-**关键差异——K-dim tiling**：Triton 中 head_dim 一次加载到寄存器（受寄存器数量限制），CUTLASS 沿 K 维度分 `gemm_k_iterations` 次迭代，这是支持 head_dim=65536 的关键（详见 [§2.4 MMA 流水线](01_cuda_cutlass_concepts.md#24-mma-流水线)）。
+    // --- iterative_softmax: 更新 mi/m_prime/s_prime/out_rescale，accum → P ---
+    // 详见 §6
+    iterative_softmax<...>(accum_o, accum, mi, m_prime, s_prime, out_rescale, ...);
 
-```cpp
-typename MM0::Mma mma(shared_storage.mm0, thread_id(), my_warp_id, my_lane_id);
-typename MM0::Mma::FragmentC accum;
-accum.clear();
-auto gemm_k_iterations =
-    (head_dim + MM0::Mma::Shape::kK - 1) / MM0::Mma::Shape::kK;
-mma(gemm_k_iterations, accum, iterator_A, iterator_B, accum);
-__syncthreads();
-```
+    // --- P 写入 SMEM + Dropout ---
+    // P 从寄存器写入 SMEM (AccumulatorSharedStorage)，作为 MM1 的 A 操作数
+    // 可选 dropout: cuRAND Philox 生成器在 SMEM 上逐元素随机 mask
+    MM0::B2bGemm::accumToSmem(shared_storage.after_mm0.si, accum, ...);
+    __syncthreads();
 
-Sm80 + f16 时，MM0 完成后立即预取 V 到 SMEM（`prologueV`），与后续的 softmax 计算重叠。
+    // --- MM1: P @ V ---
+    // P 从 SMEM 读取 (MmaFromSharedMemory)，V 从 GMEM 流式加载
+    for (int blockN = 0; blockN < nBlockN; ++blockN) {
+        typename MM1::Mma mma_pv(
+            shared_storage.after_mm0.si.accum_ref(),       // A: P (SMEM)
+            shared_storage.after_mm0.mm1.operand_B_ref(),  // B staging area
+            thread_id(), my_warp_id, my_lane_id);
+        mma_pv(gemm_k_iterations, accum_o, iterator_V, accum_o);
 
-### 5.4 Scale + Bias + Mask
-
-对照 Triton 的 `qk *= qk_scale` + bias 加载 + `tl.where` mask。CUTLASS 中 scale 在此处直接乘，mask 通过 `AccumLambdaIterator` 逐元素操作寄存器中的 accum fragment：
-
-```cpp
-accum *= p.scale;                                          // QK^T × scale
-
-// bias: 加载 tile 到 SMEM → 逐元素加到 accum
-accum[idx] += bias_tensor_ref.at({accum_m, accum_n});
-
-// 因果 mask: 对角线右上方设为 -inf
-if (accum_n > query_start + accum_m + causal_diagonal_offset - iter_key_start)
-    accum[idx] = -inf;
-
-// 窗口 mask: 窗口外设为 -inf
-if (accum_n <= accum_m + offset)
-    accum[idx] = -inf;
-```
-
-### 5.5 iterative_softmax
-
-更新 `mi`, `m_prime`, `s_prime`, `out_rescale`，将 `accum` 转为 softmax 概率 P。详见 [§6](#6-iterative_softmax-详解)。
-
-```cpp
-iterative_softmax<...>(accum_o, accum, mi, m_prime, s_prime, out_rescale, ...);
-```
-
-### 5.6 P 写入 SMEM + Dropout
-
-softmax 概率 P 从寄存器写入 SMEM（`AccumulatorSharedStorage`），作为 MM1 的 A 操作数。可选 dropout 在 SMEM 上逐元素随机 mask（cuRAND Philox 生成器，每个元素映射到全局随机序列的确定位置）。
-
-```cpp
-MM0::B2bGemm::accumToSmem(shared_storage.after_mm0.si, accum, ...);
-__syncthreads();
-```
-
-### 5.7 MM1: P @ V
-
-对照 Triton 的 `acc += tl.dot(p, v)`。**关键差异**：Triton 中 P 在 `exp2` 后留在寄存器直接做 `tl.dot`；CUTLASS 中 P 先写入 SMEM，MM1 通过 `MmaFromSharedMemory` 从 SMEM 读取——这是 CUTLASS MMA 模板要求操作数通过固定 Iterator 接口加载的结果。
-
-```cpp
-for (int blockN = 0; blockN < nBlockN; ++blockN) {
-    typename MM1::Mma mma_pv(
-        shared_storage.after_mm0.si.accum_ref(),      // A: P (SMEM)
-        shared_storage.after_mm0.mm1.operand_B_ref(),  // B staging area
-        thread_id(), my_warp_id, my_lane_id);
-    mma_pv(gemm_k_iterations, accum_o, iterator_V, accum_o);
-
-    if (!kKeepOutputInRF) {
-        // Epilogue: rescale + 写回 GMEM buffer（详见 §7）
+        if (!kKeepOutputInRF) {
+            // Epilogue: rescale + 写回 GMEM buffer (详见 §7)
+        }
     }
 }
-```
 
-`kKeepOutputInRF=true` 时 `accum_o` 累加在寄存器，循环结束后一次性写回；否则每次迭代经 Epilogue 写回 GMEM buffer（`output_accum_ptr`），下次迭代读回做 rescale 累加。
-
-### 5.8 最终输出 + LogSumExp
-
-`kKeepOutputInRF` 路径：全部 KV 迭代结束后调用一次 Epilogue，执行 `output = accum_o / s_prime`：
-
-```cpp
+// ===== 最终输出 =====
+// kKeepOutputInRF 路径：全部 KV 迭代结束后调用一次 Epilogue
+// 执行 output = accum_o / s_prime
 if (kKeepOutputInRF) {
     EpilogueOutputOp rescale(s_prime, out_rescale);
     epilogue(rescale, dest_iter, accum_o);
 }
-```
 
-LogSumExp 计算（对照 Triton 完全相同：`lse = (log2(l_i) + m_i) / log2e`）：
-
-```cpp
+// ===== LogSumExp =====
+// 对照 Triton 完全相同：lse = m_i / log2e + log(l_i)
 if (p.logsumexp_ptr && thread_id() < kQueriesPerBlock) {
     p.logsumexp_ptr[thread_id()] =
         mi[thread_id()] / kLog2e + cutlass::fast_log(s_prime[thread_id()]);
@@ -273,22 +241,26 @@ if (p.logsumexp_ptr && thread_id() < kQueriesPerBlock) {
 
 核心区别：Triton 中所有状态都在**寄存器**（每个 program 独立），CUTLASS 中 `mi/m_prime/s_prime/out_rescale` 在 **Shared Memory**（block 内跨 warp 共享），需要 `__syncthreads()` 和 `atomicMaxFloat` 协调。
 
-对照数学公式（[§1.2](../xformers_memory_efficient_attention/00_overview.md#12-online-softmaxflashattention)）：$m^{(j)} = \max(m^{(j-1)}, \max_i s_i)$，$\alpha^{(j)} = e^{m^{(j-1)} - m^{(j)}}$，$p_i = e^{s_i - m^{(j)}}$，$\ell^{(j)} = \alpha \cdot \ell^{(j-1)} + \sum p_i$。
+对照数学公式（[§1.2](../xformers_memory_efficient_attention/00_overview.md#12-online-softmaxflashattention)）：
 
-### Step 0: 预乘 log2(e)
+$$m^{(j)} = \max(m^{(j-1)},\; \max_i s_i)$$
 
-后续全部使用 `exp2f` 替代 `expf`（[GPU 原生指令](01_cuda_cutlass_concepts.md#17-exp2f-vs-expf)）：
+$$\alpha^{(j)} = e^{m^{(j-1)} - m^{(j)}}$$
+
+$$p_i = e^{s_i - m^{(j)}}$$
+
+$$\ell^{(j)} = \alpha \cdot \ell^{(j-1)} + \sum p_i$$
+
+后续全部使用 `exp2f` 替代 `expf`（[GPU 原生指令](01_cuda_cutlass_concepts.md#17-exp2f-vs-expf)），预乘 `kLog2e = 1.4426950408889634`，利用 $e^x = 2^{x \cdot \log_2 e}$。
 
 ```cpp
+// ===== 预乘 log2(e)：后续全部使用 exp2f =====
 constexpr float kLog2e = 1.4426950408889634074;
 frag = cutlass::multiplies<Fragment>()(scaling * kLog2e, frag);
-```
 
-### Step 1: 更新 mi（行最大值）→ $m^{(j)}$
-
-每个 warp 内各线程持有 accum 的不同列，先在 warp 内求局部 max，再用 [`atomicMaxFloat`](01_cuda_cutlass_concepts.md#15-浮点原子操作-trick) 跨 warp 归约到 SMEM `mi[row]`：
-
-```cpp
+// ===== 更新 mi（行最大值）→ m^(j) =====
+// 每个 warp 内各线程持有 accum 的不同列，先 warp 内求局部 max
+// 再用 atomicMaxFloat 跨 warp 归约到 SMEM mi[row]
 LambdaIterator::iterateRows(lane_offset,
     [&](int accum_m) { max = -inf; },
     [&](int accum_m, int accum_n, int idx) {
@@ -296,13 +268,9 @@ LambdaIterator::iterateRows(lane_offset,
     },
     [&](int accum_m) { atomicMaxFloat(&mi[accum_m], max); });
 __syncthreads();
-```
 
-### Step 2: 计算 rescale 系数 → $\alpha^{(j)}$
-
-只需 `kLinesPerWarp` 个线程处理（每个 warp 负责几行），更新 `out_rescale` 和 `s_prime`：
-
-```cpp
+// ===== 计算 rescale 系数 → α^(j) = exp2(m^(j-1) - m^(j)) =====
+// 只需 kLinesPerWarp 个线程处理（每个 warp 负责几行）
 if (lane_id < kLinesPerWarp) {
     int id = warp_id * kLinesPerWarp + lane_id;
     bool changed = m_prime[id] < mi[id];
@@ -314,32 +282,20 @@ if (lane_id < kLinesPerWarp) {
     }
 }
 __syncthreads();
-```
 
-### Step 3: rescale 历史输出 → $\mathbf{a}^{(j-1)} \times \alpha^{(j)}$
-
-仅在 `kKeepOutputInRF` 且非首次迭代时执行（否则 rescale 在 Epilogue 中处理）：
-
-```cpp
+// ===== rescale 历史输出 → a^(j-1) × α^(j) =====
+// 仅在 kKeepOutputInRF 且非首次迭代时执行（否则 rescale 在 Epilogue 中处理）
 if (kKeepOutputInRF && !is_first) {
     frag_o[idx] = frag_o[idx] * out_rescale[accum_m];
 }
-```
 
-### Step 4: 计算 softmax 概率 → $p_i = e^{s_i - m^{(j)}}$
-
-超出 `max_col` 的位置设为 0（边界处理）：
-
-```cpp
+// ===== 计算 softmax 概率 → p_i = exp2(s_i - m^(j)) =====
+// 超出 max_col 的位置设为 0（边界处理）
 frag[idx] = (accum_n < max_col) ? exp2f(frag[idx] - mi_row) : 0.0f;
-```
 
-### Step 5: 更新 s_prime → $\ell^{(j)} = \alpha \cdot \ell^{(j-1)} + \sum p_i$
-
-先 warp 内 reduce 求 `total_row`（同一行各列的 p 之和），存入 `addition_storage`，然后跨 warp 汇总：
-
-```cpp
-// warp 内归约
+// ===== 更新 s_prime → ℓ^(j) = α · ℓ^(j-1) + Σp_i =====
+// 先 warp 内 reduce 求 total_row（同一行各列的 p 之和）
+// 存入 addition_storage，然后跨 warp 汇总
 LambdaIterator::iterateRows(...,
     [&](int accum_m, int accum_n, int idx) { total_row += frag[idx]; },
     [&](int accum_m) {
@@ -349,7 +305,7 @@ LambdaIterator::iterateRows(...,
     });
 __syncthreads();
 
-// 跨 warp 汇总
+// 跨 warp 汇总到 s_prime，同时推进 m_prime ← mi
 if (lane_id < kLinesPerWarp) {
     accum_t total_row = s_prime[id];
     for (int i = 0; i < MM0::MmaCore::WarpCount::kN; ++i)
