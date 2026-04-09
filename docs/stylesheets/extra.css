@@ -300,6 +300,11 @@
   margin-bottom: 0.6rem;
 }
 
+/* === Wider content area for code-heavy pages === */
+.md-grid {
+  max-width: 90rem;
+}
+
 /* === Hide right TOC on homepage === */
 .md-content[data-md-component="content"] .md-typeset h1:first-child {
   margin-top: 0;
