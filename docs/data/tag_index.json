@@ -936,5 +936,14 @@
     "date_arxiv": "2026-03",
     "date_added": "2026-04-04",
     "organizations": "Renmin University of China, Ant Group"
+  },
+  {
+    "title": "CUB Block 级原语 - BlockRadixSort 与 BlockScan",
+    "path": "code_analysis/cub_block_primitives/01_block_radix_sort_and_scan.md",
+    "type": "代码分析",
+    "tags": [
+      "CUDA"
+    ],
+    "summary": "CUB BlockRadixSort 多 pass rank-exchange 排序与 BlockScan 并行前缀扫描的内部实现，含 BlockRadixRank 计数器打包、BlockExchange 重排、PyTorch 使用范例"
   }
 ]
