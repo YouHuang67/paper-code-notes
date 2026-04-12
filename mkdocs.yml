@@ -138,3 +138,4 @@ nav:
       - CUDA 与 CUTLASS 概念: code_analysis/cutlass_mem_eff_attention/01_cuda_cutlass_concepts.md
     - CUB Block 级原语:
       - BlockRadixSort 与 BlockScan: code_analysis/cub_block_primitives/01_block_radix_sort_and_scan.md
+      - CuTe 编程模型: code_analysis/cub_block_primitives/02_cute_programming_model.md

@@ -945,5 +945,15 @@
       "CUDA"
     ],
     "summary": "CUB BlockRadixSort 多 pass rank-exchange 排序与 BlockScan 并行前缀扫描的内部实现，含 BlockRadixRank 计数器打包、BlockExchange 重排、PyTorch 使用范例"
+  },
+  {
+    "title": "CuTe 编程模型详解",
+    "path": "code_analysis/cub_block_primitives/02_cute_programming_model.md",
+    "type": "代码分析",
+    "tags": [
+      "CUTLASS",
+      "CUDA"
+    ],
+    "summary": "CuTe 核心抽象详解：Tensor/Layout 坐标映射、MMA Atom 与 TiledMMA Tensor Core 封装、Copy Atom 与 cp.async/ldmatrix 搬运指令、Swizzle 消除 bank conflict、完整 Attention kernel 数据流"
   }
 ]
