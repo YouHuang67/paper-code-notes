@@ -393,7 +393,7 @@
     "summary": "PyTorch ATen CUTLASS 前向 kernel：模板分发、两阶段 GEMM、iterative_softmax、Epilogue 归一化"
   },
   {
-    "title": "CUDA Kernel 基础：导读",
+    "title": "CUDA 基础：导读",
     "path": "code_analysis/cuda_foundations/00_overview.md",
     "type": "代码分析",
     "tags": [
@@ -403,7 +403,7 @@
     "summary": "CUDA / CUTLASS / CuTe 公共基础目录导读：执行模型、内存访问、模板分发与编程抽象的阅读路径"
   },
   {
-    "title": "CUDA 执行模型与内存访问",
+    "title": "CUDA 基础：执行模型与内存访问",
     "path": "code_analysis/cuda_foundations/01_cuda_execution_model_and_memory.md",
     "type": "代码分析",
     "tags": [
@@ -956,7 +956,7 @@
     "summary": "CUB BlockRadixSort 多 pass rank-exchange 排序与 BlockScan 并行前缀扫描的内部实现，含 BlockRadixRank 计数器打包、BlockExchange 重排、PyTorch 使用范例"
   },
   {
-    "title": "CUDA CUTLASS/CuTe 编程模型",
+    "title": "CUDA 基础：CUTLASS/CuTe 编程模型",
     "path": "code_analysis/cuda_foundations/02_cuda_cutlass_cute_programming_model.md",
     "type": "代码分析",
     "tags": [

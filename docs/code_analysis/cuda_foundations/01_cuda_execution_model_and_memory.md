@@ -2,11 +2,11 @@
 tags:
   - CUDA
 ---
-# CUDA 执行模型与内存访问
+# CUDA 基础：执行模型与内存访问
 
 本文整理 CUDA kernel 中最常见的执行模型、共享内存、同步原语和 warp 级通信，作为各类 CUDA / CUTLASS / CUB 代码分析的公共引用页。
 
-CUTLASS / CuTe 的模板体系与编程抽象见 [CUDA CUTLASS/CuTe 编程模型](02_cuda_cutlass_cute_programming_model.md)。
+CUTLASS / CuTe 的模板体系与编程抽象见 [CUDA 基础：CUTLASS/CuTe 编程模型](02_cuda_cutlass_cute_programming_model.md)。
 
 ## 1. CUDA 执行模型基础
 

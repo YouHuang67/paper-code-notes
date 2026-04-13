@@ -3,15 +3,15 @@ tags:
   - CUDA
   - CUTLASS
 ---
-# CUDA Kernel 基础：导读
+# CUDA 基础：导读
 
 这一组文档收拢各类 CUDA kernel 分析里会反复出现的公共知识点，目标是减少项目目录中的重复解释。
 
 目前分成两层：
 
-1. [CUDA 执行模型与内存访问](01_cuda_execution_model_and_memory.md)
+1. [CUDA 基础：执行模型与内存访问](01_cuda_execution_model_and_memory.md)
    - 线程层级、`__launch_bounds__`、shared memory、`__syncthreads()`、`__shfl_sync`、浮点原子技巧、`exp2f`
-2. [CUDA CUTLASS/CuTe 编程模型](02_cuda_cutlass_cute_programming_model.md)
+2. [CUDA 基础：CUTLASS/CuTe 编程模型](02_cuda_cutlass_cute_programming_model.md)
    - CUTLASS 模板分发、`GemmShape`、`OpClass` / `ArchTag`、MMA pipeline、Epilogue、CuTe Tensor/Layout、MMA/Copy Atom、`cp.async`、Swizzle
 
 使用原则：

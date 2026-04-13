@@ -124,20 +124,21 @@ nav:
     - LLaDA-o: paper_reading/llada_o.md
   - 代码分析:
     - 导读: code_analysis/index.md
-    - CUDA 基础:
-      - 导读: code_analysis/cuda_foundations/00_overview.md
-      - 执行模型与内存访问: code_analysis/cuda_foundations/01_cuda_execution_model_and_memory.md
-      - CUTLASS/CuTe 编程模型: code_analysis/cuda_foundations/02_cuda_cutlass_cute_programming_model.md
-    - Native Sparse Attention:
-      - 总览: code_analysis/native_sparse_attention/00_overview.md
-      - 数学公式: code_analysis/native_sparse_attention/01_math_formulation.md
-      - 压缩注意力: code_analysis/native_sparse_attention/02_compression_attention.md
-      - Top-k 选择: code_analysis/native_sparse_attention/03_topk_selection.md
-      - 选择注意力: code_analysis/native_sparse_attention/04_selected_attention.md
-      - 滑动窗口: code_analysis/native_sparse_attention/05_sliding_window.md
-    - xformers Memory Efficient Attention:
-      - 总览: code_analysis/xformers_memory_efficient_attention/00_overview.md
-    - CUTLASS Memory Efficient Attention:
-      - 总览: code_analysis/cutlass_mem_eff_attention/00_overview.md
-    - CUB Block 级原语:
-      - BlockRadixSort 与 BlockScan: code_analysis/cub_block_primitives/01_block_radix_sort_and_scan.md
+    - 公共基础（CUDA）:
+      - CUDA 基础：导读: code_analysis/cuda_foundations/00_overview.md
+      - CUDA 基础：执行模型与内存访问: code_analysis/cuda_foundations/01_cuda_execution_model_and_memory.md
+      - CUDA 基础：CUTLASS/CuTe 编程模型: code_analysis/cuda_foundations/02_cuda_cutlass_cute_programming_model.md
+    - 项目分析:
+      - Native Sparse Attention:
+        - 总览: code_analysis/native_sparse_attention/00_overview.md
+        - 数学公式: code_analysis/native_sparse_attention/01_math_formulation.md
+        - 压缩注意力: code_analysis/native_sparse_attention/02_compression_attention.md
+        - Top-k 选择: code_analysis/native_sparse_attention/03_topk_selection.md
+        - 选择注意力: code_analysis/native_sparse_attention/04_selected_attention.md
+        - 滑动窗口: code_analysis/native_sparse_attention/05_sliding_window.md
+      - xformers Memory Efficient Attention:
+        - 总览: code_analysis/xformers_memory_efficient_attention/00_overview.md
+      - CUTLASS Memory Efficient Attention:
+        - 总览: code_analysis/cutlass_mem_eff_attention/00_overview.md
+      - CUB Block 级原语:
+        - BlockRadixSort 与 BlockScan: code_analysis/cub_block_primitives/01_block_radix_sort_and_scan.md
