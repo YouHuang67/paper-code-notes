@@ -393,14 +393,23 @@
     "summary": "PyTorch ATen CUTLASS 前向 kernel：模板分发、两阶段 GEMM、iterative_softmax、Epilogue 归一化"
   },
   {
-    "title": "CUDA 与 CUTLASS 核心概念",
-    "path": "code_analysis/cutlass_mem_eff_attention/01_cuda_cutlass_concepts.md",
+    "title": "CUDA Kernel 基础：导读",
+    "path": "code_analysis/cuda_foundations/00_overview.md",
     "type": "代码分析",
     "tags": [
-      "CUTLASS",
+      "CUDA",
+      "CUTLASS"
+    ],
+    "summary": "CUDA / CUTLASS / CuTe 公共基础目录导读：执行模型、内存访问、模板分发与编程抽象的阅读路径"
+  },
+  {
+    "title": "CUDA 执行模型与内存访问",
+    "path": "code_analysis/cuda_foundations/01_cuda_execution_model_and_memory.md",
+    "type": "代码分析",
+    "tags": [
       "CUDA"
     ],
-    "summary": "CUDA 执行模型、CUTLASS 模板体系（GemmShape/OpClass/MMA 流水线/Epilogue）、warp shuffle、浮点原子操作"
+    "summary": "CUDA kernel 执行模型与内存访问基础：thread/warp/block/grid、shared memory、__syncthreads、__shfl_sync、浮点原子技巧与 exp2f"
   },
   {
     "title": "VIGOR",
@@ -947,13 +956,13 @@
     "summary": "CUB BlockRadixSort 多 pass rank-exchange 排序与 BlockScan 并行前缀扫描的内部实现，含 BlockRadixRank 计数器打包、BlockExchange 重排、PyTorch 使用范例"
   },
   {
-    "title": "CuTe 编程模型详解",
-    "path": "code_analysis/cub_block_primitives/02_cute_programming_model.md",
+    "title": "CUDA CUTLASS/CuTe 编程模型",
+    "path": "code_analysis/cuda_foundations/02_cuda_cutlass_cute_programming_model.md",
     "type": "代码分析",
     "tags": [
       "CUTLASS",
       "CUDA"
     ],
-    "summary": "CuTe 核心抽象详解：Tensor/Layout 坐标映射、MMA Atom 与 TiledMMA Tensor Core 封装、Copy Atom 与 cp.async/ldmatrix 搬运指令、Swizzle 消除 bank conflict、完整 Attention kernel 数据流"
+    "summary": "CUTLASS 模板分发与 CuTe 核心抽象：GemmShape/OpClass、Tensor/Layout、MMA/Copy Atom、cp.async、Swizzle 与共享内存复用"
   }
 ]
