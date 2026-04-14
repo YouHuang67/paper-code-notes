@@ -21,6 +21,7 @@
 - [06 GEMM 教程](cute/06_gemm_tutorial.md) - 使用 CuTe 从零构建 GEMM 的完整实现
 - [07 谓词](cute/07_predication.md) - 分块不整除时的谓词化处理
 - [08 TMA Tensor](cute/08_tma_tensors.md) - ArithTuple 与基向量步长用于 TMA 坐标生成
+- [09 sgemm_sm80 实战拆解](cute/09_sgemm_sm80.md) - 三版本对比、Swizzle SMEM、TiledCopy/TiledMMA、ldmatrix retiling、双层流水线
 
 ## GEMM 优化之路（翻译）
 

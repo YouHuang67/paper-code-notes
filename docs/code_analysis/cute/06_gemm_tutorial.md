@@ -222,7 +222,9 @@ auto sA = make_layout(make_shape (      bM,          bK),
 
 ## `sgemm_sm80.cu`
 
-针对 Ampere SM80 架构的优化主循环，显式使用异步全局内存读取流水线化共享内存。
+针对 Ampere SM80 架构的优化主循环，显式使用异步全局内存读取流水线化共享内存。包含 SIMT（NT/TN）和 Tensor Core（TN HGEMM）三个版本，涵盖 cp.async 多级流水线、Swizzle SMEM layout、ldmatrix retiling 等完整特性。
+
+详细拆解参见 [sgemm_sm80 实战拆解](09_sgemm_sm80.md)。
 
 ## GETT 作为 GEMM
 

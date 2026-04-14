@@ -1104,5 +1104,15 @@
       "CUDA"
     ],
     "summary": "Hopper TMA 指令支持：ArithTuple 坐标迭代器、基向量元素步长、隐式 TMA 坐标 Tensor"
+  },
+  {
+    "title": "sgemm_sm80 实战拆解",
+    "path": "code_analysis/cute/09_sgemm_sm80.md",
+    "type": "代码分析",
+    "tags": [
+      "CUTLASS",
+      "CUDA"
+    ],
+    "summary": "CUTLASS CuTe 教程 sgemm_sm80.cu 完整拆解：三版本对比、Swizzle SMEM、TiledCopy/TiledMMA、ldmatrix retiling、双层 cp.async+寄存器流水线"
   }
 ]
