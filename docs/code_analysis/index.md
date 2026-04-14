@@ -8,6 +8,20 @@
 - [CUDA 基础：执行模型与内存访问](cuda_foundations/01_cuda_execution_model_and_memory.md) - 线程层级、shared memory、同步、warp 原语、浮点原子技巧
 - [CUDA 基础：CUTLASS/CuTe 编程模型](cuda_foundations/02_cuda_cutlass_cute_programming_model.md) - GemmShape/OpClass、Tensor/Layout、MMA/Copy Atom、cp.async、Swizzle
 
+## CuTe 教程（翻译）
+
+翻译自 [NVIDIA/cutlass CuTe 官方教程](https://github.com/NVIDIA/cutlass/tree/main/media/docs/cute/)，BSD-3-Clause 许可证。
+
+- [00 快速入门](cute/00_quickstart.md) - CuTe 概述、库组织与调试打印
+- [01 Layout](cute/01_layout.md) - Layout 核心抽象：Shape/Stride/坐标映射/索引映射
+- [02 Layout 代数](cute/02_layout_algebra.md) - Coalesce/Composition/Complement/Division/Product
+- [03 Tensor](cute/03_tensor.md) - Tensor 容器：Engine/创建/访问/Tiling/Slicing/Partitioning
+- [04 算法](cute/04_algorithms.md) - copy/gemm/axpby/fill/clear 等算法接口
+- [05 MMA Atom](cute/05_mma_atom.md) - MMA 指令元信息与接口（Volta/Hopper）
+- [06 GEMM 教程](cute/06_gemm_tutorial.md) - 使用 CuTe 从零构建 GEMM 的完整实现
+- [07 谓词](cute/07_predication.md) - 分块不整除时的谓词化处理
+- [08 TMA Tensor](cute/08_tma_tensors.md) - ArithTuple 与基向量步长用于 TMA 坐标生成
+
 ## 项目分析
 
 - [Native Sparse Attention](native_sparse_attention/00_overview.md) - 硬件友好的稀疏注意力 Triton 实现

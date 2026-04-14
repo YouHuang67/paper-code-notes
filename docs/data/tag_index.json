@@ -964,5 +964,95 @@
       "CUDA"
     ],
     "summary": "CUTLASS 模板分发与 CuTe 核心抽象：GemmShape/OpClass、Tensor/Layout、MMA/Copy Atom、cp.async、Swizzle 与共享内存复用"
+  },
+  {
+    "title": "CuTe 教程：快速入门",
+    "path": "code_analysis/cute/00_quickstart.md",
+    "type": "代码分析",
+    "tags": [
+      "CUTLASS",
+      "CUDA"
+    ],
+    "summary": "CuTe 概述、系统要求、库组织结构与调试打印工具（翻译自 NVIDIA/cutlass 官方教程）"
+  },
+  {
+    "title": "CuTe 教程：Layout",
+    "path": "code_analysis/cute/01_layout.md",
+    "type": "代码分析",
+    "tags": [
+      "CUTLASS",
+      "CUDA"
+    ],
+    "summary": "Layout 核心抽象：Shape/Stride、IntTuple、坐标映射（逆字典序）、索引映射（内积）、向量与矩阵 layout"
+  },
+  {
+    "title": "CuTe 教程：Layout 代数",
+    "path": "code_analysis/cute/02_layout_algebra.md",
+    "type": "代码分析",
+    "tags": [
+      "CUTLASS",
+      "CUDA"
+    ],
+    "summary": "Layout 代数运算：Coalesce 化简、Composition 函数组合、Complement 补、Division 分块、Product 乘积"
+  },
+  {
+    "title": "CuTe 教程：Tensor",
+    "path": "code_analysis/cute/03_tensor.md",
+    "type": "代码分析",
+    "tags": [
+      "CUTLASS",
+      "CUDA"
+    ],
+    "summary": "Tensor 容器：Engine 迭代器封装、持有型/非持有型创建、分块/切片/分区（inner/outer/TV-layout）"
+  },
+  {
+    "title": "CuTe 教程：算法",
+    "path": "code_analysis/cute/04_algorithms.md",
+    "type": "代码分析",
+    "tags": [
+      "CUTLASS",
+      "CUDA"
+    ],
+    "summary": "Tensor 算法接口：copy/copy_if、gemm 五种模式分发、axpby/fill/clear"
+  },
+  {
+    "title": "CuTe 教程：MMA Atom",
+    "path": "code_analysis/cute/05_mma_atom.md",
+    "type": "代码分析",
+    "tags": [
+      "CUTLASS",
+      "CUDA"
+    ],
+    "summary": "MMA 指令支持：Operation/Traits/Atom 三层封装、Volta quadpair/Hopper warpgroup 映射、TiledMMA 构建"
+  },
+  {
+    "title": "CuTe 教程：GEMM",
+    "path": "code_analysis/cute/06_gemm_tutorial.md",
+    "type": "代码分析",
+    "tags": [
+      "CUTLASS",
+      "CUDA"
+    ],
+    "summary": "使用 CuTe 从零构建 GEMM：CTA 分区、SMEM layout、Copy/Math 线程分区、TiledCopy/TiledMMA、GETT"
+  },
+  {
+    "title": "CuTe 教程：谓词",
+    "path": "code_analysis/cute/07_predication.md",
+    "type": "代码分析",
+    "tags": [
+      "CUTLASS",
+      "CUDA"
+    ],
+    "summary": "分块不整除时的谓词化处理：恒等 tensor 构造坐标谓词、copy_if 屏蔽越界访问"
+  },
+  {
+    "title": "CuTe 教程：TMA Tensor",
+    "path": "code_analysis/cute/08_tma_tensors.md",
+    "type": "代码分析",
+    "tags": [
+      "CUTLASS",
+      "CUDA"
+    ],
+    "summary": "Hopper TMA 指令支持：ArithTuple 坐标迭代器、基向量元素步长、隐式 TMA 坐标 Tensor"
   }
 ]

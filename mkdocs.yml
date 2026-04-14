@@ -128,6 +128,16 @@ nav:
       - CUDA 基础：导读: code_analysis/cuda_foundations/00_overview.md
       - CUDA 基础：执行模型与内存访问: code_analysis/cuda_foundations/01_cuda_execution_model_and_memory.md
       - CUDA 基础：CUTLASS/CuTe 编程模型: code_analysis/cuda_foundations/02_cuda_cutlass_cute_programming_model.md
+    - CuTe 教程（翻译）:
+        - 快速入门: code_analysis/cute/00_quickstart.md
+        - Layout: code_analysis/cute/01_layout.md
+        - Layout 代数: code_analysis/cute/02_layout_algebra.md
+        - Tensor: code_analysis/cute/03_tensor.md
+        - 算法: code_analysis/cute/04_algorithms.md
+        - MMA Atom: code_analysis/cute/05_mma_atom.md
+        - GEMM 教程: code_analysis/cute/06_gemm_tutorial.md
+        - 谓词: code_analysis/cute/07_predication.md
+        - TMA Tensor: code_analysis/cute/08_tma_tensors.md
     - 项目分析:
       - Native Sparse Attention:
         - 总览: code_analysis/native_sparse_attention/00_overview.md
