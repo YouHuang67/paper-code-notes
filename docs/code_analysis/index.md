@@ -22,6 +22,16 @@
 - [07 谓词](cute/07_predication.md) - 分块不整除时的谓词化处理
 - [08 TMA Tensor](cute/08_tma_tensors.md) - ArithTuple 与基向量步长用于 TMA 坐标生成
 
+## GEMM 优化之路（翻译）
+
+翻译自 Kapil Sharma 的 [Learn CUTLASS the Hard Way](https://www.kapilsharma.dev/posts/learn-cutlass-the-hard-way/) 系列博客，CC BY 4.0 许可证。
+
+- [00 总览](cutlass_gemm_blog/00_overview.md) - 系列导读与性能演进总览
+- [01 GEMM 基础与朴素优化](cutlass_gemm_blog/01_gemm_basics_and_naive.md) - GEMM 定义、Naive → Memory Coalescing → Shared Memory → Occupancy 分析
+- [02 SIMT 分块优化](cutlass_gemm_blog/02_simt_tiling.md) - 1D/2D Block Tiling → Vectorized → Warp Tiling
+- [03 Tensor Core 与 CUTLASS](cutlass_gemm_blog/03_tensorcore_and_cutlass.md) - WMMA/TC → Double Buffering → CUTLASS 2.x → Swizzling → Autotuning
+- [04 Hopper 架构与 CUTLASS 3.x](cutlass_gemm_blog/04_hopper_cutlass3x.md) - TBC/TMA/WGMMA → CUTLASS 3.x Warp Specialized → Persistent → Stream-K → Autotuning
+
 ## 项目分析
 
 - [Native Sparse Attention](native_sparse_attention/00_overview.md) - 硬件友好的稀疏注意力 Triton 实现

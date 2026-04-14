@@ -139,6 +139,12 @@ nav:
         - 谓词: code_analysis/cute/07_predication.md
         - TMA Tensor: code_analysis/cute/08_tma_tensors.md
     - 项目分析:
+      - GEMM 优化之路（翻译）:
+        - 总览: code_analysis/cutlass_gemm_blog/00_overview.md
+        - GEMM 基础与朴素优化: code_analysis/cutlass_gemm_blog/01_gemm_basics_and_naive.md
+        - SIMT 分块优化: code_analysis/cutlass_gemm_blog/02_simt_tiling.md
+        - Tensor Core 与 CUTLASS: code_analysis/cutlass_gemm_blog/03_tensorcore_and_cutlass.md
+        - Hopper 架构与 CUTLASS 3.x: code_analysis/cutlass_gemm_blog/04_hopper_cutlass3x.md
       - Native Sparse Attention:
         - 总览: code_analysis/native_sparse_attention/00_overview.md
         - 数学公式: code_analysis/native_sparse_attention/01_math_formulation.md
