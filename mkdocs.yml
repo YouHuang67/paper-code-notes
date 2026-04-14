@@ -122,6 +122,11 @@ nav:
     - MonarchRT: paper_reading/monarchrt.md
     - GRAT: paper_reading/grat.md
     - LLaDA-o: paper_reading/llada_o.md
+    - Compact Attention: paper_reading/compact_attention.md
+    - PAROAttention: paper_reading/paroattention.md
+    - Sparse VideoGen2: paper_reading/svg2.md
+    - Sparse-vDiT: paper_reading/sparse_vdit.md
+    - Radial Attention: paper_reading/radial_attention.md
   - 代码分析:
     - 导读: code_analysis/index.md
     - 公共基础（CUDA）:

@@ -1114,5 +1114,84 @@
       "CUDA"
     ],
     "summary": "CUTLASS CuTe 教程 sgemm_sm80.cu 完整拆解：三版本对比、Swizzle SMEM、TiledCopy/TiledMMA、ldmatrix retiling、双层 cp.async+寄存器流水线"
+  },
+  {
+    "title": "Compact Attention",
+    "path": "paper_reading/compact_attention.md",
+    "type": "论文阅读",
+    "tags": [
+      "Sparse Attention",
+      "Video Generation",
+      "Diffusion Model"
+    ],
+    "summary": "硬件感知稀疏注意力：逐 query token 分析五种时空模式 + Dual Window/Frame-Group + 离线自动搜索，ThunderKittens kernel，Hunyuan 2.51× 加速",
+    "category": "Sparse Attention",
+    "date_arxiv": "2025-08",
+    "date_added": "2026-04-14",
+    "organizations": "Zhejiang University, Huawei"
+  },
+  {
+    "title": "PAROAttention",
+    "path": "paper_reading/paroattention.md",
+    "type": "论文阅读",
+    "tags": [
+      "Sparse Attention",
+      "Video Generation",
+      "Diffusion Model",
+      "CUDA"
+    ],
+    "summary": "Token 重排统一注意力模式：6 种 [F,H,W] 排列将多样模式转为 block-wise，稀疏+量化协同设计，SageAttnV2 kernel，20% dense rate 3.81× 加速",
+    "category": "Sparse Attention",
+    "date_arxiv": "2025-06",
+    "date_added": "2026-04-14",
+    "organizations": "Tsinghua University, ByteDance Seed"
+  },
+  {
+    "title": "Sparse VideoGen2",
+    "path": "paper_reading/svg2.md",
+    "type": "论文阅读",
+    "tags": [
+      "Sparse Attention",
+      "Video Generation",
+      "Diffusion Model",
+      "CUDA"
+    ],
+    "summary": "语义感知排列：k-means 聚类+重排消除计算浪费，centroid cache 76× k-means 加速，动态块大小 FA3 wgmma kernel 达理论 85%+，HunyuanVideo 2.30× 加速",
+    "category": "Sparse Attention",
+    "date_arxiv": "2025-05",
+    "date_added": "2026-04-14",
+    "organizations": "UC Berkeley, MIT, Stanford"
+  },
+  {
+    "title": "Sparse-vDiT",
+    "path": "paper_reading/sparse_vdit.md",
+    "type": "论文阅读",
+    "tags": [
+      "Sparse Attention",
+      "Video Generation",
+      "Diffusion Model",
+      "Triton",
+      "CUDA"
+    ],
+    "summary": "四种注意力模式分类+专用 Triton/CUDA kernel：离线搜索 per-head 最优模式 + head fusion，CogVideoX1.5 1.76× / HunyuanVideo 1.85× 加速",
+    "category": "Sparse Attention",
+    "date_arxiv": "2025-06",
+    "date_added": "2026-04-14",
+    "organizations": "Fudan University, StepFun, CUHK"
+  },
+  {
+    "title": "Radial Attention",
+    "path": "paper_reading/radial_attention.md",
+    "type": "论文阅读",
+    "tags": [
+      "Sparse Attention",
+      "Video Generation",
+      "Diffusion Model"
+    ],
+    "summary": "时空能量衰减驱动 O(n log n) 静态稀疏掩码：指数衰减计算密度 + LoRA 长视频适配，4× 长度训练成本降 4.4× / 推理加速 3.7×",
+    "category": "Sparse Attention",
+    "date_arxiv": "2025-06",
+    "date_added": "2026-04-14",
+    "organizations": "MIT, NVIDIA, Princeton, UC Berkeley, Stanford"
   }
 ]
