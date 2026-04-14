@@ -138,8 +138,8 @@ nav:
         - GEMM 教程: code_analysis/cute/06_gemm_tutorial.md
         - 谓词: code_analysis/cute/07_predication.md
         - TMA Tensor: code_analysis/cute/08_tma_tensors.md
-        - sgemm_sm80 实战拆解: code_analysis/cute/09_sgemm_sm80.md
     - 项目分析:
+      - CuTe sgemm_sm80 实战拆解: code_analysis/cute/09_sgemm_sm80.md
       - GEMM 优化之路（翻译）:
         - 总览: code_analysis/cutlass_gemm_blog/00_overview.md
         - GEMM 基础与朴素优化: code_analysis/cutlass_gemm_blog/01_gemm_basics_and_naive.md

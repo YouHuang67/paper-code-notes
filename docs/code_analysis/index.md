@@ -21,7 +21,6 @@
 - [06 GEMM 教程](cute/06_gemm_tutorial.md) - 使用 CuTe 从零构建 GEMM 的完整实现
 - [07 谓词](cute/07_predication.md) - 分块不整除时的谓词化处理
 - [08 TMA Tensor](cute/08_tma_tensors.md) - ArithTuple 与基向量步长用于 TMA 坐标生成
-- [09 sgemm_sm80 实战拆解](cute/09_sgemm_sm80.md) - 三版本对比、Swizzle SMEM、TiledCopy/TiledMMA、ldmatrix retiling、双层流水线
 
 ## GEMM 优化之路（翻译）
 
@@ -35,6 +34,7 @@
 
 ## 项目分析
 
+- [CuTe sgemm_sm80 实战拆解](cute/09_sgemm_sm80.md) - 三版本对比、Swizzle SMEM、TiledCopy/TiledMMA、ldmatrix retiling、双层流水线
 - [Native Sparse Attention](native_sparse_attention/00_overview.md) - 硬件友好的稀疏注意力 Triton 实现
 - [xformers Memory Efficient Attention](xformers_memory_efficient_attention/00_overview.md) - Split-K Triton 前向推理内核（mask 融合 + 量化）
 - [CUTLASS Memory Efficient Attention](cutlass_mem_eff_attention/00_overview.md) - PyTorch ATen CUTLASS 前向 kernel（Online Softmax + 模板分发）
