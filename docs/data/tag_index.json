@@ -1122,7 +1122,8 @@
     "tags": [
       "Sparse Attention",
       "Video Generation",
-      "Diffusion Model"
+      "Diffusion Model",
+      "CUDA"
     ],
     "summary": "硬件感知稀疏注意力：逐 query token 分析五种时空模式 + Dual Window/Frame-Group + 离线自动搜索，ThunderKittens kernel，Hunyuan 2.51× 加速",
     "category": "Sparse Attention",
