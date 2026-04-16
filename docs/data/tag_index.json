@@ -1155,9 +1155,10 @@
       "Sparse Attention",
       "Video Generation",
       "Diffusion Model",
-      "CUDA"
+      "CUDA",
+      "Triton"
     ],
-    "summary": "语义感知排列：k-means 聚类+重排消除计算浪费，centroid cache 76× k-means 加速，动态块大小 FA3 wgmma kernel 达理论 85%+，HunyuanVideo 2.30× 加速",
+    "summary": "语义感知排列：k-means 聚类+重排消除计算浪费，centroid cache 76× k-means 加速，动态块大小 FA3 wgmma kernel 达理论 85%+，HunyuanVideo 2.30× 加速。开源代码核心注意力依赖 FlashInfer/FlexAttention，定制 FA3 kernel 未开源",
     "category": "Sparse Attention",
     "date_arxiv": "2025-05",
     "date_added": "2026-04-14",

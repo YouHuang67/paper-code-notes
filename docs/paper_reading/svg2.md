@@ -4,6 +4,7 @@ tags:
   - Video Generation
   - Diffusion Model
   - CUDA
+  - Triton
 ---
 
 # Sparse VideoGen2: Accelerate Video Generation with Sparse Attention via Semantic-Aware Permutation
@@ -127,3 +128,97 @@ SVG2 在更低密度下实现更高 PSNR 和更大加速。SVG2-Turbo 在与 SVG
 - **排列的双重收益**：一次 k-means + 排列同时解决识别准确性和计算浪费两个问题，且排列不改变最终输出（数学等价）
 - **Centroid cache 利用了 DiT 的步间连续性**：76× 的 k-means 加速使得在线语义聚类从不可行变为可行，这个技巧在其他需要跨步聚类的方法中同样适用
 - **动态块大小 kernel 设计**：sparse Q load（连续）+ sparse K/V load（per-token offset → shared memory 重排）+ dense wgmma compute 的组合，是处理非均匀块大小稀疏注意力的高效范式，达到理论性能的 85%+
+
+## 代码实现分析
+
+仓库地址：[Sparse-VideoGen](https://github.com/svg-project/Sparse-VideoGen)。代码同时包含 SVG（v1）和 SVG2（SAP）两套方案，支持 HunyuanVideo、CogVideoX、Wan、Cosmos 四个模型。以 HunyuanVideo 为主线分析。
+
+### 整体架构
+
+代码通过 **monkey-patch** 替换原模型的注意力处理器：
+
+1. `replace_hyvideo_flashattention(pipe)`：先将原始 FSDP+mask 注意力替换为 FlashAttention varlen 实现
+2. `replace_hyvideo_attention(pipe, pattern="SAP")`：再替换为稀疏注意力处理器，通过 `pattern` 参数选择 SVG 或 SAP
+3. `replace_sparse_forward()`：替换 Transformer block 的 forward 方法，注入 timestep 参数传递
+
+每个注意力层的处理器是独立实例，但**稀疏参数通过类变量全局共享**（如 `AttnModule.num_q_centroids = 50`）。
+
+### SVG（v1）实现：在线 MSE 采样 + FlexAttention
+
+**源码位置**: [attention.py Hunyuan_SVGAttn_Processor2_0](https://github.com/svg-project/Sparse-VideoGen/blob/main/svg/models/hyvideo/attention.py)
+
+核心流程（`attention_core_logic`）：
+
+- **Warmup 判断**：前 `first_layers_fp` 层或前 `first_times_fp` 步 → 全注意力（FlashAttention varlen）
+- **在线模式选择**：`sample_mse()` 随机采样 32 行 Q，分别用 spatial mask 和 temporal mask 做 masked attention，与全注意力结果算 MSE，逐 (cfg, head) 选最小 → `best_mask_idx`（0=spatial, 1=temporal）
+- **Head Placement**：根据 `best_mask_idx`，temporal head 做 frame-major → token-major 重排（Triton kernel），spatial head 直接复制。重排后两种模式都变成对角线结构
+- **稀疏注意力**：统一调用 `torch.compile(flex_attention)` + 预编译的 `block_mask`
+- **逆重排**：temporal head 输出从 token-major 重排回 frame-major
+
+`block_mask` 由 `generate_temporal_head_mask_mod` 生成，本质是 tri-diagonal 模式：`|q_idx - kv_idx| < 2 * frame_size`，加上 text token 的全连接。
+
+### SAP（v2）实现：KMeans 聚类 + 动态 Block Sparse
+
+**源码位置**: [attention.py Hunyuan_SAPAttn_Processor2_0](https://github.com/svg-project/Sparse-VideoGen/blob/main/svg/models/hyvideo/attention.py)
+
+核心流程（`attention_core_logic`）：
+
+**1. Warmup 阶段**：同 SVG，但可选 `zero_step_kmeans_init` 在全注意力步骤中预初始化 KMeans 质心
+
+**2. KMeans 聚类**（`kmeans_clustering`）：
+
+- 仅对 **video token**（排除 text token）做聚类
+- Q 和 K 分别独立聚类，默认 Q 50 簇、K 200 簇
+- 初始化：第一次用随机初始化 + `kmeans_iter_init` 轮迭代；后续步骤复用上一步质心（centroid cache）+ `kmeans_iter_step` 轮迭代
+- KMeans 迭代的两个核心操作均用 **Triton kernel 加速**：
+  - Assignment：`euclid_assign_triton` — 分块计算欧氏距离，BLOCK_N × BLOCK_K 的 tile 遍历质心
+  - Centroid update：`triton_centroid_update_sorted_euclid` — 先按 cluster ID 排序，chunk kernel 利用排序后的连续性，每个 run 只做一次 atomic add（而非每 token 一次）
+
+**3. Dynamic Map 生成**（`identify_dynamic_map`）：
+
+- 计算 Q-centroid 与 K-centroid 的注意力分数：$S_{ij} = Q_c \cdot K_c^\top / \sqrt{d}$
+- 加权 softmax：$P'_{ij} = |K_j| \cdot \exp(S_{ij}) / \sum_k |K_k| \cdot \exp(S_{ik})$
+- Top-p 截断：按 $P'$ 降序累积，达到 `top_p_kmeans` 阈值后停止
+- 可选 `min_kc_ratio` 保留最少比例的 K 簇
+- 输出：`[B, H, qc_num, kc_num]` 的 boolean mask
+
+**4. 后处理**（`dynamic_map_post_processing`）：
+
+HunyuanVideo 的 context token 分为 prompt（有效）和 unprompt（padding）两部分：
+- 将 prompt 和 unprompt 作为额外的两个"簇"追加到 dynamic map
+- prompt 簇与所有 video 簇互相可见，unprompt 簇仅自注意
+
+**5. Token 重排 + Block Sparse Attention**：
+
+- `permute_tensor_by_labels_triton`：按 cluster label 排序 Q/K/V，使同簇 token 物理连续
+- 调用 FlashInfer 的 `VariableBlockSparseAttentionWrapper`：
+  - `plan()`：根据 dynamic map 和各簇大小规划稀疏计算
+  - `run()`：执行变长 block sparse attention
+- `apply_inverse_permutation_triton`：将输出还原回原始 token 顺序
+
+### Kernel 实现总结
+
+**自写 Triton kernel**（辅助性操作）：
+
+| Kernel | 文件 | 功能 |
+|---|---|---|
+| `hunyuan_sparse_head_placement_kernel` | [placement.py](https://github.com/svg-project/Sparse-VideoGen/blob/main/svg/models/hyvideo/placement.py) | SVG 的 token 重排（frame↔token major） |
+| `hunyuan_hidden_states_placement_kernel` | [placement.py](https://github.com/svg-project/Sparse-VideoGen/blob/main/svg/models/hyvideo/placement.py) | SVG 的输出逆重排 |
+| `_euclid_assign_kernel` | [kmeans_utils.py](https://github.com/svg-project/Sparse-VideoGen/blob/main/svg/kmeans_utils.py) | KMeans nearest-centroid assignment（autotuned） |
+| `_centroid_update_kernel` | [kmeans_utils.py](https://github.com/svg-project/Sparse-VideoGen/blob/main/svg/kmeans_utils.py) | KMeans centroid update（per-token atomic） |
+| `_centroid_update_chunk_kernel` | [kmeans_utils.py](https://github.com/svg-project/Sparse-VideoGen/blob/main/svg/kmeans_utils.py) | KMeans centroid update（sorted chunk，减少 atomic） |
+| `permute_tensor_by_labels_triton` | [permute.py](https://github.com/svg-project/Sparse-VideoGen/blob/main/svg/kernels/triton/permute.py) | 通用 token 重排 |
+| `apply_inverse_permutation_triton` | [permute.py](https://github.com/svg-project/Sparse-VideoGen/blob/main/svg/kernels/triton/permute.py) | 通用逆重排 |
+
+**自写 CUDA kernel**（`_kernels` 模块，可选加速）：
+
+- `rms_norm_forward`：QK normalization 的 RMSNorm
+- `apply_qk_rope_inplace_cossin_txtlast`：RoPE 应用（跳过 text token）
+
+**核心注意力计算完全依赖第三方库**：
+
+- SVG 模式 → `torch.compile(flex_attention)` + `block_mask`
+- SAP 模式 → FlashInfer `VariableBlockSparseAttentionWrapper`
+- Full attention → `flash_attn_varlen_func`
+
+论文中提到的**动态块大小 FA2/FA3 kernel**（sparse loading + dense wgmma）在开源仓库中**未包含**，SAP 模式实际使用 FlashInfer 的通用变长 block sparse 实现。这意味着论文中报告的 85%+ 理论性能和 1.48-1.88× 计算浪费减少的数据来自未开源的定制 kernel。
