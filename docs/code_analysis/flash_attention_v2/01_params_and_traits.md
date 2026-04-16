@@ -25,6 +25,11 @@ Qkv_params          ← Q/K/V 指针与 stride
 [flash.h:L34-L57](src/flash_h.md#__codelineno-0-34)
 
 ```cpp
+namespace FLASH_NAMESPACE {
+constexpr int TOTAL_DIM = 0;              // 维度索引常量
+constexpr int H_DIM = 1;
+constexpr int D_DIM = 2;
+
 struct Qkv_params {
     using index_t = int64_t;
     void *__restrict__ q_ptr;                 // Q 矩阵指针
@@ -241,6 +246,8 @@ template<int kHeadDim_, int kBlockM_, int kBlockN_, int kNWarps_,
 struct Flash_fwd_kernel_traits : public Base {
     using Element = typename Base::Element;
     using ElementAccum = typename Base::ElementAccum;
+    using index_t = typename Base::index_t;
+    static constexpr bool Has_cp_async = Base::Has_cp_async;
     using SmemCopyAtom = typename Base::SmemCopyAtom;
     using SmemCopyAtomTransposed = typename Base::SmemCopyAtomTransposed;
 
@@ -307,6 +314,10 @@ struct Flash_fwd_kernel_traits : public Base {
                     Layout<Shape<Int<8>, Int<kBlockKSmem>>,
                            Stride<Int<kBlockKSmem>, _1>>{}),
         Shape<Int<kBlockM>, Int<kHeadDim>>{}));
+    using SmemCopyAtomO =                                  // O smem→gmem
+        Copy_Atom<AutoVectorizingCopyWithAssumedAlignment<128>, Element>;
+    using SmemCopyAtomOaccum =                             // split-KV fp32 输出
+        Copy_Atom<AutoVectorizingCopyWithAssumedAlignment<128>, ElementAccum>;
 
     // Shared Memory 总大小
     static constexpr int kSmemQSize =
@@ -346,6 +357,33 @@ struct Flash_fwd_kernel_traits : public Base {
                        Element>{},
             GmemLayoutAtom{},
             Layout<Shape<_1, _8>>{}));                  // O 写回
+
+    // split-KV: Oaccum (float32) 的 gmem copy
+    using GmemLayoutAtomOaccum = std::conditional_t<
+        kBlockKSmem == 32,
+        Layout<Shape <_16, _8>,                         // 8 threads/row
+               Stride< _8, _1>>,
+        Layout<Shape <_8, _16>,                         // 16 threads/row
+               Stride< _16, _1>>>;
+    using GmemTiledCopyOaccum = decltype(
+        make_tiled_copy(
+            Copy_Atom<AutoVectorizingCopyWithAssumedAlignment<128>,
+                       ElementAccum>{},
+            GmemLayoutAtomOaccum{},
+            Layout<Shape<_1, _4>>{}));                  // 4 fp32/thread
+
+    // RoPE: rotary cos/sin 的 gmem copy
+    using GmemTiledCopyRotcossin = decltype(            // interleaved
+        make_tiled_copy(
+            Copy_Atom<UniversalCopy<uint64_t>, Element>{},
+            GmemLayoutAtom{},
+            Layout<Shape<_1, _4>>{}));                  // 4 elem/load
+    using GmemTiledCopyRotcossinCont = decltype(        // contiguous
+        make_tiled_copy(
+            Copy_Atom<AutoVectorizingCopyWithAssumedAlignment<128>,
+                       Element>{},
+            GmemLayoutAtom{},
+            Layout<Shape<_1, _8>>{}));                  // 8 elem/load
 };
 ```
 
@@ -364,13 +402,27 @@ template<int kHeadDim_, int kBlockM_, int kBlockN_, int kNWarps_,
          typename Base=Flash_kernel_traits<kHeadDim_, kBlockM_, kBlockN_,
                                            kNWarps_, elem_type>>
 struct Flash_bwd_kernel_traits : public Base {
-    // ... 继承基类 type alias (省略) ...
+    using Element = typename Base::Element;
+    using ElementAccum = typename Base::ElementAccum;
+    using index_t = typename Base::index_t;
+    static constexpr bool Has_cp_async = Base::Has_cp_async;
+    using SmemCopyAtom = typename Base::SmemCopyAtom;
+    using SmemCopyAtomTransposed = typename Base::SmemCopyAtomTransposed;
+
+    static constexpr bool Is_V_in_regs = Is_V_in_regs_;   // 减 smem, 增 reg
+    static constexpr bool No_double_buffer = No_double_buffer_;
+
+    static constexpr int kNWarps = kNWarps_;
+    static constexpr int kNThreads = kNWarps * 32;
 
     static constexpr int kBlockM = kBlockM_;
     static constexpr int kBlockN = kBlockN_;
     static constexpr int kHeadDim = kHeadDim_;
+    static_assert(kHeadDim % 32 == 0);
     static constexpr int kBlockKSmem =
         kHeadDim % 64 == 0 ? 64 : 32;
+    static constexpr int kBlockKGmem =
+        kHeadDim % 128 == 0 ? 128 : (kHeadDim % 64 == 0 ? 64 : 32);
     static constexpr int kSwizzle =
         kBlockKSmem == 32 ? 2 : 3;
 
@@ -381,6 +433,9 @@ struct Flash_bwd_kernel_traits : public Base {
 
     // S = Q·Kᵀ, dP = dO·Vᵀ
     static constexpr int AtomLayoutMSdP = AtomLayoutMSdP_;
+    static_assert(kNWarps % AtomLayoutMSdP == 0);
+    static_assert(kNWarps % AtomLayoutNdKV == 0);
+    static_assert(kNWarps % AtomLayoutMdQ == 0);
     using TiledMmaSdP = TiledMMA<
         typename Base::MMA_Atom_Arch,
         Layout<Shape<Int<AtomLayoutMSdP>,               // M warp
@@ -432,20 +487,35 @@ struct Flash_bwd_kernel_traits : public Base {
         composition(SmemLayoutKV{},
                     make_layout(Shape<Int<kHeadDim>, Int<kBlockN>>{},
                                 GenRowMajor{})));
+    using SmemLayoutKtransposedNoSwizzle = decltype(
+        get_nonswizzle_portion(SmemLayoutKtransposed{}));
     using SmemLayoutQdOtransposed = decltype(
         composition(SmemLayoutQdO{},
                     make_layout(Shape<Int<kHeadDim>, Int<kBlockM>>{},
                                 GenRowMajor{})));
+    using SmemLayoutQdOtransposedNoSwizzle = decltype(
+        get_nonswizzle_portion(SmemLayoutQdOtransposed{}));
 
     // P/dS 中间结果暂存
+    static_assert(kBlockN >= 32);
     static constexpr int kPBlockN =
         kBlockN >= 64 ? 64 : 32;
     static constexpr int kSwizzlePdS = 3;
-    using SmemLayoutPdS = decltype(tile_to_shape(
+    using SmemLayoutAtomPdS = decltype(
         composition(Swizzle<kSwizzlePdS, 3, 3>{},
                     Layout<Shape<Int<kBlockM>, Int<kPBlockN>>,
-                           Stride<Int<kPBlockN>, _1>>{}),
+                           Stride<Int<kPBlockN>, _1>>{}));
+    using SmemLayoutPdS = decltype(tile_to_shape(
+        SmemLayoutAtomPdS{},
         make_shape(Int<kBlockM>{}, Int<kBlockN>{})));
+    using SmemLayoutPdStransposed = decltype(
+        composition(SmemLayoutPdS{},
+                    make_layout(Shape<Int<kBlockN>, Int<kBlockM>>{},
+                                GenRowMajor{})));
+    using SmemLayoutPdStransposedNoSwizzle = decltype(
+        get_nonswizzle_portion(SmemLayoutPdStransposed{}));
+    using SmemCopyAtomPdS =                                // P/dS smem copy
+        Copy_Atom<AutoVectorizingCopyWithAssumedAlignment<128>, elem_type>;
 
     // dK/dV 和 dQ
     using SmemLayoutdKV = decltype(tile_to_shape(
@@ -453,11 +523,15 @@ struct Flash_bwd_kernel_traits : public Base {
                     Layout<Shape<_8, Int<kBlockKSmem>>,
                            Stride<Int<kBlockKSmem>, _1>>{}),
         make_shape(Int<kBlockN>{}, Int<kHeadDim>{})));
+    using SmemCopyAtomdKV =                                // dK/dV smem copy
+        Copy_Atom<AutoVectorizingCopyWithAssumedAlignment<128>, elem_type>;
     using SmemLayoutdQ = decltype(tile_to_shape(
         composition(Swizzle<kSwizzle, 3, 3>{},
                     Layout<Shape<_8, Int<kBlockKSmem>>,
                            Stride<Int<kBlockKSmem>, _1>>{}),
         make_shape(Int<kBlockM>{}, Int<kHeadDim>{})));
+    using SmemCopyAtomdQ =                                 // dQ smem copy
+        Copy_Atom<AutoVectorizingCopyWithAssumedAlignment<128>, elem_type>;
 
     /*
      * Shared Memory 总大小
@@ -475,11 +549,81 @@ struct Flash_bwd_kernel_traits : public Base {
         size(SmemLayoutPdS{}) * sizeof(Element);
     static constexpr int kSmemdQSize =
         size(SmemLayoutdQ{}) * sizeof(Element);
+    // Is_V_in_regs 时 V 常驻寄存器, K/V smem 可部分复用
     static constexpr int kSmemSize = kSmemQdOSize
-        + kSmemKVSize + kSmemdSSize
-        + std::max(kSmemPSize, kSmemdQSize);            // P/dQ 复用
+        + (!Is_V_in_regs
+           ? kSmemKVSize + kSmemdSSize
+             + std::max(kSmemPSize, kSmemdQSize)
+           : std::max(kSmemKVSize,
+                      kSmemKVSize / 2 + kSmemdSSize
+                      + std::max(kSmemPSize, kSmemdQSize)));
+    // 单列 block 变体 (无 dQ 累积, 用于 deterministic 路径)
+    static constexpr int kSmemSize1colblock = kSmemQdOSize
+        + (!Is_V_in_regs
+           ? kSmemKVSize + kSmemdSSize + kSmemPSize
+           : std::max(kSmemKVSize,
+                      kSmemKVSize / 2 + kSmemdSSize + kSmemPSize));
 
-    // Gmem copy: 与前向相同的 cp.async 策略
-    // 额外增加 dO/dKV/dQ/dQaccum 的 TiledCopy (省略)
+    /*
+     * Global Memory Copy: 与前向相同的 cp.async 策略
+     */
+    static constexpr int kGmemElemsPerLoad =
+        sizeof(cute::uint128_t) / sizeof(Element);     // 8 elem
+    static constexpr int kGmemThreadsPerRow =
+        kBlockKSmem / kGmemElemsPerLoad;
+    using GmemLayoutAtom = Layout<
+        Shape <Int<kNThreads / kGmemThreadsPerRow>,
+               Int<kGmemThreadsPerRow>>,
+        Stride<Int<kGmemThreadsPerRow>, _1>>;
+
+    using Gmem_copy_struct = std::conditional_t<
+        Has_cp_async,
+        SM80_CP_ASYNC_CACHEGLOBAL<cute::uint128_t>,    // cp.async
+        AutoVectorizingCopyWithAssumedAlignment<128>>;  // fallback
+    using GmemTiledCopyQKV = decltype(                  // Q/K/V 加载
+        make_tiled_copy(Copy_Atom<Gmem_copy_struct, elem_type>{},
+                        GmemLayoutAtom{},
+                        Layout<Shape<_1, _8>>{}));      // 8 elem/thread
+    using GmemTiledCopydO = decltype(                   // dO 加载
+        make_tiled_copy(
+            Copy_Atom<AutoVectorizingCopyWithAssumedAlignment<128>,
+                       elem_type>{},
+            GmemLayoutAtom{},
+            Layout<Shape<_1, _8>>{}));
+    using GmemTiledCopydKV = decltype(                  // dK/dV 写回
+        make_tiled_copy(
+            Copy_Atom<AutoVectorizingCopyWithAssumedAlignment<128>,
+                       elem_type>{},
+            GmemLayoutAtom{},
+            Layout<Shape<_1, _8>>{}));
+    using GmemTiledCopydQ = decltype(                   // dQ 写回
+        make_tiled_copy(
+            Copy_Atom<AutoVectorizingCopyWithAssumedAlignment<128>,
+                       elem_type>{},
+            GmemLayoutAtom{},
+            Layout<Shape<_1, _8>>{}));
+
+    // dQ float32 累积的 gmem copy
+    using GmemLayoutAtomdQaccum = std::conditional_t<
+        kBlockKSmem == 32,
+        Layout<Shape <_32, _8>,                         // 8 threads/row
+               Stride< _8, _1>>,
+        Layout<Shape <_16, _16>,                        // 16 threads/row
+               Stride< _16, _1>>>;
+    using GmemTiledCopydQaccum = decltype(
+        make_tiled_copy(
+            Copy_Atom<AutoVectorizingCopyWithAssumedAlignment<128>,
+                       ElementAccum>{},
+            GmemLayoutAtomdQaccum{},
+            Layout<Shape<_1, _4>>{}));                  // 4 fp32/thread
+
+    // dQ 原子加 (deterministic 模式)
+    using GmemTiledCopydQaccumAtomicAdd = decltype(
+        make_tiled_copy(
+            Copy_Atom<AutoVectorizingCopyWithAssumedAlignment<128>,
+                       ElementAccum>{},
+            Layout<Shape <_8, _32>,                     // 32 threads/row
+                   Stride<_32, _1>>{},
+            Layout<Shape<_1, _1>>{}));                  // 1 val/store
 };
 ```
