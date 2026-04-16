@@ -262,12 +262,12 @@ struct Flash_fwd_kernel_traits : public Base {
     static_assert(kHeadDim % 32 == 0);
 
     // Smem 内层维度与 Swizzle 位数
-    static constexpr int kBlockKSmem =                  // 64 或 32
-        kHeadDim % 64 == 0 ? 64 : 32;
+    static constexpr int kBlockKSmem =                  // smem 内层维度
+        kHeadDim % 64 == 0 ? 64 : 32;                  // 64B 或 32B
     static constexpr int kBlockKGmem =                  // gmem 加载粒度
         kHeadDim % 128 == 0 ? 128 : (kHeadDim % 64 == 0 ? 64 : 32);
-    static constexpr int kSwizzle =                     // 2→4路, 3→8路
-        kBlockKSmem == 32 ? 2 : 3;
+    static constexpr int kSwizzle =                     // swizzle 位数
+        kBlockKSmem == 32 ? 2 : 3;                      // 2→4路, 3→8路
 
     /*
      * TiledMMA: kNWarps 个 warp 沿 M 维排列

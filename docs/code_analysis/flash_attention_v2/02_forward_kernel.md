@@ -41,35 +41,45 @@ tags:
 template<typename ElementAccum, typename Params,
          int kBlockM, bool Is_even_MN>
 __forceinline__ __device__ auto get_lse_tile(
-    const Params &params, const int bidb, const int bidh,
-    const int m_block,
+    const Params &params,
+    const int bidb, const int bidh,                // batch/head 索引
+    const int m_block,                             // Q 行块索引
     const BlockInfo<!Is_even_MN> &binfo)
 {
+    // varlen 模式: 各 batch 序列长度不等, 需按 offset 寻址
     const bool varlen_q =
-        params.unpadded_lse && !params.seqlenq_ngroups_swapped;
+        params.unpadded_lse                        // 使用紧凑 LSE 布局
+        && !params.seqlenq_ngroups_swapped;        // 且未做 ngroups 交换
     auto lse_offset = varlen_q
-        ? binfo.q_offset(params.seqlen_q, 1, bidb) : 0;
+        ? binfo.q_offset(params.seqlen_q, 1, bidb) // varlen: 按实际偏移
+        : 0;                                        // padded: 无需偏移
     auto gmem_ptr_lse = make_gmem_ptr(
-        reinterpret_cast<ElementAccum*>(params.softmax_lse_ptr)
-        + lse_offset);
+        reinterpret_cast<ElementAccum*>(           // LSE 为 fp32
+            params.softmax_lse_ptr) + lse_offset);
 
+    // shape: (batch, head, seqlen_q) 或 varlen 等价形式
     auto lse_shape = varlen_q
-        ? make_shape(1, params.h, params.total_q)
-        : make_shape(params.b, params.h, params.seqlen_q);
+        ? make_shape(1, params.h, params.total_q)  // varlen: batch=1, 用 total_q
+        : make_shape(params.b, params.h,
+                     params.seqlen_q);             // padded: 标准 3D
+    // stride: 决定 (b,h,s) 如何映射到线性地址
     auto lse_stride = params.seqlenq_ngroups_swapped
-        ? make_stride(1, params.seqlen_q * params.b, params.b)
+        ? make_stride(1,                           // b stride=1
+                      params.seqlen_q * params.b,  // h stride
+                      params.b)                    // s stride → (h,s,b) 布局
         : (params.unpadded_lse
            ? make_stride(params.h * params.total_q,
-                         params.total_q, 1)
+                         params.total_q, 1)        // varlen: (b,h,s) 连续
            : make_stride(params.h * params.seqlen_q,
-                         params.seqlen_q, 1));
+                         params.seqlen_q, 1));     // 标准: (b,h,s) 连续
 
     Tensor mLSE = make_tensor(gmem_ptr_lse,
-        make_layout(lse_shape, lse_stride));
+        make_layout(lse_shape, lse_stride));       // 全局 3D LSE tensor
     auto mLSE_slice = varlen_q
-        ? mLSE(0, bidh, _) : mLSE(bidb, bidh, _);
-    return local_tile(mLSE_slice,
-        Shape<Int<kBlockM>>{}, make_coord(m_block));
+        ? mLSE(0, bidh, _)                         // varlen: batch 维=0
+        : mLSE(bidb, bidh, _);                     // 标准: 取 (bidb, bidh) 切片
+    return local_tile(mLSE_slice,                  // 按 kBlockM 分块
+        Shape<Int<kBlockM>>{}, make_coord(m_block)); // 取第 m_block 块
 }
 ```
 
@@ -78,15 +88,25 @@ __forceinline__ __device__ auto get_lse_tile(
 [flash_fwd_kernel.h:L64-L65](src/flash_fwd_kernel_h.md#__codelineno-0-64)
 
 ```cpp
-template<typename Kernel_traits, bool Is_dropout, bool Is_causal,
-         bool Is_local, bool Has_alibi, bool Is_even_MN, bool Is_even_K,
-         bool Is_softcap, bool Return_softmax, typename Params>
+template<typename Kernel_traits,
+         bool Is_dropout,                              // 启用 dropout
+         bool Is_causal,                               // causal mask
+         bool Is_local,                                // sliding window
+         bool Has_alibi,                               // ALiBi 位置编码
+         bool Is_even_MN,                              // seqlen 是 block 整数倍
+         bool Is_even_K,                               // head_dim 是 kBlockKSmem 整数倍
+         bool Is_softcap,                              // score 上限截断
+         bool Return_softmax,                          // 返回 P 矩阵 (debug)
+         typename Params>
 inline __device__ void compute_attn_1rowblock(
-    const Params &params, const int bidb, const int bidh, const int m_block)
+    const Params &params,
+    const int bidb,                                    // blockIdx.y → batch
+    const int bidh,                                    // blockIdx.z → head
+    const int m_block)                                 // blockIdx.x → Q 行块
 {
-    using Element = typename Kernel_traits::Element;
-    using ElementAccum = typename Kernel_traits::ElementAccum;
-    using index_t = typename Kernel_traits::index_t;
+    using Element = typename Kernel_traits::Element;    // fp16/bf16
+    using ElementAccum = typename Kernel_traits::ElementAccum; // fp32
+    using index_t = typename Kernel_traits::index_t;   // int32/int64
 ```
 
 所有 bool 参数在编译期确定（通过 `static_switch.h` 的宏展开），避免运行时分支。`bidb`/`bidh` 来自 `blockIdx.y`/`blockIdx.z`，`m_block` 来自 `blockIdx.x`。
@@ -163,32 +183,39 @@ inline __device__ void compute_attn_1rowblock(
 
         typename Kernel_traits::GmemTiledCopyO gmem_tiled_copy_O;
         auto gmem_thr_copy_O =
-            gmem_tiled_copy_O.get_thread_slice(tidx);
-        Tensor tOgO = gmem_thr_copy_O.partition_D(gO);
-        Tensor tOrO = make_tensor<Element>(shape(tOgO));
+            gmem_tiled_copy_O.get_thread_slice(tidx);  // 按线程分工
+        Tensor tOgO = gmem_thr_copy_O.partition_D(gO); // gmem 目标分区
+        Tensor tOrO = make_tensor<Element>(shape(tOgO));// reg 暂存
         clear(tOrO);                                   // 填 0
 
-        // identity tensor + predicate 用于边界检查
+        /*
+         * Identity tensor + predicate: 边界检查
+         * cO 映射 (blk_m, blk_k) → 逻辑坐标, 用于判断是否越界
+         * tOpO: k 维谓词, head_dim 不对齐时启用
+         */
         Tensor cO = make_identity_tensor(
-            make_shape(size<0>(gO), size<1>(gO)));
-        Tensor tOcO = gmem_thr_copy_O.partition_D(cO);
-        Tensor tOpO = make_tensor<bool>(make_shape(size<2>(tOgO)));
+            make_shape(size<0>(gO), size<1>(gO)));     // 坐标映射 tensor
+        Tensor tOcO = gmem_thr_copy_O.partition_D(cO); // 按线程分区
+        Tensor tOpO = make_tensor<bool>(
+            make_shape(size<2>(tOgO)));                // k 维谓词
         if (!Is_even_K) {
             #pragma unroll
             for (int k = 0; k < size(tOpO); ++k) {
-                tOpO(k) = get<1>(tOcO(0, 0, k)) < params.d;
+                tOpO(k) = get<1>(tOcO(0, 0, k))
+                    < params.d;                        // 列 < head_dim ?
             }
         }
+        // 写 0 到 gmem, 带 M/K 维边界检查
         copy<Is_even_MN, Is_even_K, false, false>(
             gmem_tiled_copy_O, tOrO, tOgO, tOcO, tOpO,
-            binfo.actual_seqlen_q - m_block * kBlockM);
+            binfo.actual_seqlen_q - m_block * kBlockM);// M 维有效行数
 
-        // LSE 写 INFINITY (表示该行无效)
+        // LSE 写 INFINITY (表示该行无效, softmax 未定义)
         #pragma unroll
         for (int m = 0; m < size<1>(tOgO); ++m) {
-            const int row = get<0>(tOcO(0, m, 0));
+            const int row = get<0>(tOcO(0, m, 0));     // 当前线程对应的行号
             if (row < binfo.actual_seqlen_q - m_block * kBlockM
-                && get<1>(tOcO(0, m, 0)) == 0) {
+                && get<1>(tOcO(0, m, 0)) == 0) {       // 仅列=0 的线程写
                 gLSE(row) = INFINITY;
             }
         }
@@ -704,39 +731,44 @@ MMA 和 copy 对数据排布有不同要求。retiling 创建中间视图使 sha
     Tensor tOrO = make_tensor<Element>(shape(tOgO));
     cute::copy(gmem_tiled_copy_O, tOsO, tOrO);
 
-    // identity tensor + predicate 用于边界检查
+    /*
+     * 行索引提取: 用于 LSE 写出时判断哪个线程负责哪一行
+     * identity tensor → MMA partition → logical_divide 取行
+     */
     Tensor caccO = make_identity_tensor(
-        Shape<Int<kBlockM>, Int<kHeadDim>>{});
-    Tensor taccOcO = thr_mma.partition_C(caccO);
+        Shape<Int<kBlockM>, Int<kHeadDim>>{});          // 坐标 tensor
+    Tensor taccOcO = thr_mma.partition_C(caccO);        // 按 MMA 线程分区
     static_assert(decltype(size<0>(taccOcO))::value == 4);
     // 取行索引: ((2,2), MMA_M, MMA_K) → 只取行
     Tensor taccOcO_row =
-        logical_divide(taccOcO, Shape<_2>{})(
-            make_coord(0, _), _, 0);
+        logical_divide(taccOcO, Shape<_2>{})(           // 拆分 (2,2) → ((2),(2))
+            make_coord(0, _), _, 0);                    // 取第一个 2, 保留 MMA_M
 
     Tensor cO = make_identity_tensor(
-        make_shape(size<0>(sO), size<1>(sO)));
-    Tensor tOcO = gmem_thr_copy_O.partition_D(cO);
-    Tensor tOpO = make_tensor<bool>(make_shape(size<2>(tOgO)));
+        make_shape(size<0>(sO), size<1>(sO)));          // O 的坐标映射
+    Tensor tOcO = gmem_thr_copy_O.partition_D(cO);      // 按 copy 线程分区
+    Tensor tOpO = make_tensor<bool>(
+        make_shape(size<2>(tOgO)));                     // k 维谓词
     if (!Is_even_K) {
         #pragma unroll
         for (int k = 0; k < size(tOpO); ++k) {
-            tOpO(k) = get<1>(tOcO(0, 0, k)) < params.d;
+            tOpO(k) = get<1>(tOcO(0, 0, k))
+                < params.d;                             // 列 < head_dim ?
         }
     }
 
     // register → global (带边界检查)
     copy<Is_even_MN, Is_even_K, false, false>(
         gmem_tiled_copy_O, tOrO, tOgO, tOcO, tOpO,
-        binfo.actual_seqlen_q - m_block * kBlockM);
+        binfo.actual_seqlen_q - m_block * kBlockM);     // M 维有效行数
 
-    // 4. 写出 LSE: 每行一个标量, 仅由该行的第一个线程写
-    if (get<1>(taccOcO_row(0)) == 0) {
+    // 4. 写出 LSE: 每行一个标量, 仅由该行列=0 的线程写
+    if (get<1>(taccOcO_row(0)) == 0) {                  // 仅列=0 线程
         #pragma unroll
         for (int mi = 0; mi < size(lse); ++mi) {
-            const int row = get<0>(taccOcO_row(mi));
+            const int row = get<0>(taccOcO_row(mi));    // 当前线程的行号
             if (row < binfo.actual_seqlen_q - m_block * kBlockM) {
-                gLSE(row) = lse(mi);
+                gLSE(row) = lse(mi);                    // 写 LSE 标量
             }
         }
     }

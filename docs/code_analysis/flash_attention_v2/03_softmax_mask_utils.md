@@ -207,14 +207,16 @@ struct Softmax {
         #pragma unroll
         for (int mi = 0; mi < size<0>(acc_o_rowcol); ++mi) {
             float sum = row_sum(mi);
-            // sum==0 或 NaN: 无效行
+            // sum==0 或 NaN: 无效行 (全被 mask 掉)
             float inv_sum = (sum == 0.f || sum != sum)
-                ? 1.f : 1.f / sum;
+                ? 1.f : 1.f / sum;                    // 1/sum 归一化因子
             lse(mi) = (sum == 0.f || sum != sum)
-                ? (Split ? -INFINITY : INFINITY)
-                : row_max(mi) * softmax_scale + __logf(sum);
+                ? (Split ? -INFINITY : INFINITY)       // Split: -inf 便于 combine
+                : row_max(mi) * softmax_scale
+                  + __logf(sum);                       // LSE = max*scale + log(sum)
             float scale = !Is_dropout
-                ? inv_sum : inv_sum * rp_dropout;
+                ? inv_sum
+                : inv_sum * rp_dropout;                // dropout: 乘以 1/p 补偿
             #pragma unroll
             for (int ni = 0; ni < size<1>(acc_o_rowcol); ++ni) {
                 acc_o_rowcol(mi, ni) *= scale;

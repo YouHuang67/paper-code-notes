@@ -119,14 +119,22 @@ __device__ void dot_do_o(
 ### 函数签名
 
 ```cpp
-template<typename Kernel_traits, bool Is_dropout, bool Is_causal,
-         bool Is_local, bool Has_alibi, bool Is_even_MN,
-         bool Is_even_K, bool Is_softcap,
-         bool Is_first, bool Is_last,
-         bool Seq_parallel=false, typename Params>
+template<typename Kernel_traits,
+         bool Is_dropout,                              // 启用 dropout
+         bool Is_causal,                               // causal mask
+         bool Is_local,                                // sliding window
+         bool Has_alibi,                               // ALiBi 位置编码
+         bool Is_even_MN,                              // seqlen 是 block 整数倍
+         bool Is_even_K,                               // head_dim 对齐
+         bool Is_softcap,                              // score 上限截断
+         bool Is_first,                                // 多 split 的首个
+         bool Is_last,                                 // 多 split 的末个
+         bool Seq_parallel=false, typename Params>     // 序列并行模式
 inline __device__ void compute_dq_dk_dv_1colblock(
-    const Params &params, const int bidb,
-    const int bidh, const int n_block)
+    const Params &params,
+    const int bidb,                                    // blockIdx.y → batch
+    const int bidh,                                    // blockIdx.z → head
+    const int n_block)                                 // blockIdx.x → K/V 列块
 ```
 
 与前向相比多了 `Is_first`/`Is_last`（多 split 控制）和 `Seq_parallel`（序列并行）。
@@ -231,39 +239,40 @@ inline __device__ void compute_dq_dk_dv_1colblock(
      */
     Tensor sQ = make_tensor(
         make_smem_ptr(reinterpret_cast<Element*>(smem_)),
-        typename Kernel_traits::SmemLayoutQdO{});
+        typename Kernel_traits::SmemLayoutQdO{});      // Q 的 smem layout
     Tensor sQt = make_tensor(sQ.data(),
-        typename Kernel_traits::SmemLayoutQdOtransposed{});
+        typename Kernel_traits::SmemLayoutQdOtransposed{}); // Q^T 视图
     Tensor sQtNoSwizzle = make_tensor(sQ.data(),
-        typename Kernel_traits::SmemLayoutQdOtransposedNoSwizzle{});
+        typename Kernel_traits::SmemLayoutQdOtransposedNoSwizzle{}); // Q^T 无swizzle
     // 双缓冲: sQ 占 2 或 3 份空间
     Tensor sdO = make_tensor(
         sQ.data() + (Double_buffer ? 2 : 1) * size(sQ),
-        typename Kernel_traits::SmemLayoutQdO{});
+        typename Kernel_traits::SmemLayoutQdO{});      // dO smem
     Tensor sdOt = make_tensor(sdO.data(),
-        typename Kernel_traits::SmemLayoutQdOtransposed{});
-    // K, V 紧接 dO 之后
+        typename Kernel_traits::SmemLayoutQdOtransposed{}); // dO^T 视图
+    // K, V 紧接 dO 之后 (整个迭代不变)
     Tensor sK = make_tensor(
         sdO.data() + size(sdO),
-        typename Kernel_traits::SmemLayoutKV{});
+        typename Kernel_traits::SmemLayoutKV{});       // K smem
     Tensor sV = make_tensor(
         sK.data() + size(sK),
-        typename Kernel_traits::SmemLayoutKV{});
+        typename Kernel_traits::SmemLayoutKV{});       // V smem
     Tensor sKt = make_tensor(sK.data(),
-        typename Kernel_traits::SmemLayoutKtransposed{});
-    // dS 紧接 V (或 K, 如果 Is_V_in_regs)
+        typename Kernel_traits::SmemLayoutKtransposed{}); // K^T 视图
+    // dS 紧接 V (或 K, 如果 V 放寄存器)
     Tensor sdS = make_tensor(
         !Kernel_traits::Is_V_in_regs
-            ? sV.data() + size(sV) : sK.data() + size(sK),
-        typename Kernel_traits::SmemLayoutPdS{});
+            ? sV.data() + size(sV)
+            : sK.data() + size(sK),                    // 位置取决于 Is_V_in_regs
+        typename Kernel_traits::SmemLayoutPdS{});      // dS smem
     Tensor sdSt = make_tensor(sdS.data(),
-        typename Kernel_traits::SmemLayoutPdStransposed{});
-    // P 和 dQ 共享 smem
+        typename Kernel_traits::SmemLayoutPdStransposed{}); // dS^T 视图
+    // P 和 dQ 共享 smem (不同时使用)
     Tensor sP = make_tensor(
         sdS.data() + size(sdS),
-        typename Kernel_traits::SmemLayoutPdS{});
-    Tensor sdQ = make_tensor(sP.data(),            // 与 sP 重叠
-        typename Kernel_traits::SmemLayoutdQ{});
+        typename Kernel_traits::SmemLayoutPdS{});      // P smem
+    Tensor sdQ = make_tensor(sP.data(),                // 与 sP 重叠
+        typename Kernel_traits::SmemLayoutdQ{});       // dQ smem
 ```
 
 ### Copy 与 MMA Partition
@@ -289,18 +298,18 @@ inline __device__ void compute_dq_dk_dv_1colblock(
         typename Kernel_traits::GmemTiledCopydQaccumAtomicAdd>;
 
     // Gmem partition: Q, dO, K, V, dQ, dQaccum
-    Tensor tQgQ = gmem_thr_copy_QKV.partition_S(gQ);
-    Tensor tQsQ = gmem_thr_copy_QKV.partition_D(sQ);
-    Tensor tdOgdO = gmem_thr_copy_dO.partition_S(gdO);
-    Tensor tdOsdO = gmem_thr_copy_dO.partition_D(sdO);
-    Tensor tKgK = gmem_thr_copy_QKV.partition_S(gK);
-    Tensor tKsK = gmem_thr_copy_QKV.partition_D(sK);
-    Tensor tVgV = gmem_thr_copy_QKV.partition_S(gV);
-    Tensor tVsV = gmem_thr_copy_QKV.partition_D(sV);
-    Tensor tdQsdQ = gmem_thr_copy_dQ.partition_S(sdQ);
-    Tensor tdQgdQ = gmem_thr_copy_dQ.partition_D(gdQ);
+    Tensor tQgQ = gmem_thr_copy_QKV.partition_S(gQ);  // Q gmem 源分区
+    Tensor tQsQ = gmem_thr_copy_QKV.partition_D(sQ);  // Q smem 目标分区
+    Tensor tdOgdO = gmem_thr_copy_dO.partition_S(gdO); // dO gmem 源
+    Tensor tdOsdO = gmem_thr_copy_dO.partition_D(sdO); // dO smem 目标
+    Tensor tKgK = gmem_thr_copy_QKV.partition_S(gK);  // K gmem 源
+    Tensor tKsK = gmem_thr_copy_QKV.partition_D(sK);  // K smem 目标
+    Tensor tVgV = gmem_thr_copy_QKV.partition_S(gV);  // V gmem 源
+    Tensor tVsV = gmem_thr_copy_QKV.partition_D(sV);  // V smem 目标
+    Tensor tdQsdQ = gmem_thr_copy_dQ.partition_S(sdQ); // dQ smem 源
+    Tensor tdQgdQ = gmem_thr_copy_dQ.partition_D(gdQ); // dQ gmem 目标 (fp16)
     Tensor tdQgdQaccum =
-        gmem_thr_copy_dQaccum.partition_D(gdQaccum);
+        gmem_thr_copy_dQaccum.partition_D(gdQaccum);  // dQ gmem 目标 (fp32)
 
     /*
      * 三组 TiledMMA + reg fragment
@@ -308,35 +317,35 @@ inline __device__ void compute_dq_dk_dv_1colblock(
     // TiledMmaSdP: S = Q·K^T, dP = dO·V^T
     typename Kernel_traits::TiledMmaSdP tiled_mma_sdp;
     auto thr_mma_sdp = tiled_mma_sdp.get_thread_slice(tidx);
-    Tensor tSrQ = thr_mma_sdp.partition_fragment_A(sQ);
-    Tensor tSrK = thr_mma_sdp.partition_fragment_B(sK);
-    Tensor tdPrdO = thr_mma_sdp.partition_fragment_A(sdO);
-    Tensor tdPrV = thr_mma_sdp.partition_fragment_B(sV);
+    Tensor tSrQ = thr_mma_sdp.partition_fragment_A(sQ);    // Q reg (A 操作数)
+    Tensor tSrK = thr_mma_sdp.partition_fragment_B(sK);    // K reg (B 操作数)
+    Tensor tdPrdO = thr_mma_sdp.partition_fragment_A(sdO);  // dO reg (A)
+    Tensor tdPrV = thr_mma_sdp.partition_fragment_B(sV);    // V reg (B)
 
-    // TiledMmadKV: dK = dS^T·Q, dV = P^T·dO
+    // TiledMmadKV: dK = dS^T·Q, dV = P^T·dO (转置输入)
     typename Kernel_traits::TiledMmadKV tiled_mma_dkv;
     auto thr_mma_dkv = tiled_mma_dkv.get_thread_slice(tidx);
     Tensor tdKrdSt =
-        thr_mma_dkv.partition_fragment_A(sdStNoSwizzle);
+        thr_mma_dkv.partition_fragment_A(sdStNoSwizzle);   // dS^T reg (A)
     Tensor tdKrQt =
-        thr_mma_dkv.partition_fragment_B(sQtNoSwizzle);
+        thr_mma_dkv.partition_fragment_B(sQtNoSwizzle);    // Q^T reg (B)
     Tensor tdVrPt =
-        thr_mma_dkv.partition_fragment_A(sPtNoSwizzle);
+        thr_mma_dkv.partition_fragment_A(sPtNoSwizzle);    // P^T reg (A)
     Tensor tdVrdO =
-        thr_mma_dkv.partition_fragment_B(sdOtransposedNoSwizzle);
+        thr_mma_dkv.partition_fragment_B(sdOtransposedNoSwizzle); // dO^T (B)
 
     // TiledMmadQ: dQ = dS·K
     typename Kernel_traits::TiledMmadQ tiled_mma_dq;
     auto thr_mma_dq = tiled_mma_dq.get_thread_slice(tidx);
-    Tensor tdQrdS = thr_mma_dq.partition_fragment_A(sdS);
+    Tensor tdQrdS = thr_mma_dq.partition_fragment_A(sdS);  // dS reg (A)
     Tensor tdQrKt =
-        thr_mma_dq.partition_fragment_B(sKtNoSwizzle);
+        thr_mma_dq.partition_fragment_B(sKtNoSwizzle);     // K^T reg (B)
 
-    // dK, dV 累积器
+    // dK, dV 累积器 (fp32, 整个 Q 迭代中不断累加)
     Tensor acc_dk = partition_fragment_C(tiled_mma_dkv,
-        Shape<Int<kBlockN>, Int<kHeadDim>>{});
+        Shape<Int<kBlockN>, Int<kHeadDim>>{});              // (kBlockN, kHeadDim)
     Tensor acc_dv = partition_fragment_C(tiled_mma_dkv,
-        Shape<Int<kBlockN>, Int<kHeadDim>>{});
+        Shape<Int<kBlockN>, Int<kHeadDim>>{});              // (kBlockN, kHeadDim)
 
     /*
      * Copy Atom Retiling (6 组, 对应三组 MMA 的 A/B 操作数)
