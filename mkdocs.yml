@@ -174,17 +174,21 @@ nav:
   - 源码浏览:
     - 导读: code_analysis/flash_attention_v2/src/index.md
     - Flash Attention V2:
-      - flash.h: code_analysis/flash_attention_v2/src/flash_h.md
-      - kernel_traits.h: code_analysis/flash_attention_v2/src/kernel_traits_h.md
-      - flash_fwd_kernel.h: code_analysis/flash_attention_v2/src/flash_fwd_kernel_h.md
-      - flash_fwd_launch_template.h: code_analysis/flash_attention_v2/src/flash_fwd_launch_template_h.md
-      - flash_bwd_kernel.h: code_analysis/flash_attention_v2/src/flash_bwd_kernel_h.md
-      - flash_bwd_launch_template.h: code_analysis/flash_attention_v2/src/flash_bwd_launch_template_h.md
-      - flash_bwd_preprocess_kernel.h: code_analysis/flash_attention_v2/src/flash_bwd_preprocess_kernel_h.md
-      - softmax.h: code_analysis/flash_attention_v2/src/softmax_h.md
-      - utils.h: code_analysis/flash_attention_v2/src/utils_h.md
-      - mask.h: code_analysis/flash_attention_v2/src/mask_h.md
-      - dropout.h: code_analysis/flash_attention_v2/src/dropout_h.md
-      - rotary.h: code_analysis/flash_attention_v2/src/rotary_h.md
-      - block_info.h: code_analysis/flash_attention_v2/src/block_info_h.md
-      - static_switch.h: code_analysis/flash_attention_v2/src/static_switch_h.md
+      - 参数与配置:
+        - flash.h: code_analysis/flash_attention_v2/src/flash_h.md
+        - kernel_traits.h: code_analysis/flash_attention_v2/src/kernel_traits_h.md
+        - static_switch.h: code_analysis/flash_attention_v2/src/static_switch_h.md
+        - block_info.h: code_analysis/flash_attention_v2/src/block_info_h.md
+      - 前向 Kernel:
+        - flash_fwd_kernel.h: code_analysis/flash_attention_v2/src/flash_fwd_kernel_h.md
+        - flash_fwd_launch_template.h: code_analysis/flash_attention_v2/src/flash_fwd_launch_template_h.md
+      - 反向 Kernel:
+        - flash_bwd_kernel.h: code_analysis/flash_attention_v2/src/flash_bwd_kernel_h.md
+        - flash_bwd_launch_template.h: code_analysis/flash_attention_v2/src/flash_bwd_launch_template_h.md
+        - flash_bwd_preprocess_kernel.h: code_analysis/flash_attention_v2/src/flash_bwd_preprocess_kernel_h.md
+      - 计算原语:
+        - softmax.h: code_analysis/flash_attention_v2/src/softmax_h.md
+        - utils.h: code_analysis/flash_attention_v2/src/utils_h.md
+        - mask.h: code_analysis/flash_attention_v2/src/mask_h.md
+        - dropout.h: code_analysis/flash_attention_v2/src/dropout_h.md
+        - rotary.h: code_analysis/flash_attention_v2/src/rotary_h.md
