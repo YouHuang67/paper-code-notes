@@ -10,6 +10,7 @@ theme:
     - navigation.tabs
     - navigation.top
     - navigation.tracking
+    - navigation.indexes
     - search.suggest
     - search.highlight
     - content.code.copy
@@ -172,7 +173,7 @@ nav:
       - CUB Block 级原语:
         - BlockRadixSort 与 BlockScan: code_analysis/cub_block_primitives/01_block_radix_sort_and_scan.md
   - 源码浏览:
-    - 导读: code_analysis/flash_attention_v2/src/index.md
+    - source_browsing_index.md
     - Flash Attention V2:
       - 参数与配置:
         - flash.h: code_analysis/flash_attention_v2/src/flash_h.md
