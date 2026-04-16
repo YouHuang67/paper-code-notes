@@ -1194,5 +1194,47 @@
     "date_arxiv": "2025-06",
     "date_added": "2026-04-14",
     "organizations": "MIT, NVIDIA, Princeton, UC Berkeley, Stanford"
+  },
+  {
+    "title": "Flash Attention V2 - 总览",
+    "path": "code_analysis/flash_attention_v2/00_overview.md",
+    "type": "代码分析",
+    "tags": ["CUDA", "CUTLASS", "Flash Attention"],
+    "summary": "FA2 SM80 CUDA 实现的整体架构、文件依赖、框架使用与文档导航"
+  },
+  {
+    "title": "Flash Attention V2 - 参数与硬件配置",
+    "path": "code_analysis/flash_attention_v2/01_params_and_traits.md",
+    "type": "代码分析",
+    "tags": ["CUDA", "CUTLASS", "Flash Attention"],
+    "summary": "Flash_fwd_params 结构体拆解、kernel_traits 的 MMA Atom/Swizzle/Copy 选择"
+  },
+  {
+    "title": "Flash Attention V2 - 前向核心",
+    "path": "code_analysis/flash_attention_v2/02_forward_kernel.md",
+    "type": "代码分析",
+    "tags": ["CUDA", "CUTLASS", "Flash Attention"],
+    "summary": "compute_attn_1rowblock 逐段拆解：Q·K^T → online softmax → P·V 的 CuTe 实现"
+  },
+  {
+    "title": "Flash Attention V2 - 计算原语",
+    "path": "code_analysis/flash_attention_v2/03_softmax_mask_utils.md",
+    "type": "代码分析",
+    "tags": ["CUDA", "CUTLASS", "Flash Attention"],
+    "summary": "online softmax、causal/local mask、warp allreduce、Philox dropout 实现"
+  },
+  {
+    "title": "Flash Attention V2 - 反向传播",
+    "path": "code_analysis/flash_attention_v2/04_backward_kernel.md",
+    "type": "代码分析",
+    "tags": ["CUDA", "CUTLASS", "Flash Attention"],
+    "summary": "recomputation 策略、dQ/dK/dV 三组 MMA 计算、atomic add 累积"
+  },
+  {
+    "title": "Flash Attention V2 - 调度与实例化",
+    "path": "code_analysis/flash_attention_v2/05_dispatch_and_instantiation.md",
+    "type": "代码分析",
+    "tags": ["CUDA", "CUTLASS", "Flash Attention"],
+    "summary": "static_switch 编译期分发宏、launch template grid 配置、74 个模板实例化文件生成"
   }
 ]

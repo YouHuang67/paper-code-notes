@@ -64,6 +64,13 @@ for i_c in range(0, NC, BC):
     ...
 ```
 
+### 源码浏览页规范
+- 源码页放在项目 `src/` 子目录，文件名为 `原文件名_后缀.md`（如 `flash_fwd_kernel_h.md`）
+- 格式：frontmatter + 标题 + 原始文件路径 + 仓库链接 + 一个完整 cpp/python 代码块（`linenums="1"`）
+- 源码页不做任何注释修改，保持原始代码
+- 解读文档引用源码行号格式：`[文件名:L行号](src/文件名.md#__codelineno-0-行号)`
+- 解读文档同时内嵌关键代码段（带大段注释，遵循 §7.3）
+
 ## 通用文档规范
 
 - 格式简洁直接：纯 Markdown + 分点罗列，不用 admonition / tabs 等扩展语法
