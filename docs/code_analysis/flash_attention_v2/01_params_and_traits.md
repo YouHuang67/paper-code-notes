@@ -22,77 +22,152 @@ Qkv_params          ← Q/K/V 指针与 stride
 
 ### Qkv_params（基类）
 
-[flash.h:L21-L44](src/flash_h.md#__codelineno-0-21)
+[flash.h:L34-L57](src/flash_h.md#__codelineno-0-34)
 
 ```cpp
 struct Qkv_params {
     using index_t = int64_t;
-    void *__restrict__ q_ptr;
-    void *__restrict__ k_ptr;
-    void *__restrict__ v_ptr;
+    void *__restrict__ q_ptr;                 // Q 矩阵指针
+    void *__restrict__ k_ptr;                 // K 矩阵指针
+    void *__restrict__ v_ptr;                 // V 矩阵指针
 
-    index_t q_batch_stride;    // batch 维 stride
+    // 布局: (batch, seqlen, head, dim)
+    // stride 支持任意内存排列
+    index_t q_batch_stride;                   // batch 维 stride
     index_t k_batch_stride;
     index_t v_batch_stride;
-    index_t q_row_stride;      // seqlen 维 stride
+    index_t q_row_stride;                     // seqlen 维 stride
     index_t k_row_stride;
     index_t v_row_stride;
-    index_t q_head_stride;     // head 维 stride
+    index_t q_head_stride;                    // head 维 stride
     index_t k_head_stride;
     index_t v_head_stride;
 
-    int h, h_k;                // h: query head 数, h_k: key/value head 数
-    int h_h_k_ratio;           // h / h_k，用于 GQA/MQA
+    int h, h_k;                               // h: Q head 数, h_k: KV head 数
+    int h_h_k_ratio;                          // h / h_k, GQA/MQA 快速索引
 };
 ```
 
-Q/K/V 按 `(batch, seqlen, head, dim)` 布局，stride 支持任意内存排列。`h_h_k_ratio` 预计算供 GQA 快速索引。
-
 ### Flash_fwd_params（前向）
 
-[flash.h:L48-L143](src/flash_h.md#__codelineno-0-48)
+[flash.h:L61-L156](src/flash_h.md#__codelineno-0-61)
 
-关键字段分组：
+```cpp
+struct Flash_fwd_params : public Qkv_params {
 
-**输出与 softmax**
-- `o_ptr`：输出矩阵 O
-- `softmax_lse_ptr`：每行的 log-sum-exp，shape `(b, h, seqlen_q)`，反向传播需要
-- `oaccum_ptr` / `softmax_lseaccum_ptr`：split-KV 模式的中间累积
+    void * __restrict__ o_ptr;                // 输出矩阵 O
+    void * __restrict__ oaccum_ptr;           // split-KV 中间累积（float32）
+    index_t o_batch_stride;
+    index_t o_row_stride;
+    index_t o_head_stride;
 
-**维度**
-- `b, seqlen_q, seqlen_k, d`：batch、序列长度、head dim
-- `seqlen_q_rounded, seqlen_k_rounded, d_rounded`：对齐到 block 大小的 rounded 值
+    void * __restrict__ p_ptr;                // attention 概率矩阵（debug 用）
+    void * __restrict__ softmax_lse_ptr;      // log-sum-exp, (b, h, seqlen_q)
+    void * __restrict__ softmax_lseaccum_ptr; // split-KV 的 LSE 累积
 
-**缩放**
-- `scale_softmax`：$1/\sqrt{d}$
-- `scale_softmax_log2`：$\log_2(e) / \sqrt{d}$，用于 `exp2` 替代 `exp` 提升性能
+    // 维度参数
+    int b, seqlen_q, seqlen_k, seqlen_knew;   // batch, 序列长度
+    int d, seqlen_q_rounded, seqlen_k_rounded; // head dim, 对齐后的长度
+    int d_rounded, rotary_dim, total_q;
 
-**变长序列（Varlen）**
-- `cu_seqlens_q/k`：cumulative sequence lengths，shape `(b+1,)`
-- `leftpad_k`：左侧 padding
+    // 缩放因子
+    float scale_softmax;                      // 1/√d
+    float scale_softmax_log2;                 // log₂(e)/√d, 用 exp2 替代 exp
 
-**KV Cache**
-- `knew_ptr / vnew_ptr`：append 新 KV 到 cache
-- `block_table`：Paged KV Cache 的页表
+    // 变长序列 (Varlen)
+    int * __restrict__ cu_seqlens_q;          // cumulative lengths, (b+1,)
+    int * __restrict__ cu_seqlens_k;
+    int * __restrict__ leftpad_k;             // 左侧 padding
+    int * __restrict__ seqused_k;             // 实际 K 序列长度
+    int *__restrict__ blockmask;
 
-**可选特性**
-- `p_dropout`：dropout 概率
-- `window_size_left/right`：local attention 窗口
-- `softcap`：softmax capping
-- `rotary_cos_ptr/sin_ptr`：RoPE
-- `alibi_slopes_ptr`：ALiBi
-- `is_causal`：causal mask 标志
+    // KV Cache: append 新 KV
+    void * __restrict__ knew_ptr;
+    void * __restrict__ vnew_ptr;
+    index_t knew_batch_stride;
+    index_t vnew_batch_stride;
+    index_t knew_row_stride;
+    index_t vnew_row_stride;
+    index_t knew_head_stride;
+    index_t vnew_head_stride;
+
+    // RoPE 旋转位置编码
+    void * __restrict__ rotary_cos_ptr;
+    void * __restrict__ rotary_sin_ptr;
+
+    int * __restrict__ cache_batch_idx;       // KV cache 索引
+
+    // Paged KV Cache
+    int * __restrict__ block_table;           // 页表
+    index_t block_table_batch_stride;
+    int page_block_size;
+
+    // Dropout
+    float p_dropout;                          // dropout 概率
+    uint8_t p_dropout_in_uint8_t;
+    float rp_dropout;                         // 1 / (1 - p_dropout)
+    float scale_softmax_rp_dropout;
+    at::PhiloxCudaState philox_args;          // Philox RNG 状态
+    uint64_t * rng_state;
+
+    // Local / Causal / Softcap
+    int window_size_left, window_size_right;  // local attention 窗口
+    float softcap;                            // softmax capping
+    bool is_bf16;
+    bool is_causal;                           // causal mask 标志
+
+    bool is_seqlens_k_cumulative;
+    bool is_rotary_interleaved;
+    int num_splits;                           // split-KV 切分数
+
+    // ALiBi
+    void * __restrict__ alibi_slopes_ptr;     // ALiBi 斜率
+    index_t alibi_slopes_batch_stride;
+
+    bool unpadded_lse;                        // varlen: LSE 用 [nheads, total_q]
+    bool seqlenq_ngroups_swapped;             // GQA 转置标志
+};
+```
 
 ### Flash_bwd_params（反向）
 
-[flash.h:L147-L185](src/flash_h.md#__codelineno-0-147)
+[flash.h:L160-L198](src/flash_h.md#__codelineno-0-160)
 
-继承 `Flash_fwd_params` 全部字段，额外增加：
+```cpp
+struct Flash_bwd_params : public Flash_fwd_params {
 
-- `do_ptr, dq_ptr, dk_ptr, dv_ptr`：梯度张量指针
-- `dq_accum_ptr`：dQ 的 float32 累积缓冲（跨 block 原子加需要高精度）
-- `dsoftmax_sum`：softmax 反向的中间值 $D_i = \text{rowsum}(dO_i \odot O_i)$
-- `deterministic`：确定性模式标志
+    // 梯度张量
+    void *__restrict__ do_ptr;                // dO 梯度
+    void *__restrict__ dq_ptr;                // dQ 梯度
+    void *__restrict__ dk_ptr;                // dK 梯度
+    void *__restrict__ dv_ptr;                // dV 梯度
+
+    // dQ 累积缓冲 (float32, 跨 block 原子加需要高精度)
+    void *__restrict__ dq_accum_ptr;
+    void *__restrict__ dk_accum_ptr;
+    void *__restrict__ dv_accum_ptr;
+
+    // dO/dQ/dK/dV stride
+    index_t do_batch_stride;
+    index_t do_row_stride;
+    index_t do_head_stride;
+    index_t dq_batch_stride;
+    index_t dk_batch_stride;
+    index_t dv_batch_stride;
+    index_t dq_row_stride;
+    index_t dk_row_stride;
+    index_t dv_row_stride;
+    index_t dq_head_stride;
+    index_t dk_head_stride;
+    index_t dv_head_stride;
+
+    // softmax 反向: Dᵢ = rowsum(dOᵢ ⊙ Oᵢ)
+    void *__restrict__ dsoftmax_sum;
+
+    bool deterministic;                       // 确定性模式
+    index_t dq_accum_split_stride;
+};
+```
 
 ## kernel_traits.h：硬件配置
 
@@ -108,108 +183,303 @@ Flash_kernel_traits          ← 基础 MMA/Copy Atom
 
 ### Flash_kernel_traits（基类）
 
-[kernel_traits.h:L15-L46](src/kernel_traits_h.md#__codelineno-0-15)
+[kernel_traits.h:L28-L59](src/kernel_traits_h.md#__codelineno-0-28)
 
 ```cpp
-template<int kHeadDim_, int kBlockM_, int kBlockN_, int kNWarps_, typename elem_type=cutlass::half_t>
+template<int kHeadDim_, int kBlockM_, int kBlockN_, int kNWarps_,
+         typename elem_type=cutlass::half_t>
 struct Flash_kernel_traits {
-    using Element = elem_type;
-    using ElementAccum = float;           // 累积器始终 float32
 
-    // SM80: m16n8k16 Tensor Core 指令
-    using MMA_Atom_Arch = MMA_Atom<SM80_16x8x16_F32F16F16F32_TN>;
+#if defined(__CUDA_ARCH__) &&  __CUDA_ARCH__ >= 800
+    using Element = elem_type;                // SM80+: 支持 bf16
+    static constexpr bool Has_cp_async = true;
+#else
+    using Element = cutlass::half_t;          // SM75: 仅 fp16
+    static constexpr bool Has_cp_async = false;
+#endif
 
-    // Shared memory → register 的 copy atom
-    using SmemCopyAtom = Copy_Atom<SM75_U32x4_LDSM_N, elem_type>;           // ldmatrix 正常读
-    using SmemCopyAtomTransposed = Copy_Atom<SM75_U16x8_LDSM_T, elem_type>; // ldmatrix 转置读
+    using ElementAccum = float;               // 累积器始终 fp32
+    using index_t = int64_t;
+
+    /*
+     * MMA Atom: m16n8k16 Tensor Core 指令
+     * 每条指令计算 16×8×16 矩阵乘, 输入 fp16/bf16, 累积 fp32
+     * 参见 CuTe MMA Atom (../cute/05_mma_atom.md)
+     */
+#if defined(__CUDA_ARCH__) &&  __CUDA_ARCH__ >= 800
+    using MMA_Atom_Arch = std::conditional_t<
+        std::is_same_v<elem_type, cutlass::half_t>,
+        MMA_Atom<SM80_16x8x16_F32F16F16F32_TN>,  // fp16
+        MMA_Atom<SM80_16x8x16_F32BF16BF16F32_TN>  // bf16
+    >;
+#else
+    using MMA_Atom_Arch = MMA_Atom<SM75_16x8x8_F32F16F16F32_TN>;
+#endif
+
+    /*
+     * Shared memory → register 的 copy atom
+     * ldmatrix 批量加载, 满足 Tensor Core 数据排布要求
+     * 参见 CuTe 算法 (../cute/04_algorithms.md)
+     */
+    using SmemCopyAtom =                      // ldmatrix 正常读
+        Copy_Atom<SM75_U32x4_LDSM_N, elem_type>;
+    using SmemCopyAtomTransposed =            // ldmatrix 转置读
+        Copy_Atom<SM75_U16x8_LDSM_T, elem_type>;
 };
 ```
 
-核心选择：
-- **MMA Atom**: `SM80_16x8x16_F32F16F16F32_TN` — 每条指令计算 16×8×16 的矩阵乘，输入 fp16/bf16，累积 fp32。参见 [CuTe MMA Atom](../cute/05_mma_atom.md)
-- **SmemCopyAtom**: `SM75_U32x4_LDSM_N` — 使用 `ldmatrix` 指令批量加载 shared memory 到寄存器，满足 Tensor Core 的数据排布要求。参见 [CuTe 算法](../cute/04_algorithms.md)
-
 ### Flash_fwd_kernel_traits（前向）
 
-[kernel_traits.h:L49-L159](src/kernel_traits_h.md#__codelineno-0-49)
-
-模板参数：`kHeadDim, kBlockM, kBlockN, kNWarps, Is_Q_in_regs, Share_Q_K_smem`
-
-**TiledMMA 构建**
+[kernel_traits.h:L62-L172](src/kernel_traits_h.md#__codelineno-0-62)
 
 ```cpp
-using TiledMma = TiledMMA<
-    MMA_Atom_Arch,
-    Layout<Shape<Int<kNWarps>,_1,_1>>,    // kNWarps 个 warp 沿 M 维排列
-    Tile<Int<16 * kNWarps>, _16, _16>>;   // 每 warp 处理 16 行
+template<int kHeadDim_, int kBlockM_, int kBlockN_, int kNWarps_,
+         bool Is_Q_in_regs_=false, bool Share_Q_K_smem_=false,
+         typename elem_type=cutlass::half_t,
+         typename Base=Flash_kernel_traits<kHeadDim_, kBlockM_, kBlockN_,
+                                           kNWarps_, elem_type>>
+struct Flash_fwd_kernel_traits : public Base {
+    using Element = typename Base::Element;
+    using ElementAccum = typename Base::ElementAccum;
+    using SmemCopyAtom = typename Base::SmemCopyAtom;
+    using SmemCopyAtomTransposed = typename Base::SmemCopyAtomTransposed;
+
+    static constexpr bool Share_Q_K_smem = Share_Q_K_smem_;
+    static constexpr bool Is_Q_in_regs = Is_Q_in_regs_ || Share_Q_K_smem;
+
+    static constexpr int kNWarps = kNWarps_;
+    static constexpr int kNThreads = kNWarps * 32;     // 总线程数
+    static constexpr int kBlockM = kBlockM_;            // Q 行 block
+    static constexpr int kBlockN = kBlockN_;            // KV 列 block
+    static constexpr int kHeadDim = kHeadDim_;          // head 维度
+    static_assert(kHeadDim % 32 == 0);
+
+    // Smem 内层维度与 Swizzle 位数
+    static constexpr int kBlockKSmem =                  // 64 或 32
+        kHeadDim % 64 == 0 ? 64 : 32;
+    static constexpr int kBlockKGmem =                  // gmem 加载粒度
+        kHeadDim % 128 == 0 ? 128 : (kHeadDim % 64 == 0 ? 64 : 32);
+    static constexpr int kSwizzle =                     // 2→4路, 3→8路
+        kBlockKSmem == 32 ? 2 : 3;
+
+    /*
+     * TiledMMA: kNWarps 个 warp 沿 M 维排列
+     * 总覆盖: M = 16*kNWarps (通常 64/128), N = 16, K = 16
+     */
+    using TiledMma = TiledMMA<
+        typename Base::MMA_Atom_Arch,
+        Layout<Shape<Int<kNWarps>,_1,_1>>,             // warp 排布
+        Tile<Int<16 * kNWarps>, _16, _16>>;            // tile 尺寸
+
+    /*
+     * Shared Memory Layout (Swizzle 消除 bank conflict)
+     * 基本原子: 8 行 × kBlockKSmem 列
+     * Swizzle<B,M,S> 重排地址位, 使 warp 内线程访问不同 bank
+     * 参见 GEMM 优化 (../cutlass_gemm_blog/03_tensorcore_and_cutlass.md)
+     */
+    using SmemLayoutAtomQ = decltype(
+        composition(Swizzle<kSwizzle, 3, 3>{},
+                    Layout<Shape<_8, Int<kBlockKSmem>>,
+                           Stride<Int<kBlockKSmem>, _1>>{}));
+    using SmemLayoutQ = decltype(tile_to_shape(         // 平铺到完整 block
+        SmemLayoutAtomQ{},
+        Shape<Int<kBlockM>, Int<kHeadDim>>{}));
+    using SmemLayoutKV = decltype(tile_to_shape(        // Q/KV 共用 atom
+        SmemLayoutAtomQ{},
+        Shape<Int<kBlockN>, Int<kHeadDim>>{}));
+
+    /*
+     * V 转置 Layout: P·V 矩阵乘中 V 作为 B 操作数需要转置
+     * 不搬运数据, layout composition 逻辑重解释
+     * (kBlockN, kHeadDim) → (kHeadDim, kBlockN)
+     * 配合 SmemCopyAtomTransposed (ldmatrix.trans) 零开销转置
+     */
+    using SmemLayoutVtransposed = decltype(
+        composition(SmemLayoutKV{},
+                    make_layout(Shape<Int<kHeadDim>, Int<kBlockN>>{},
+                                GenRowMajor{})));
+    using SmemLayoutVtransposedNoSwizzle = decltype(
+        get_nonswizzle_portion(SmemLayoutVtransposed{}));
+
+    // O 的 smem layout (写回时中转)
+    using SmemLayoutO = decltype(tile_to_shape(
+        composition(Swizzle<kSwizzle, 3, 3>{},
+                    Layout<Shape<Int<8>, Int<kBlockKSmem>>,
+                           Stride<Int<kBlockKSmem>, _1>>{}),
+        Shape<Int<kBlockM>, Int<kHeadDim>>{}));
+
+    // Shared Memory 总大小
+    static constexpr int kSmemQSize =
+        size(SmemLayoutQ{}) * sizeof(Element);
+    static constexpr int kSmemKVSize =
+        size(SmemLayoutKV{}) * 2 * sizeof(Element);    // K + V
+    static constexpr int kSmemSize = Share_Q_K_smem
+        ? std::max(kSmemQSize, kSmemKVSize)            // Q/K 共享
+        : kSmemQSize + kSmemKVSize;                    // Q + K + V
+    // d=128, kBlockM=128, kBlockN=64 时: 64 KB
+
+    /*
+     * Global Memory Copy: cp.async 128-bit 异步拷贝
+     * global → shared 绕过寄存器, CACHEGLOBAL 策略
+     * 参见 sgemm_sm80 实战 (../cute/09_sgemm_sm80.md)
+     */
+    static constexpr int kGmemElemsPerLoad =
+        sizeof(cute::uint128_t) / sizeof(Element);     // 8 elem
+    static constexpr int kGmemThreadsPerRow =
+        kBlockKSmem / kGmemElemsPerLoad;               // 每行线程数
+    using GmemLayoutAtom = Layout<
+        Shape <Int<kNThreads / kGmemThreadsPerRow>,
+               Int<kGmemThreadsPerRow>>,
+        Stride<Int<kGmemThreadsPerRow>, _1>>;
+
+    using Gmem_copy_struct = std::conditional_t<
+        Base::Has_cp_async,
+        SM80_CP_ASYNC_CACHEGLOBAL<cute::uint128_t>,    // cp.async
+        AutoVectorizingCopyWithAssumedAlignment<128>>;  // fallback
+    using GmemTiledCopyQKV = decltype(
+        make_tiled_copy(Copy_Atom<Gmem_copy_struct, Element>{},
+                        GmemLayoutAtom{},
+                        Layout<Shape<_1, _8>>{}));      // 8 elem/thread
+    using GmemTiledCopyO = decltype(
+        make_tiled_copy(
+            Copy_Atom<AutoVectorizingCopyWithAssumedAlignment<128>,
+                       Element>{},
+            GmemLayoutAtom{},
+            Layout<Shape<_1, _8>>{}));                  // O 写回
+};
 ```
-
-4 个 warp 沿 M 维排列，总计覆盖 `kBlockM = 16 * kNWarps` 行（通常 64 或 128），N 和 K 维各 16。
-
-**Shared Memory Layout（Swizzle）**
-
-```cpp
-static constexpr int kBlockKSmem = kHeadDim % 64 == 0 ? 64 : 32;
-static constexpr int kSwizzle = kBlockKSmem == 32 ? 2 : 3;
-
-using SmemLayoutAtomQ = composition(
-    Swizzle<kSwizzle, 3, 3>{},
-    Layout<Shape<_8, Int<kBlockKSmem>>, Stride<Int<kBlockKSmem>, _1>>{});
-using SmemLayoutQ = tile_to_shape(SmemLayoutAtomQ{}, Shape<Int<kBlockM>, Int<kHeadDim>>{});
-```
-
-Swizzle 消除 bank conflict：将 8 行 × kBlockKSmem 列的基本原子通过 `Swizzle<B,M,S>` 重排地址位，使同一 warp 内的线程访问不同 bank。参见 [GEMM 优化：Tensor Core 与 CUTLASS](../cutlass_gemm_blog/03_tensorcore_and_cutlass.md)
-
-**V 的转置 Layout**
-
-```cpp
-using SmemLayoutVtransposed = composition(SmemLayoutKV{},
-    make_layout(Shape<Int<kHeadDim>, Int<kBlockN>>{}, GenRowMajor{}));
-```
-
-P·V 的矩阵乘中 V 作为 B 操作数需要转置。这里不实际搬运数据，而是通过 CuTe 的 layout composition 在逻辑上将 KV 的 `(kBlockN, kHeadDim)` 重解释为 `(kHeadDim, kBlockN)`，配合 `SmemCopyAtomTransposed`（`ldmatrix.trans`）实现零开销转置。
-
-**Global Memory Copy**
-
-```cpp
-using Gmem_copy_struct = SM80_CP_ASYNC_CACHEGLOBAL<cute::uint128_t>;  // cp.async 128-bit
-using GmemTiledCopyQKV = make_tiled_copy(
-    Copy_Atom<Gmem_copy_struct, Element>{},
-    GmemLayoutAtom{},                    // 线程排布
-    Layout<Shape<_1, _8>>{});            // 每线程 8 个元素 = 128 bit
-```
-
-使用 SM80 的 `cp.async` 指令直接从 global memory 异步拷贝到 shared memory，绕过寄存器。`CACHEGLOBAL` 策略适合不会被同一 thread block 重复读取的数据。参见 [sgemm_sm80 实战](../cute/09_sgemm_sm80.md)
-
-**Shared Memory 大小**
-
-```cpp
-static constexpr int kSmemQSize = size(SmemLayoutQ{}) * sizeof(Element);
-static constexpr int kSmemKVSize = size(SmemLayoutKV{}) * 2 * sizeof(Element);  // K + V
-static constexpr int kSmemSize = Share_Q_K_smem
-    ? max(kSmemQSize, kSmemKVSize)       // Q 和 K 共享 smem
-    : kSmemQSize + kSmemKVSize;          // Q 独占 + K/V 独占
-```
-
-以 `d=128, kBlockM=128, kBlockN=64` 为例：`kSmemSize = 128×128×2 + 64×128×2×2 = 65536` bytes = 64 KB。
 
 ### Flash_bwd_kernel_traits（反向）
 
-[kernel_traits.h:L163-L342](src/kernel_traits_h.md#__codelineno-0-163)
+[kernel_traits.h:L176-L355](src/kernel_traits_h.md#__codelineno-0-176)
 
-反向比前向多定义了三组 TiledMMA（对应三个矩阵乘法）：
-
-- `TiledMmaSdP`：计算 $S = Q \cdot K^T$ 和 $dP = dO \cdot V^T$
-- `TiledMmadKV`：计算 $dK = dP^T \cdot Q$ 和 $dV = P^T \cdot dO$
-- `TiledMmadQ`：计算 $dQ = dP \cdot K$
-
-每组 MMA 的 warp 排列不同（通过 `AtomLayoutMSdP/NdKV/MdQ` 控制），以平衡不同矩阵乘法的 M/N 维尺寸。
-
-额外的 shared memory 分配：
+反向比前向多三个模板参数控制 warp 排布：`AtomLayoutMSdP`, `AtomLayoutNdKV`, `AtomLayoutMdQ`。
 
 ```cpp
-static constexpr int kSmemSize = kSmemQdOSize
-    + kSmemKVSize + kSmemdSSize + max(kSmemPSize, kSmemdQSize);
-```
+template<int kHeadDim_, int kBlockM_, int kBlockN_, int kNWarps_,
+         int AtomLayoutMSdP_=1, int AtomLayoutNdKV=2,
+         int AtomLayoutMdQ=2,
+         bool Is_V_in_regs_=false, bool No_double_buffer_=false,
+         typename elem_type=cutlass::half_t,
+         typename Base=Flash_kernel_traits<kHeadDim_, kBlockM_, kBlockN_,
+                                           kNWarps_, elem_type>>
+struct Flash_bwd_kernel_traits : public Base {
+    // ... 继承基类 type alias (省略) ...
 
-反向需要同时驻留 Q/dO + K/V + dS + max(P, dQ)，shared memory 用量约为前向的 2-3 倍。
+    static constexpr int kBlockM = kBlockM_;
+    static constexpr int kBlockN = kBlockN_;
+    static constexpr int kHeadDim = kHeadDim_;
+    static constexpr int kBlockKSmem =
+        kHeadDim % 64 == 0 ? 64 : 32;
+    static constexpr int kSwizzle =
+        kBlockKSmem == 32 ? 2 : 3;
+
+    /*
+     * 三组 TiledMMA, 对应反向三种矩阵乘法
+     * 每组 warp 排列不同, 平衡 M/N 维尺寸
+     */
+
+    // S = Q·Kᵀ, dP = dO·Vᵀ
+    static constexpr int AtomLayoutMSdP = AtomLayoutMSdP_;
+    using TiledMmaSdP = TiledMMA<
+        typename Base::MMA_Atom_Arch,
+        Layout<Shape<Int<AtomLayoutMSdP>,               // M warp
+                     Int<kNWarps / AtomLayoutMSdP>,
+                     _1>>,
+        Tile<Int<16 * AtomLayoutMSdP>,                   // M tile
+             Int<16 * kNWarps / AtomLayoutMSdP>,         // N tile
+             _16>>;
+
+    // dK = dSᵀ·Q, dV = Pᵀ·dO
+    using TiledMmadKV = TiledMMA<
+        typename Base::MMA_Atom_Arch,
+        Layout<Shape<Int<AtomLayoutNdKV>,
+                     Int<kNWarps / AtomLayoutNdKV>,
+                     _1>>,
+        Tile<Int<16 * AtomLayoutNdKV>,
+             Int<16 * kNWarps / AtomLayoutNdKV>,
+             _16>>;
+
+    // dQ = dS·K
+    using TiledMmadQ = TiledMMA<
+        typename Base::MMA_Atom_Arch,
+        Layout<Shape<Int<AtomLayoutMdQ>,
+                     Int<kNWarps / AtomLayoutMdQ>,
+                     _1>>,
+        Tile<Int<16 * AtomLayoutMdQ>,
+             Int<16 * kNWarps / AtomLayoutMdQ>,
+             _16>>;
+
+    /*
+     * Smem Layout: Q/dO, K/V, P/dS, dK/dV, dQ 各自独立
+     * 反向需更多 smem 同时驻留多个矩阵
+     */
+    using SmemLayoutQdO = decltype(tile_to_shape(       // Q 和 dO
+        composition(Swizzle<kSwizzle, 3, 3>{},
+                    Layout<Shape<_8, Int<kBlockKSmem>>,
+                           Stride<Int<kBlockKSmem>, _1>>{}),
+        make_shape(Int<kBlockM>{}, Int<kHeadDim>{})));
+
+    using SmemLayoutKV = decltype(tile_to_shape(         // K 和 V
+        composition(Swizzle<kSwizzle, 3, 3>{},
+                    Layout<Shape<Int<kBlockM / kNWarps_>,
+                                 Int<kBlockKSmem>>,
+                           Stride<Int<kBlockKSmem>, _1>>{}),
+        make_shape(Int<kBlockN>{}, Int<kHeadDim>{})));
+
+    // K/QdO 的转置 (逻辑重解释, 零开销)
+    using SmemLayoutKtransposed = decltype(
+        composition(SmemLayoutKV{},
+                    make_layout(Shape<Int<kHeadDim>, Int<kBlockN>>{},
+                                GenRowMajor{})));
+    using SmemLayoutQdOtransposed = decltype(
+        composition(SmemLayoutQdO{},
+                    make_layout(Shape<Int<kHeadDim>, Int<kBlockM>>{},
+                                GenRowMajor{})));
+
+    // P/dS 中间结果暂存
+    static constexpr int kPBlockN =
+        kBlockN >= 64 ? 64 : 32;
+    static constexpr int kSwizzlePdS = 3;
+    using SmemLayoutPdS = decltype(tile_to_shape(
+        composition(Swizzle<kSwizzlePdS, 3, 3>{},
+                    Layout<Shape<Int<kBlockM>, Int<kPBlockN>>,
+                           Stride<Int<kPBlockN>, _1>>{}),
+        make_shape(Int<kBlockM>{}, Int<kBlockN>{})));
+
+    // dK/dV 和 dQ
+    using SmemLayoutdKV = decltype(tile_to_shape(
+        composition(Swizzle<kSwizzle, 3, 3>{},
+                    Layout<Shape<_8, Int<kBlockKSmem>>,
+                           Stride<Int<kBlockKSmem>, _1>>{}),
+        make_shape(Int<kBlockN>{}, Int<kHeadDim>{})));
+    using SmemLayoutdQ = decltype(tile_to_shape(
+        composition(Swizzle<kSwizzle, 3, 3>{},
+                    Layout<Shape<_8, Int<kBlockKSmem>>,
+                           Stride<Int<kBlockKSmem>, _1>>{}),
+        make_shape(Int<kBlockM>{}, Int<kHeadDim>{})));
+
+    /*
+     * Shared Memory 总大小
+     * 同时驻留: Q/dO + K/V + dS + max(P, dQ)
+     * 用量约为前向的 2-3 倍
+     */
+    static constexpr int kSmemQdOSize =                 // triple buffer
+        size(SmemLayoutQdO{}) * (No_double_buffer_ ? 2 : 3)
+        * sizeof(Element);
+    static constexpr int kSmemKVSize =
+        size(SmemLayoutKV{}) * 2 * sizeof(Element);     // K + V
+    static constexpr int kSmemdSSize =
+        size(SmemLayoutPdS{}) * sizeof(Element);
+    static constexpr int kSmemPSize =
+        size(SmemLayoutPdS{}) * sizeof(Element);
+    static constexpr int kSmemdQSize =
+        size(SmemLayoutdQ{}) * sizeof(Element);
+    static constexpr int kSmemSize = kSmemQdOSize
+        + kSmemKVSize + kSmemdSSize
+        + std::max(kSmemPSize, kSmemdQSize);            // P/dQ 复用
+
+    // Gmem copy: 与前向相同的 cp.async 策略
+    // 额外增加 dO/dKV/dQ/dQaccum 的 TiledCopy (省略)
+};
+```
