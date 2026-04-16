@@ -172,6 +172,7 @@ nav:
       - CUB Block 级原语:
         - BlockRadixSort 与 BlockScan: code_analysis/cub_block_primitives/01_block_radix_sort_and_scan.md
   - 源码浏览:
+    - 导读: code_analysis/flash_attention_v2/src/index.md
     - Flash Attention V2:
       - flash.h: code_analysis/flash_attention_v2/src/flash_h.md
       - kernel_traits.h: code_analysis/flash_attention_v2/src/kernel_traits_h.md
