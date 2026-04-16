@@ -175,6 +175,7 @@ nav:
   - 源码浏览:
     - source_browsing_index.md
     - Flash Attention V2:
+      - code_analysis/flash_attention_v2/src/index.md
       - 参数与配置:
         - flash.h: code_analysis/flash_attention_v2/src/flash_h.md
         - kernel_traits.h: code_analysis/flash_attention_v2/src/kernel_traits_h.md
