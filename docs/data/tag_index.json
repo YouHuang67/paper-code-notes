@@ -1237,5 +1237,26 @@
     "type": "代码分析",
     "tags": ["CUDA", "CUTLASS", "Flash Attention"],
     "summary": "static_switch 编译期分发宏、launch template grid 配置、74 个模板实例化文件生成"
+  },
+  {
+    "title": "FlashInfer Variable Block Sparse Attention - 总览",
+    "path": "code_analysis/flashinfer_variable_block_sparse/00_overview.md",
+    "type": "代码分析",
+    "tags": ["CUDA", "CUTLASS", "Sparse Attention", "Flash Attention"],
+    "summary": "VariableBlockSparseAttentionWrapper 架构：variable block → paged attention 映射 + Hopper sparse mainloop"
+  },
+  {
+    "title": "FlashInfer Variable Block Sparse Attention - Python Wrapper",
+    "path": "code_analysis/flashinfer_variable_block_sparse/01_python_wrapper.md",
+    "type": "代码分析",
+    "tags": ["Sparse Attention", "Flash Attention"],
+    "summary": "plan/run 两阶段实现：block 级稀疏图展开为 token 级 CSR 索引，page_size=1 映射到 paged attention"
+  },
+  {
+    "title": "FlashInfer Variable Block Sparse Attention - Hopper Sparse Mainloop",
+    "path": "code_analysis/flashinfer_variable_block_sparse/02_sparse_mainloop.md",
+    "type": "代码分析",
+    "tags": ["CUDA", "CUTLASS", "Sparse Attention", "Flash Attention"],
+    "summary": "SparseCollectiveMainloop：Q 走 TMA 连续加载，K/V 走 cp.async sparse gather + __shfl_sync 偏移广播"
   }
 ]

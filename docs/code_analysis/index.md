@@ -40,3 +40,4 @@
 - [xformers Memory Efficient Attention](xformers_memory_efficient_attention/00_overview.md) - Split-K Triton 前向推理内核（mask 融合 + 量化）
 - [CUTLASS Memory Efficient Attention](cutlass_mem_eff_attention/00_overview.md) - PyTorch ATen CUTLASS 前向 kernel（Online Softmax + 模板分发）
 - [CUB Block 级原语](cub_block_primitives/01_block_radix_sort_and_scan.md) - BlockRadixSort 与 BlockScan 内部实现详解
+- [FlashInfer Variable Block Sparse Attention](flashinfer_variable_block_sparse/00_overview.md) - VariableBlockSparseAttentionWrapper 的完整调用链：Python wrapper → paged attention 映射 → Hopper sparse mainloop
