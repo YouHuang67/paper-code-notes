@@ -286,6 +286,8 @@ inline __device__ void compute_attn_1rowblock(
      * sQ, sK, sV 在 smem 中按 SmemLayout 排列
      * Share_Q_K_smem: Q 和 K 共享同一片 smem (节省空间)
      * sVt/sVtNoSwizzle: V 的转置视图 (零开销, 仅 layout 变换)
+     *   .data() 返回带 swizzle 的 smem 指针, .data().get() 剥离 swizzle
+     *   MMA retile 需要无 swizzle 版本以匹配 MMA atom 的数据布局
      */
     Tensor sQ = make_tensor(
         make_smem_ptr(reinterpret_cast<Element*>(smem_)),
@@ -296,10 +298,10 @@ inline __device__ void compute_attn_1rowblock(
     Tensor sV = make_tensor(
         sK.data() + size(sK),
         typename Kernel_traits::SmemLayoutKV{});
-    Tensor sVt = make_tensor(sV.data(),
-        typename Kernel_traits::SmemLayoutVtransposed{});
-    Tensor sVtNoSwizzle = make_tensor(sV.data().get(),
-        typename Kernel_traits::SmemLayoutVtransposedNoSwizzle{});
+    Tensor sVt = make_tensor(sV.data(),             // V^T 视图, 同一 smem 指针
+        typename Kernel_traits::SmemLayoutVtransposed{});  // 转置 layout (含 swizzle)
+    Tensor sVtNoSwizzle = make_tensor(sV.data().get(), // .get() 剥离 swizzle 得到裸指针
+        typename Kernel_traits::SmemLayoutVtransposedNoSwizzle{}); // 转置 layout (无 swizzle, 供 MMA retile)
 
     /*
      * Copy 的 partition: 按线程切分 global↔shared 的搬运任务
