@@ -213,6 +213,39 @@ Tensor cta_a = tiled_a(make_coord(_,_), make_coord(blockIdx.x, blockIdx.y));  //
 
 这称为**内分区**——保留内部"tile"模式。这种"应用 tiler + 通过索引 rest 模式切出 tile"的模式已封装为 `inner_partition(Tensor, Tiler, Coord)`，也称 `local_tile(Tensor, Tiler, Coord)`。`local_tile` 分区器常用于 threadgroup 级别将 tensor 按 tile 分配给 threadgroup。
 
+**`local_tile` 的维度变换机制（shape division）**
+
+`local_tile` 的核心是**形状除法**：将输入 tensor 的每个维度按 tiler 对应维度整除，产生"块内 + 块外"两层坐标。以 Flash Attention 中 K tensor 的处理为例：
+
+```
+原始 mK: (SeqLen_K, HeadDim, NumHeads_K)  — 3D，来自 make_tensor
+```
+
+**第一步：预切片降维。** 用 head 索引切出单个 head，3D → 2D：
+
+```
+mK(_, bidh/ratio, _) → 2D: (SeqLen_K, HeadDim)
+```
+
+**第二步：`local_tile` 做形状除法。** tiler 为 `Shape<kBlockN, kHeadDim>`，将 2D 的每个维度整除：
+
+```
+SeqLen_K ÷ kBlockN  → 块内 kBlockN × 块外 Num_Blocks_N
+HeadDim  ÷ kHeadDim → 块内 kHeadDim × 块外 1（整除，只有 1 个块）
+```
+
+逻辑上产生 4 个维度：`(kBlockN, kHeadDim, Num_Blocks_N, 1)`，即 `zipped_divide` 的结果 `((kBlockN, kHeadDim), (Num_Blocks_N, 1))`。
+
+**第三步：`make_coord(_, 0)` 选择/折叠块外维度。** `_`（Underscore）保留该维度，字面量 `0` 折叠该维度（取第 0 个块）：
+
+```cpp
+local_tile(mK_2d, tiler, make_coord(_, 0))
+//                              ^    ^
+//              保留 Num_Blocks_N    折叠 HeadDim 的块外维度 (只有 1 块，取第 0 个)
+```
+
+最终结果为 3D：`(kBlockN, kHeadDim, Num_Blocks_N)`——块内两个维度 + 保留的一个块外维度。后续用 `n_block` 索引第三个维度即可取出某个 K/V 块。实际应用参见 [Flash Attention V2 前向核心](../flash_attention_v2/02_forward_kernel.md) 中 Global Memory Tensor 构建部分。
+
 或者，假设有 32 个线程，要给每个线程分配这些 4x8 tile 中的一个元素，用线程索引第一个模式：
 
 ```cpp

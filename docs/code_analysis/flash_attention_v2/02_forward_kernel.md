@@ -234,6 +234,7 @@ inline __device__ void compute_attn_1rowblock(
      * Global Memory Tensor 构建
      * make_tensor: 从原始指针 + shape + stride 构建逻辑 tensor
      * local_tile: 按 block 大小切分, 取第 m_block/n_block 个 tile
+     * (维度变换机制详见 CuTe Tensor 教程 local_tile 章节)
      */
     const index_t row_offset_p =
         ((bidb * params.h + bidh) * params.seqlen_q_rounded
