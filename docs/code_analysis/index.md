@@ -7,6 +7,10 @@
 - [CUDA 基础：导读](cuda_foundations/00_overview.md) - CUDA / CUTLASS / CuTe 公共引用页与阅读路径
 - [CUDA 基础：执行模型与内存访问](cuda_foundations/01_cuda_execution_model_and_memory.md) - 线程层级、shared memory、同步、warp 原语、浮点原子技巧
 - [CUDA 基础：CUTLASS/CuTe 编程模型](cuda_foundations/02_cuda_cutlass_cute_programming_model.md) - GemmShape/OpClass、Tensor/Layout、MMA/Copy Atom、cp.async、Swizzle
+- [CUDA 基础：性能模型与 Occupancy](cuda_foundations/03_cuda_performance_model_and_occupancy.md) - CTA/warp/SM 调度、latency hiding、occupancy 与资源约束如何塑造 kernel 形态
+- [CUDA 基础：分块、数据搬运与局部性](cuda_foundations/04_cuda_tiling_data_movement_and_locality.md) - arithmetic intensity、tiling、coalescing、shared memory 复用与边界 predication
+- [CUDA 基础：归约、Scan 与在线归一化](cuda_foundations/05_cuda_reduction_scan_and_online_normalization.md) - reduction/scan 并行模式、online softmax 与逐行统计量的统一视角
+- [CUDA 基础：计算、带宽与算存权衡](cuda_foundations/06_cuda_compute_memory_tradeoffs.md) - Roofline 直觉、recomputation、memory-bound / compute-bound 与 block shape 取舍
 
 ## CuTe 教程（翻译）
 

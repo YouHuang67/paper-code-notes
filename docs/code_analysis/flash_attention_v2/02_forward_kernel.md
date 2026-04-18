@@ -10,6 +10,11 @@ tags:
 
 **源码**: [flash_fwd_kernel.h](src/flash_fwd_kernel_h.md)
 
+若想先建立“为什么前向一定会长成 tiled dataflow + online normalization”这层直觉，可先看：
+
+- [CUDA 基础：分块、数据搬运与局部性](../cuda_foundations/04_cuda_tiling_data_movement_and_locality.md)
+- [CUDA 基础：归约、Scan 与在线归一化](../cuda_foundations/05_cuda_reduction_scan_and_online_normalization.md)
+
 ## 总体流程
 
 每个 thread block 负责计算输出 O 的一个行块（kBlockM 行），通过迭代所有 K/V 块完成：

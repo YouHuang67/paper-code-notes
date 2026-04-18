@@ -8,6 +8,8 @@ tags:
 
 本文拆解 FA2 的四个计算原语文件：online softmax、mask、warp reduce 工具函数、dropout。
 
+如果你想把这些 helper 放回更一般的并行模式里看，可先读 [CUDA 基础：归约、Scan 与在线归一化](../cuda_foundations/05_cuda_reduction_scan_and_online_normalization.md)。
+
 ## softmax.h：Online Softmax
 
 **源码**: [softmax.h](src/softmax_h.md)

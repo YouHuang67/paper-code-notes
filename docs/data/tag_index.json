@@ -412,6 +412,42 @@
     "summary": "CUDA kernel 执行模型与内存访问基础：thread/warp/block/grid、shared memory、__syncthreads、__shfl_sync、浮点原子技巧与 exp2f"
   },
   {
+    "title": "CUDA 基础：性能模型与 Occupancy",
+    "path": "code_analysis/cuda_foundations/03_cuda_performance_model_and_occupancy.md",
+    "type": "代码分析",
+    "tags": [
+      "CUDA"
+    ],
+    "summary": "从 CTA/warp/SM 调度到 occupancy：latency hiding、资源分配与 FA2 这类 tiled kernel 的 block shape 权衡"
+  },
+  {
+    "title": "CUDA 基础：分块、数据搬运与局部性",
+    "path": "code_analysis/cuda_foundations/04_cuda_tiling_data_movement_and_locality.md",
+    "type": "代码分析",
+    "tags": [
+      "CUDA"
+    ],
+    "summary": "从 arithmetic intensity 到 tiling/coalescing/predication：理解 attention 与 GEMM 的片上复用和数据流设计"
+  },
+  {
+    "title": "CUDA 基础：归约、Scan 与在线归一化",
+    "path": "code_analysis/cuda_foundations/05_cuda_reduction_scan_and_online_normalization.md",
+    "type": "代码分析",
+    "tags": [
+      "CUDA"
+    ],
+    "summary": "reduction tree、scan 的工作效率与 online softmax：把 FA2 的逐行 max/sum、warp allreduce 和 dO·O 放回通用并行模式"
+  },
+  {
+    "title": "CUDA 基础：计算、带宽与算存权衡",
+    "path": "code_analysis/cuda_foundations/06_cuda_compute_memory_tradeoffs.md",
+    "type": "代码分析",
+    "tags": [
+      "CUDA"
+    ],
+    "summary": "Roofline 直觉、memory-bound / compute-bound、recomputation 与 block shape 的算力-带宽-片上资源权衡"
+  },
+  {
     "title": "VIGOR",
     "path": "paper_reading/vigor.md",
     "type": "论文阅读",

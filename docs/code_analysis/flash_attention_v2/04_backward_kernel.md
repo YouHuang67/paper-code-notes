@@ -10,6 +10,11 @@ tags:
 
 **源码**: [flash_bwd_kernel.h](src/flash_bwd_kernel_h.md)、[flash_bwd_preprocess_kernel.h](src/flash_bwd_preprocess_kernel_h.md)
 
+如果你更想先看“为什么 backward 会选择 recomputation，以及逐行统计量为什么仍然是 reduction 问题”，可先读：
+
+- [CUDA 基础：归约、Scan 与在线归一化](../cuda_foundations/05_cuda_reduction_scan_and_online_normalization.md)
+- [CUDA 基础：计算、带宽与算存权衡](../cuda_foundations/06_cuda_compute_memory_tradeoffs.md)
+
 ## 反向传播的数学
 
 给定前向输出 $O = \text{softmax}(QK^T / \sqrt{d}) \cdot V$ 和损失梯度 $dO$，需要计算 $dQ, dK, dV$。

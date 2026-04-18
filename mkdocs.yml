@@ -134,6 +134,10 @@ nav:
       - CUDA 基础：导读: code_analysis/cuda_foundations/00_overview.md
       - CUDA 基础：执行模型与内存访问: code_analysis/cuda_foundations/01_cuda_execution_model_and_memory.md
       - CUDA 基础：CUTLASS/CuTe 编程模型: code_analysis/cuda_foundations/02_cuda_cutlass_cute_programming_model.md
+      - CUDA 基础：性能模型与 Occupancy: code_analysis/cuda_foundations/03_cuda_performance_model_and_occupancy.md
+      - CUDA 基础：分块、数据搬运与局部性: code_analysis/cuda_foundations/04_cuda_tiling_data_movement_and_locality.md
+      - CUDA 基础：归约、Scan 与在线归一化: code_analysis/cuda_foundations/05_cuda_reduction_scan_and_online_normalization.md
+      - CUDA 基础：计算、带宽与算存权衡: code_analysis/cuda_foundations/06_cuda_compute_memory_tradeoffs.md
     - CuTe 教程（翻译）:
         - 快速入门: code_analysis/cute/00_quickstart.md
         - Layout: code_analysis/cute/01_layout.md

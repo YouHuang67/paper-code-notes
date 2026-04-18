@@ -12,6 +12,13 @@ tags:
 
 **分析范围**: `csrc/flash_attn/src/` 目录下的 SM80（Ampere）CUDA 实现
 
+如果你在读 FA2 时想先补“为什么 block shape 会这样选、为什么 online softmax / recomputation 值得做”这层性能直觉，可先看以下附录：
+
+- [CUDA 基础：性能模型与 Occupancy](../cuda_foundations/03_cuda_performance_model_and_occupancy.md)
+- [CUDA 基础：分块、数据搬运与局部性](../cuda_foundations/04_cuda_tiling_data_movement_and_locality.md)
+- [CUDA 基础：归约、Scan 与在线归一化](../cuda_foundations/05_cuda_reduction_scan_and_online_normalization.md)
+- [CUDA 基础：计算、带宽与算存权衡](../cuda_foundations/06_cuda_compute_memory_tradeoffs.md)
+
 ## 核心思想
 
 FA2 通过三个关键策略将标准 Attention 的 $O(N^2)$ 内存开销降至 $O(N)$：
@@ -115,5 +122,9 @@ FA2 混合使用 **CuTe** 和 **CUTLASS 2.x**：
 - **CuTe 算法**：[算法](../cute/04_algorithms.md) — `copy`、`gemm` 的 CuTe 抽象
 - **sgemm_sm80 实战**：[sgemm_sm80](../cute/09_sgemm_sm80.md) — 与 FA2 编码风格高度一致的 GEMM 示例，含 cp.async pipeline
 - **CUDA 执行模型**：[执行模型与内存](../cuda_foundations/01_cuda_execution_model_and_memory.md) — shared memory、warp、同步
+- **性能模型与资源约束**：[性能模型与 Occupancy](../cuda_foundations/03_cuda_performance_model_and_occupancy.md) — CTA/warp/SM、latency hiding、occupancy 与 block shape 取舍
+- **分块与数据流**：[分块、数据搬运与局部性](../cuda_foundations/04_cuda_tiling_data_movement_and_locality.md) — tiling、coalescing、shared memory 复用
+- **在线归一化**：[归约、Scan 与在线归一化](../cuda_foundations/05_cuda_reduction_scan_and_online_normalization.md) — reduction / scan 视角下的 online softmax
+- **算存权衡**：[计算、带宽与算存权衡](../cuda_foundations/06_cuda_compute_memory_tradeoffs.md) — Roofline 直觉、recomputation 与 memory-bound 判断
 - **CUTLASS 编程模型**：[CUTLASS/CuTe 编程模型](../cuda_foundations/02_cuda_cutlass_cute_programming_model.md)
 - **GEMM 优化**：[Tensor Core 与 CUTLASS](../cutlass_gemm_blog/03_tensorcore_and_cutlass.md) — Swizzle、bank conflict 优化

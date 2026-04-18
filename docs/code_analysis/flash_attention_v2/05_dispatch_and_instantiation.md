@@ -10,6 +10,11 @@ tags:
 
 **源码**: [flash_fwd_launch_template.h](src/flash_fwd_launch_template_h.md)、[static_switch.h](src/static_switch_h.md)
 
+这里最容易和性能模型直接对应的，是 block shape、shared memory 上限与 CTA/SM 并发的取舍；可配合：
+
+- [CUDA 基础：性能模型与 Occupancy](../cuda_foundations/03_cuda_performance_model_and_occupancy.md)
+- [CUDA 基础：计算、带宽与算存权衡](../cuda_foundations/06_cuda_compute_memory_tradeoffs.md)
+
 ## static_switch.h：编译期特性分发
 
 [static_switch.h:L5-L125](src/static_switch_h.md#__codelineno-0-5)

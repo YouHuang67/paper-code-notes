@@ -8,6 +8,11 @@ tags:
 
 本文拆解 FA2 的两个基础头文件：`flash.h` 定义了前向/反向的所有参数，`kernel_traits.h` 定义了 GPU 硬件相关的计算与内存访问配置。
 
+如果你更关心这些配置背后的性能动机，可先结合两篇附录阅读：
+
+- [CUDA 基础：性能模型与 Occupancy](../cuda_foundations/03_cuda_performance_model_and_occupancy.md)
+- [CUDA 基础：分块、数据搬运与局部性](../cuda_foundations/04_cuda_tiling_data_movement_and_locality.md)
+
 ## flash.h：参数结构体
 
 **源码**: [flash.h](src/flash_h.md)
