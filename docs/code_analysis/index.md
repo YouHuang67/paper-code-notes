@@ -11,6 +11,8 @@
 - [CUDA 基础：分块、数据搬运与局部性](cuda_foundations/04_cuda_tiling_data_movement_and_locality.md) - arithmetic intensity、tiling、coalescing、shared memory 复用与边界 predication
 - [CUDA 基础：归约、Scan 与在线归一化](cuda_foundations/05_cuda_reduction_scan_and_online_normalization.md) - reduction/scan 并行模式、online softmax 与逐行统计量的统一视角
 - [CUDA 基础：计算、带宽与算存权衡](cuda_foundations/06_cuda_compute_memory_tradeoffs.md) - Roofline 直觉、recomputation、memory-bound / compute-bound 与 block shape 取舍
+- [CUDA 基础：TileLang 编程模型](cuda_foundations/07_tilelang_programming_model.md) - DeepSeek V4 所需 TileLang 原语：Kernel/Shared/Fragment/Pipelined/GEMM/Reduce
+- [CUDA 基础：块量化与低精度 GEMM](cuda_foundations/08_blockwise_quantization_and_low_precision_gemm.md) - FP8/FP4 block-wise 量化、scale 张量组织、低精度 GEMM 的 scale correction
 
 ## CuTe 教程（翻译）
 
@@ -45,3 +47,4 @@
 - [CUTLASS Memory Efficient Attention](cutlass_mem_eff_attention/00_overview.md) - PyTorch ATen CUTLASS 前向 kernel（Online Softmax + 模板分发）
 - [CUB Block 级原语](cub_block_primitives/01_block_radix_sort_and_scan.md) - BlockRadixSort 与 BlockScan 内部实现详解
 - [FlashInfer Variable Block Sparse Attention](flashinfer_variable_block_sparse/00_overview.md) - VariableBlockSparseAttentionWrapper 的完整调用链：Python wrapper → paged attention 映射 → Hopper sparse mainloop
+- [DeepSeek V4](deepseek_v4/00_overview.md) - mHC + Hybrid Attention + MoE + TileLang 低精度推理实现

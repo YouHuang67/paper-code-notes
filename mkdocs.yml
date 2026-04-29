@@ -139,6 +139,8 @@ nav:
       - CUDA 基础：分块、数据搬运与局部性: code_analysis/cuda_foundations/04_cuda_tiling_data_movement_and_locality.md
       - CUDA 基础：归约、Scan 与在线归一化: code_analysis/cuda_foundations/05_cuda_reduction_scan_and_online_normalization.md
       - CUDA 基础：计算、带宽与算存权衡: code_analysis/cuda_foundations/06_cuda_compute_memory_tradeoffs.md
+      - CUDA 基础：TileLang 编程模型: code_analysis/cuda_foundations/07_tilelang_programming_model.md
+      - CUDA 基础：块量化与低精度 GEMM: code_analysis/cuda_foundations/08_blockwise_quantization_and_low_precision_gemm.md
     - CuTe 教程（翻译）:
         - 快速入门: code_analysis/cute/00_quickstart.md
         - Layout: code_analysis/cute/01_layout.md
@@ -181,6 +183,11 @@ nav:
         - 总览: code_analysis/flashinfer_variable_block_sparse/00_overview.md
         - Python Wrapper: code_analysis/flashinfer_variable_block_sparse/01_python_wrapper.md
         - Hopper Sparse Mainloop: code_analysis/flashinfer_variable_block_sparse/02_sparse_mainloop.md
+      - DeepSeek V4:
+        - 总览: code_analysis/deepseek_v4/00_overview.md
+        - 模型架构: code_analysis/deepseek_v4/01_model_architecture.md
+        - 推理链路: code_analysis/deepseek_v4/02_inference_pipeline.md
+        - Kernels 与量化: code_analysis/deepseek_v4/03_kernels_and_quantization.md
   - 源码浏览:
     - source_browsing_index.md
     - Flash Attention V2:
@@ -203,3 +210,11 @@ nav:
         - mask.h: code_analysis/flash_attention_v2/src/mask_h.md
         - dropout.h: code_analysis/flash_attention_v2/src/dropout_h.md
         - rotary.h: code_analysis/flash_attention_v2/src/rotary_h.md
+    - DeepSeek V4:
+      - code_analysis/deepseek_v4/src/index.md
+      - README.md: code_analysis/deepseek_v4/src/readme_md.md
+      - config.json: code_analysis/deepseek_v4/src/config_json.md
+      - encoding_dsv4.py: code_analysis/deepseek_v4/src/encoding_dsv4_py.md
+      - generate.py: code_analysis/deepseek_v4/src/generate_py.md
+      - model.py: code_analysis/deepseek_v4/src/model_py.md
+      - kernel.py: code_analysis/deepseek_v4/src/kernel_py.md
