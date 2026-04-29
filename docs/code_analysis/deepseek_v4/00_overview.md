@@ -18,7 +18,7 @@ tags:
 - 模型架构如何把论文里的 mHC、Hybrid Attention、MoE 和长上下文设计落到代码里
 - 推理期如何通过 KV 压缩、滑动窗口、稀疏检索和低精度 kernel 把 1M context 做到可实现
 
-## 1. 本仓库真正值得看的文件
+## 1. 核心文件
 
 按重要性排序：
 
@@ -28,7 +28,7 @@ tags:
 - [config.json](src/config_json.md)：真实模型配置，能看出论文参数如何落地
 - [encoding_dsv4.py](src/encoding_dsv4_py.md)：对话协议与 DSML tool 格式
 
-这套代码的结构非常收敛，几乎可以概括成：
+这套代码的主线很明确：
 
 ```text
 generate.py 负责推理驱动
@@ -63,7 +63,7 @@ kernel.py   负责最重的低精度和稀疏计算
   - `Attention.kv_cache`
   - `Compressor.kv_cache`
 
-这里最重要的判断是：这份代码并没有把 CSA / HCA / SWA 分成论文里的三套独立类，而是把它们统一折叠成“**窗口缓存 + 压缩缓存 + 稀疏索引**”三部分。
+代码里没有把 CSA / HCA / SWA 拆成三套独立类，而是统一折叠成“**窗口缓存 + 压缩缓存 + 稀疏索引**”三部分。
 
 ## 3. 整体数据流
 
@@ -88,17 +88,17 @@ token ids
   -> logits
 ```
 
-理解 DeepSeek V4 代码时，最关键的是把它当成一个 **“残差状态被 mHC 改写、注意力记忆被 hybrid memory 改写、线性层被低精度 kernel 改写”** 的 Transformer。
+阅读 DeepSeek V4 代码时，可以把它看成一个 **“残差状态由 mHC 改写、注意力记忆由 hybrid memory 改写、线性层由低精度 kernel 改写”** 的 Transformer。
 
-## 4. 为什么这份实现和论文风格一致
+## 4. 代码结构对应关系
 
-从代码结构上看，这份实现很明确地在追三件事：
+从代码结构上看，这份实现集中在三条主线：
 
 - **长上下文内存重写**
   - 不再把全部历史 token 当成同质 KV cache
   - 近邻 token 留在窗口缓存
   - 远程 token 压缩后进入 compressed cache
-  - 检索器只把最值得访问的压缩块送进 attention
+  - 检索器只把 top-k 压缩块送进 attention
 
 - **残差传播重写**
   - 不用单一 residual stream
@@ -108,7 +108,7 @@ token ids
 - **推理算子重写**
   - 激活走 block-wise FP8
   - 专家权重走 FP4
-  - 稀疏注意力不再是“先 gather 完整矩阵再用 PyTorch softmax”，而是直接走 TileLang kernel
+  - 稀疏注意力直接落到 TileLang kernel，而不是在 PyTorch 里物化完整分数矩阵
 
 ## 5. 阅读顺序
 
@@ -123,7 +123,7 @@ token ids
 - [TileLang 编程模型](../cuda_foundations/07_tilelang_programming_model.md)
 - [块量化与低精度 GEMM](../cuda_foundations/08_blockwise_quantization_and_low_precision_gemm.md)
 
-## 6. 本系列文档范围
+## 6. 文档范围
 
 这一轮只保留 4 篇主文档，不扩散成很细的章节：
 
@@ -143,7 +143,7 @@ token ids
 
 ## 小结
 
-这份代码最值得看的地方，不是“它怎么把标准 Transformer 重新写一遍”，而是它如何同时重写三件事：
+这组代码分析集中在三件事：
 
 - 状态传播：`mHC`
 - 记忆组织：`window cache + compressed cache + sparse topk`

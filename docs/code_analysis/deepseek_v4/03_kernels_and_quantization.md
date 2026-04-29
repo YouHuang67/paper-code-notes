@@ -22,7 +22,7 @@ tags:
 - [TileLang 编程模型](../cuda_foundations/07_tilelang_programming_model.md)
 - [块量化与低精度 GEMM](../cuda_foundations/08_blockwise_quantization_and_low_precision_gemm.md)
 
-## 1. 总体观察：这不是 Triton，而是 TileLang
+## 1. TileLang kernel 入口
 
 一开头就能看出这份 kernel 的基调，[kernel.py:L1-L19](src/kernel_py.md#__codelineno-0-1)：
 
@@ -36,7 +36,7 @@ pass_configs = {
 }
 ```
 
-这说明作者选择了：
+这段配置给出了 kernel 组织方式：
 
 - CTA tiled 风格
 - 非 TMA 路线
@@ -182,7 +182,7 @@ def fp8_gemm_kernel(N, K, ...):
 - `wo_a`
 - 部分 MoE 权重之外的主干矩阵
 
-## 4. `fp4_gemm_kernel`：专家层为什么需要单独后端
+## 4. `fp4_gemm_kernel`：专家层后端
 
 相关源码：
 
@@ -226,19 +226,19 @@ for k in T.Pipelined(K_iters, num_stages=2):
         C_local_accum[i, j] += C_local[i, j] * scale_a_frag[i] * scale_b_frag[j]
 ```
 
-为什么这么做合理：
+这条实现路径对应的工程取舍是：
 
 - 专家层参数量巨大，FP4 带来的存储收益更大
 - 但直接维护一套“FP8 x FP4 原生 MMA”实现复杂度太高
 - 先在 tile 内升到 FP8，再复用 FP8 GEMM 主体，是一种非常工程化的折中
 
-## 5. `sparse_attn_kernel`：混合记忆上的注意力核心
+## 5. `sparse_attn_kernel`：混合记忆注意力
 
 相关源码：
 
 - [kernel.py:L276-L368](src/kernel_py.md#__codelineno-0-276)
 
-这是 Hybrid Attention 在 kernel 层真正落地的地方。
+这一段对应 Hybrid Attention 的 kernel 落点。
 
 ```python
 @tilelang.jit(pass_configs=pass_configs)
@@ -296,7 +296,7 @@ def sparse_attn_kernel(h: int, d: int, scale=None):
 - 每个 block 上维护 online softmax 统计量
 - 最终得到一份 head-wise attention output
 
-从实现风格上看，它本质是：
+这段 kernel 的计算形态是：
 
 ```text
 sparse loading + dense compute + online normalization
@@ -327,13 +327,13 @@ sum_exp[i] += T.exp(attn_sink[i] - scores_max[i])
 
 可以把它理解成一种“永远存在的背景记忆槽”。
 
-## 6. `hc_split_sinkhorn_kernel`：mHC 的 mixing 不是普通线性层
+## 6. `hc_split_sinkhorn_kernel`：mHC mixing
 
 相关源码：
 
 - [kernel.py:L371-L438](src/kernel_py.md#__codelineno-0-371)
 
-这是 mHC 能成立的关键 kernel，因为 `hc_pre` / `hc_post` 所需的 mixing 权重并不是自由矩阵，而是经过约束化处理的。
+`hc_pre` / `hc_post` 所需的 mixing 权重不是自由矩阵，而是经过约束化处理的，这部分由 `hc_split_sinkhorn_kernel` 完成。
 
 ```python
 @tilelang.jit(pass_configs=pass_configs)
@@ -354,9 +354,8 @@ def hc_split_sinkhorn_kernel(hc: int, sinkhorn_iters: int, eps: float):
                 comb_frag[j, k] = mixes_shared[j * hc + k + hc * 2] * hc_scale[2] + hc_base[...]
 
             '''
-            comb 不直接拿来用，而是先做一轮 softmax 风格归一化，
-            再交替做行归一化 / 列归一化，近似变成双随机矩阵。
-            这就是 Sinkhorn 约束。
+            comb 不直接使用，而是先做一轮 softmax 风格归一化，
+            再交替执行行归一化 / 列归一化，逼近双随机矩阵。
             '''
             T.reduce_max(comb_frag, row_max, dim=1)
             ...
@@ -394,7 +393,7 @@ def hc_split_sinkhorn_kernel(hc: int, sinkhorn_iters: int, eps: float):
 - 稀疏注意力
 - mHC mixing
 
-## 8. 代码层的实现取舍
+## 8. 实现取舍
 
 从工程角度看，这份 kernel 代码有几个鲜明取舍：
 
@@ -404,7 +403,7 @@ def hc_split_sinkhorn_kernel(hc: int, sinkhorn_iters: int, eps: float):
 - 稀疏注意力先由上层生成索引，kernel 只负责消费索引
 - mHC mixing 单独用小 kernel 解决，而不是塞进主图的通用矩阵乘
 
-这几条取舍共同说明：它更像一份 **“围绕具体架构定制的推理实现”**，而不是通用库。
+这几条取舍对应的是一份 **围绕具体架构定制的推理实现**，不是通用库式抽象。
 
 ## 小结
 

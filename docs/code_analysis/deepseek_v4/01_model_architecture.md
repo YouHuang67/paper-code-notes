@@ -62,16 +62,23 @@ tags:
 - `compress_ratios` 是 **逐层** 配置，不是全模型统一比率
 - `hc_mult` 是全模型的“并行残差流数量”，这意味着 mHC 不是某一层的局部 trick，而是全局状态表示方式
 
-## 2. 最底层积木：并行 Embedding、量化 Linear、RMSNorm
+## 2. 底层模块：Embedding、Linear、TP 切分
 
-### 2.1 Embedding 与 TP 切分
+这一组模块对应 [model.py:L83-L180](src/model_py.md#__codelineno-0-83)。它们决定了三件事：
 
-`ParallelEmbedding` 在词表维度上切分，对应源码 [model.py:L83-L105](src/model_py.md#__codelineno-0-83)。
+- 词表和矩阵乘在多卡上怎样切分
+- 低精度权重怎样被主图消费
+- 上层 Attention / MoE 使用哪条线性层后端
 
 ```python
 class ParallelEmbedding(nn.Module):
+    """Embedding sharded along the vocab dimension. Each rank holds vocab_size // world_size rows.
+    Out-of-range indices are zero-masked before all_reduce to combine partial embeddings."""
     def __init__(self, vocab_size: int, dim: int):
-        ...
+        super().__init__()
+        self.vocab_size = vocab_size
+        self.dim = dim
+        assert vocab_size % world_size == 0
         self.part_vocab_size = (vocab_size // world_size)          # 每个 rank 持有局部词表
         self.vocab_start_idx = rank * self.part_vocab_size
         self.vocab_end_idx = self.vocab_start_idx + self.part_vocab_size
@@ -80,34 +87,24 @@ class ParallelEmbedding(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         if world_size > 1:
             mask = (x < self.vocab_start_idx) | (x >= self.vocab_end_idx)
-            x = x - self.vocab_start_idx                           # 全局 token id -> 局部 id
+            x = x - self.vocab_start_idx                           # 全局 token id -> 局部 token id
             x[mask] = 0
-        y = F.embedding(x, self.weight)                            # 先查局部词表
+        y = F.embedding(x, self.weight)                            # 先查本 rank 局部词表
         if world_size > 1:
             y[mask] = 0
-            dist.all_reduce(y)                                     # 汇总各 rank 局部命中的结果
+            dist.all_reduce(y)                                     # 汇总所有 rank 的部分结果
         return y
-```
 
-这个实现很标准，但重要的是它和后面的并行线性层形成统一模式：
 
-- Column Parallel：输出维切分
-- Row Parallel：输入维切分
-- Embedding：词表维切分
-
-### 2.2 `linear()` 不是普通 `F.linear`
-
-`linear()` 是整个低精度推理分发入口，对应 [model.py:L108-L120](src/model_py.md#__codelineno-0-108)。
-
-```python
 def linear(x: torch.Tensor, weight: torch.Tensor, bias: Optional[torch.Tensor] = None) -> torch.Tensor:
+    """Dispatches to fp4_gemm / fp8_gemm / F.linear based on weight dtype."""
     assert bias is None
 
     '''
-    关键分发逻辑：
-    1. FP4 权重 -> 先把输入激活按 block 做 FP8 量化，再走 fp4_gemm
-    2. FP8 权重 -> 先把输入激活按 block 做 FP8 量化，再走 fp8_gemm
-    3. 其他情况 -> 退回普通 F.linear
+    低精度分发入口：
+    - FP4 权重: 先对激活做 block-wise FP8 量化，再走 fp4_gemm
+    - FP8 权重: 先对激活做 block-wise FP8 量化，再走 fp8_gemm
+    - BF16/FP32 权重: 直接走 F.linear
     '''
     if weight.dtype == torch.float4_e2m1fn_x2:
         x, s = act_quant(x, block_size, scale_fmt, scale_dtype)
@@ -117,42 +114,68 @@ def linear(x: torch.Tensor, weight: torch.Tensor, bias: Optional[torch.Tensor] =
         return fp8_gemm(x, s, weight, weight.scale, scale_dtype)
     else:
         return F.linear(x, weight)
+
+
+class Linear(nn.Module):
+    """Linear layer supporting BF16, FP8, and FP4 weight formats with per-block scaling."""
+    def __init__(self, in_features: int, out_features: int, bias: bool = False, dtype=None):
+        super().__init__()
+        dtype = dtype or default_dtype
+        if dtype == torch.float4_e2m1fn_x2:
+            self.weight = nn.Parameter(torch.empty(out_features, in_features // 2, dtype=torch.float4_e2m1fn_x2))
+            self.weight.scale = self.scale = nn.Parameter(
+                torch.empty(out_features, in_features // fp4_block_size, dtype=torch.float8_e8m0fnu)
+            )                                                     # FP4: 每 32 个 K 元素一个 scale
+        elif dtype == torch.float8_e4m3fn:
+            self.weight = nn.Parameter(torch.empty(out_features, in_features, dtype=dtype))
+            self.weight.scale = self.scale = nn.Parameter(
+                torch.empty((out_features + block_size - 1) // block_size,
+                            (in_features + block_size - 1) // block_size,
+                            dtype=torch.float8_e8m0fnu)
+            )                                                     # FP8: block-wise scale 网格
+        else:
+            self.weight = nn.Parameter(torch.empty(out_features, in_features, dtype=dtype))
+            self.register_parameter("scale", None)
+        if bias:
+            self.bias = nn.Parameter(torch.empty(out_features))
+        else:
+            self.register_parameter("bias", None)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return linear(x, self.weight, self.bias)
+
+
+class ColumnParallelLinear(Linear):
+    """Shards output dim across TP ranks. No all-reduce needed on output."""
+    def __init__(self, in_features: int, out_features: int, bias: bool = False, dtype=None):
+        assert out_features % world_size == 0
+        self.part_out_features = out_features // world_size
+        super().__init__(in_features, self.part_out_features, bias, dtype)
+
+
+class RowParallelLinear(Linear):
+    """Shards input dim across TP ranks. All-reduce on output to sum partial results."""
+    def __init__(self, in_features: int, out_features: int, bias: bool = False, dtype=None):
+        assert in_features % world_size == 0
+        self.part_in_features = in_features // world_size
+        super().__init__(self.part_in_features, out_features, bias, dtype)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        y = linear(x, self.weight, None)                          # 每个 rank 先算局部部分和
+        if world_size > 1:
+            y = y.float()
+            dist.all_reduce(y)                                    # 聚合输入维切分后的部分和
+        if self.bias is not None:
+            y += self.bias
+        return y.type_as(x)
 ```
 
-也就是说，这份模型代码根本没有把“量化权重”和“普通线性层”当成同一实现路径；它们从 `linear()` 开始就走不同后端。
+这段代码把后续所有模块的底层约束都定死了：
 
-### 2.3 `Linear` 显式持有 scale 张量
-
-对应 [model.py:L123-L152](src/model_py.md#__codelineno-0-123)。
-
-这段实现最关键的不是构造 `weight`，而是它把“scale 是参数的一部分”写死在类型结构里：
-
-- FP4 权重：
-  - `weight.shape = [out, in // 2]`
-  - `scale.shape = [out, in // 32]`
-- FP8 权重：
-  - `weight.shape = [out, in]`
-  - `scale.shape = [ceil(out / 128), ceil(in / 128)]`
-
-这说明：
-
-- 量化不是运行时临时压缩，而是 checkpoint 原生格式的一部分
-- `model.py` 不是“加载 BF16 权重再临时量化”，而是原生消费低精度权重
-
-### 2.4 并行线性层的职责
-
-对应 [model.py:L155-L180](src/model_py.md#__codelineno-0-155)。
-
-- `ColumnParallelLinear`
-  - 切输出维
-  - 每个 rank 算自己的输出块
-  - 不需要 all-reduce
-- `RowParallelLinear`
-  - 切输入维
-  - 每个 rank 算部分和
-  - 最后 `all_reduce`
-
-这对 Attention 和 MoE 都很重要，因为后面所有 LoRA-style 低秩投影都建立在这组并行线性层之上。
+- Embedding 在词表维切分
+- O 投影和若干低秩投影会混用 Column / Row Parallel
+- 低精度权重从 `linear()` 开始就直接走自定义 kernel
+- scale 张量是权重对象的一部分，不是运行时临时产物
 
 ## 3. 位置编码与长上下文准备
 
@@ -172,7 +195,7 @@ RoPE 相关逻辑在 [model.py:L199-L244](src/model_py.md#__codelineno-0-199)。
 
 ## 4. Hybrid Attention 的记忆结构
 
-这是整份代码最重要的部分。
+这一部分定义了远程记忆、局部记忆和稀疏检索的组织方式。
 
 ### 4.1 不是三种 attention，而是三种 memory
 
@@ -180,7 +203,7 @@ RoPE 相关逻辑在 [model.py:L199-L244](src/model_py.md#__codelineno-0-199)。
 
 - [model.py:L254-L276](src/model_py.md#__codelineno-0-254)
 
-这两个函数本质上在生成两类索引：
+这两个函数生成两类索引：
 
 - `get_window_topk_idxs`
   - 局部滑动窗口索引
@@ -193,13 +216,13 @@ RoPE 相关逻辑在 [model.py:L199-L244](src/model_py.md#__codelineno-0-199)。
 局部窗口记忆 + 压缩远程记忆 + 稀疏 top-k 访问
 ```
 
-真正的注意力 kernel `sparse_attn` 只认一份 `topk_idxs`，并不关心某个索引来自窗口还是压缩缓存。
+注意力 kernel `sparse_attn` 只接收一份 `topk_idxs`，不区分某个索引来自窗口还是压缩缓存。
 
 ### 4.2 `Compressor`：把远程 token 变成压缩记忆
 
 核心代码在 [model.py:L279-L377](src/model_py.md#__codelineno-0-279)。
 
-`Compressor` 可以用一句话概括：
+`Compressor` 做的是：
 
 ```text
 对连续 ratio 个 token 的 KV 做带门控权重的聚合，再把结果写入 compressed cache
@@ -259,13 +282,11 @@ else:
 - 只对非 RoPE 维做 FP8 / FP4 模拟
 - 写入 `self.kv_cache`
 
-### 4.3 `Indexer`：决定远程记忆到底读哪些块
+### 4.3 `Indexer`：压缩缓存检索
 
 核心代码在 [model.py:L380-L433](src/model_py.md#__codelineno-0-380)。
 
-`Indexer` 的目标不是做真正注意力，而是生成 **压缩缓存的 top-k 检索索引**。
-
-它的打分过程可以概括成：
+`Indexer` 生成 **压缩缓存的 top-k 检索索引**。打分形式是：
 
 $$
 \mathrm{score}(t, j) =
@@ -289,17 +310,15 @@ index_score = (index_score.relu_() * weights.unsqueeze(-1)).sum(dim=2)
 topk_idxs = index_score.topk(min(self.index_topk, end_pos // ratio), dim=-1)[1]
 ```
 
-从设计上看，`Indexer` 扮演的是论文里“高压缩记忆的检索器”角色：
+`Indexer` 在结构里的职责是：
 
 - 它不返回 attention output
 - 它只返回“值得访问的压缩位置”
-- 真正做 softmax attention 的是后面的 `sparse_attn`
+- softmax attention 仍由后面的 `sparse_attn` 执行
 
-### 4.4 `Attention`：把窗口缓存与压缩缓存合并成一份检索空间
+### 4.4 `Attention`：窗口缓存与压缩缓存的统一访问
 
 核心实现见 [model.py:L436-L543](src/model_py.md#__codelineno-0-436)。
-
-这段代码最值得精读，因为它把论文里的所有 attention 改造压缩成了一个 forward。
 
 ```python
 def forward(self, x: torch.Tensor, start_pos: int):
@@ -346,13 +365,14 @@ def forward(self, x: torch.Tensor, start_pos: int):
         ...
         if self.compress_ratio:
             if (kv_compress := self.compressor(x, start_pos)) is not None:
-                kv = torch.cat([kv, kv_compress], dim=1)            # prefill 阶段把窗口 KV 和 compressed KV 拼成统一记忆
+                kv = torch.cat([kv, kv_compress], dim=1)            # prefill: 临时拼接窗口 KV 和 compressed KV
         o = sparse_attn(q, kv, self.attn_sink, topk_idxs, self.softmax_scale)
     else:
-        self.kv_cache[:bsz, start_pos % win] = kv.squeeze(1)        # decode 阶段只写一个窗口位置
+        self.kv_cache[:bsz, start_pos % win] = kv.squeeze(1)        # decode: 只写当前窗口槽位
         if self.compress_ratio:
-            self.compressor(x, start_pos)                           # 视需要更新 compressed cache
-        o = sparse_attn(q, self.kv_cache[:bsz], self.attn_sink, topk_idxs, self.softmax_scale)
+            self.compressor(x, start_pos)                           # decode: 按 ratio 更新 compressed cache
+        o = sparse_attn(q, self.kv_cache[:bsz], self.attn_sink,
+                        topk_idxs, self.softmax_scale)              # decode: 统一在 kv_cache 地址空间内检索
 ```
 
 从这段实现可以抽出三个关键结论：
@@ -361,7 +381,7 @@ def forward(self, x: torch.Tensor, start_pos: int):
 - **CSA / HCA** 对应 `Compressor` + `Indexer` + `compressed kv cache`
 - 最终并不存在三套 attention kernel，只有一套 `sparse_attn` 在“混合索引空间”上运行
 
-这就是论文“Hybrid Attention”在代码里的真实形态。
+这段 forward 里已经把论文中的 SWA、压缩记忆和稀疏检索合并到了同一条访问路径。
 
 ## 5. MoE：共享专家 + 路由专家
 
@@ -422,9 +442,9 @@ $$
 
 其中 routed experts 可能是 FP4 权重，而 shared expert 仍走常规路径。
 
-## 6. mHC：真正改写残差流的地方
+## 6. mHC：残差流的多分支组织
 
-这是最值得对齐论文的部分。相关代码：
+相关代码：
 
 - [model.py:L647-L700](src/model_py.md#__codelineno-0-647)
 
@@ -479,13 +499,13 @@ $$
 h'_{t,r} = \beta_{t,r} \tilde{h}_t + \sum_{r'} \Gamma_{t,r',r} h_{t,r'}
 $$
 
-这里最关键的不是公式形式，而是实现含义：
+这里需要直接看实现含义：
 
 - 主分支输出不会直接覆盖 residual
 - 它只是作为一部分，重新注入 `hc` 条状态流
 - 原来的 residual 多分支结构继续通过 `comb` 保持传播
 
-这正是 mHC 相比普通 residual 的本质区别。
+这和普通 residual 的差别在于：主分支输出不会直接覆盖状态，而是重新分配回 `hc_mult` 条流。
 
 ### 6.3 一个 block 的真实顺序
 
@@ -513,13 +533,13 @@ hc_pre -> 子层计算 -> hc_post
 
 这说明 mHC 不是“只在 block 外包一层”，而是对子层级残差传播都做了重定义。
 
-## 7. `Transformer`：整网如何拼装
+## 7. `Transformer`：整网拼装
 
 相关代码：
 
 - [model.py:L769-L809](src/model_py.md#__codelineno-0-769)
 
-最重要的一点是模型一开始就把 embedding 扩成 `hc_mult` 条状态流：
+模型一开始就把 embedding 扩成 `hc_mult` 条状态流：
 
 ```python
 h = self.embed(input_ids)
@@ -535,7 +555,7 @@ logits = self.head(h, self.hc_head_fn, self.hc_head_scale, self.hc_head_base, se
 - 它贯穿整个主干
 - `ParallelHead` 在末端还会再做一次 hc 聚合
 
-## 8. 从代码角度重新理解论文里的“精度重点”
+## 8. 代码里的精度分配
 
 如果只从 `model.py` 出发，DeepSeek V4 的“重点精度设计”其实就是以下几条约束一起成立：
 
@@ -549,7 +569,7 @@ logits = self.head(h, self.hc_head_fn, self.hc_head_scale, self.hc_head_base, se
 
 ## 小结
 
-`model.py` 里真正值得记住的不是类名，而是三次重写：
+`model.py` 里可以直接记成三次重写：
 
 1. **残差重写**：`mHC` 让隐藏状态从单流变成多流
 2. **记忆重写**：`Compressor + Indexer + sparse_attn` 让 KV cache 从稠密序列变成混合记忆

@@ -5,7 +5,7 @@ tags:
 ---
 # CUDA 基础：块量化与低精度 GEMM
 
-本文补齐 DeepSeek V4 代码分析中最关键的低精度背景：为什么输入激活按块量化、为什么权重和激活可以用不同精度、以及 kernel 里如何把 scale 和低精度 GEMM 重新拼回真实矩阵乘。
+本文补齐 DeepSeek V4 代码分析中最关键的低精度背景：输入激活按块量化、权重和激活使用不同精度、以及 kernel 里怎样把 scale 和低精度 GEMM 重新拼回真实矩阵乘。
 
 直接关联文档：
 
@@ -13,7 +13,7 @@ tags:
 - [DeepSeek V4：Kernels 与量化](../deepseek_v4/03_kernels_and_quantization.md)
 - [CUDA 基础：TileLang 编程模型](07_tilelang_programming_model.md)
 
-## 1. 为什么是块量化而不是整张量量化
+## 1. 块量化
 
 对一个张量 `x`，如果只给整个张量一个 scale：
 
@@ -123,12 +123,12 @@ for _ in T.Pipelined(1, num_stages=num_stages):
 
 这里最关键的工程判断是：
 
-- **真正做 GEMM 时**，要返回 `(q, s)`
+- **做 GEMM 时**，返回 `(q, s)`
 - **只做量化误差模拟时**，直接 `inplace=True` 写回 BF16
 
 后者在 DeepSeek V4 中大量用于“保持主图 BF16、但对非 RoPE 维度注入低精度误差”。
 
-## 4. `fp4_act_quant`：为什么 indexer / compressed KV 用 FP4 模拟
+## 4. `fp4_act_quant`：Indexer / compressed KV 的 FP4 模拟
 
 相关实现：
 
@@ -220,7 +220,7 @@ for k in T.Pipelined(K_iters, num_stages=4):
 
 所以 scale correction 不是后处理细节，而是 GEMM 主循环的一部分。
 
-## 7. `fp4_gemm_kernel`：为什么先把 FP4 提升成 FP8
+## 7. `fp4_gemm_kernel`：FP4 tile 提升到 FP8 tile
 
 相关实现：
 
@@ -257,7 +257,7 @@ for i, j in T.Parallel(block_M, block_N):
     C_local_accum[i, j] += C_local[i, j] * scale_a_frag[i] * scale_b_frag[j]
 ```
 
-这里最值得注意的是 **scale 粒度不一致**：
+这里需要注意 **scale 粒度不一致**：
 
 - 激活 scale：每 128 个 `K` 元素一组
 - 权重 scale：每 32 个 `K` 元素一组
@@ -270,7 +270,7 @@ k // n_sub
 
 其中 `n_sub = 128 / 32 = 4`，表示四个权重子块共享一个激活 scale。
 
-## 8. 为什么注意力主路径经常只量化非 RoPE 维
+## 8. 注意力主路径中的非 RoPE 维量化
 
 在 `Attention.forward` 与 `Compressor.forward` 中都能看到类似逻辑：
 
