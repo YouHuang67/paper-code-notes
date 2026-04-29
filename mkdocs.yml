@@ -72,6 +72,7 @@ nav:
     - Qwen2.5-VL: paper_reading/qwen25_vl.md
     - Qwen3-VL: paper_reading/qwen3_vl.md
     - Qwen3-Omni: paper_reading/qwen3_omni.md
+    - DeepSeek-V4: paper_reading/deepseek_v4.md
     - SkyReels-V2: paper_reading/skyreels_v2.md
     - Seedance 1.5: paper_reading/seedance15.md
     - CAMVERSE: paper_reading/camverse.md

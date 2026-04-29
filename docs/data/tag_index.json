@@ -1294,5 +1294,16 @@
     "type": "代码分析",
     "tags": ["CUDA", "CUTLASS", "Sparse Attention", "Flash Attention"],
     "summary": "SparseCollectiveMainloop：Q 走 TMA 连续加载，K/V 走 cp.async sparse gather + __shfl_sync 偏移广播"
+  },
+  {
+    "title": "DeepSeek-V4",
+    "path": "paper_reading/deepseek_v4.md",
+    "type": "论文阅读",
+    "tags": ["Sparse Attention", "LLM Inference", "KV Cache"],
+    "summary": "混合 CSA/HCA + mHC + Muon 的百万上下文 MoE，1M token 下 V4-Pro 仅需 V3.2 的 27% 单 token FLOPs 和 10% KV cache",
+    "category": "Sparse Attention",
+    "date_arxiv": "2026-04",
+    "date_added": "2026-04-29",
+    "organizations": "DeepSeek-AI"
   }
 ]
