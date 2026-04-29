@@ -100,20 +100,20 @@
 }
 
 [data-md-color-scheme="slate"] .md-typeset h1 {
-  color: #8ce7dd;
+  color: #9ccdc8;
 }
 
 [data-md-color-scheme="slate"] .md-typeset h2 {
-  color: #7fbef8;
+  color: #92b6d8;
 }
 
 [data-md-color-scheme="slate"] .md-typeset h3 {
-  color: #f4c978;
-  border-left-color: rgba(244, 201, 120, 0.3);
+  color: #cbb58b;
+  border-left-color: rgba(203, 181, 139, 0.24);
 }
 
 [data-md-color-scheme="slate"] .md-typeset h4 {
-  color: #c1b6ff;
+  color: #b4abd8;
 }
 
 /* === Code blocks === */
