@@ -17,13 +17,29 @@
 
 /* === Typography === */
 .md-typeset h1 {
+  color: #0f766e;
   font-weight: 700;
   letter-spacing: -0.02em;
 }
 
 .md-typeset h2 {
+  color: #1d4ed8;
   font-weight: 600;
   margin-top: 2em;
+}
+
+.md-typeset h3 {
+  color: #b45309;
+  font-weight: 600;
+  margin-top: 1.6em;
+  padding-left: 0.7rem;
+  border-left: 3px solid rgba(180, 83, 9, 0.22);
+}
+
+.md-typeset h4 {
+  color: #7c3aed;
+  font-weight: 600;
+  margin-top: 1.2em;
 }
 
 .md-typeset {
@@ -81,6 +97,23 @@
 [data-md-color-scheme="slate"] .md-typeset h2 {
   padding-bottom: 0.4em;
   border-bottom: 1px solid rgba(92, 224, 210, 0.08);
+}
+
+[data-md-color-scheme="slate"] .md-typeset h1 {
+  color: #8ce7dd;
+}
+
+[data-md-color-scheme="slate"] .md-typeset h2 {
+  color: #7fbef8;
+}
+
+[data-md-color-scheme="slate"] .md-typeset h3 {
+  color: #f4c978;
+  border-left-color: rgba(244, 201, 120, 0.3);
+}
+
+[data-md-color-scheme="slate"] .md-typeset h4 {
+  color: #c1b6ff;
 }
 
 /* === Code blocks === */
