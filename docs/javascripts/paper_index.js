@@ -5,11 +5,14 @@ document.addEventListener("DOMContentLoaded", function () {
 
   var scripts = document.getElementsByTagName("script");
   var base = "";
+  var cacheQuery = "";
   for (var i = 0; i < scripts.length; i++) {
     var src = scripts[i].src;
     var idx = src.indexOf("/javascripts/paper_index.js");
     if (idx !== -1) {
       base = src.substring(0, idx);
+      var qidx = src.indexOf("?");
+      cacheQuery = qidx !== -1 ? src.substring(qidx) : "";
       break;
     }
   }
@@ -24,7 +27,7 @@ document.addEventListener("DOMContentLoaded", function () {
     } catch (e) { return []; }
   }());
 
-  fetch(base + "/data/tag_index.json")
+  fetch(base + "/data/tag_index.json" + cacheQuery, { cache: "no-store" })
     .then(function (r) {
       if (!r.ok) throw new Error(r.status);
       return r.json();

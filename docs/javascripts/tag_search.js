@@ -19,16 +19,19 @@ document.addEventListener("DOMContentLoaded", function () {
 
   var scripts = document.getElementsByTagName("script");
   var siteBase = "";
+  var cacheQuery = "";
   for (var i = 0; i < scripts.length; i++) {
     var src = scripts[i].src;
     var idx = src.indexOf("/javascripts/tag_search.js");
     if (idx !== -1) {
       siteBase = src.substring(0, idx);
+      var qidx = src.indexOf("?");
+      cacheQuery = qidx !== -1 ? src.substring(qidx) : "";
       break;
     }
   }
 
-  fetch(siteBase + "/data/tag_index.json")
+  fetch(siteBase + "/data/tag_index.json" + cacheQuery, { cache: "no-store" })
     .then(function (r) {
       if (!r.ok) throw new Error(r.status);
       return r.json();
