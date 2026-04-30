@@ -61,7 +61,7 @@ extra_javascript:
   - https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js
 
 extra_css:
-  - stylesheets/extra.css?v=13
+  - stylesheets/extra.css?v=14
   - stylesheets/tag_search.css?v=4
 
 nav:

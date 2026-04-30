@@ -83,12 +83,25 @@
 }
 
 /* === Header bar === */
+:root {
+  --site-header-height: 2.4rem;
+  --site-tabs-height: 2.4rem;
+}
+
 .md-header {
   background-color: #0f1923;
   box-shadow: 0 1px 0 rgba(92, 224, 210, 0.06);
-  position: sticky;
+  position: fixed !important;
   top: 0;
+  left: 0;
+  right: 0;
   z-index: 5;
+  transform: none !important;
+}
+
+.md-header__inner,
+.md-header__title,
+.md-header__source {
   transform: none !important;
 }
 
@@ -140,14 +153,37 @@
 /* === Nav tabs === */
 .md-tabs {
   background-color: #0f1923;
-  position: sticky;
-  top: 2.4rem;
+  position: fixed !important;
+  top: var(--site-header-height);
+  left: 0;
+  right: 0;
   z-index: 4;
+  transform: none !important;
+}
+
+.md-tabs__inner,
+.md-tabs__list {
   transform: none !important;
 }
 
 .md-tabs[data-md-state="hidden"] {
   transform: none !important;
+}
+
+.md-container,
+.md-main {
+  padding-top: calc(var(--site-header-height) + var(--site-tabs-height));
+}
+
+@media screen and (max-width: 76.234375em) {
+  .md-tabs {
+    position: static !important;
+  }
+
+  .md-container,
+  .md-main {
+    padding-top: var(--site-header-height);
+  }
 }
 
 /* === Search === */
