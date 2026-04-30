@@ -5,7 +5,7 @@ tags:
   - Sparse Attention
 ---
 
-# 运行时与模块生成
+# plan 阶段：模块准备与调度生成
 
 **源码**:
 
@@ -16,9 +16,15 @@ tags:
 - [jit/attention/modules.py:L956-L1042](src/jit_attention_modules_py.md#__codelineno-0-956)
 - [jit/attention/modules.py:L1473-L1580](src/jit_attention_modules_py.md#__codelineno-0-1473)
 
-这一层的重点不是某个复杂算法，而是“边界收缩得有多干净”。本地 `variable_block_attn` 只留下了 wrapper 真正会走到的 batch prefill 闭环，其余上游分支基本都被裁掉了。
+这一章只讲 `plan()` 后半段真正发生的事情，也就是：
 
-## `prefill_runtime.py`：只保留 `plan` 和 `paged_run`
+1. Python 侧怎样拿到 batch prefill 模块
+2. JIT 怎样把规格编码成可编译模块
+3. `module.plan(...)` 最终怎样落到 C++ `BatchPrefillWithKVCachePlan(...)`
+
+这正好对应代码执行顺序里“metadata 已经准备好，接下来开始生成执行模块和调度信息”的阶段。
+
+## `get_batch_prefill_module()`：先拿到可执行模块
 
 当前 runtime 主入口只有 [`prefill_runtime.py:L32-L108`](src/prefill_runtime_py.md#__codelineno-0-32)：
 
@@ -89,7 +95,7 @@ def get_batch_prefill_module(backend, *args):
 
 所以它确实是“面向 variable-block wrapper 的 batch prefill runtime 薄封装”。
 
-## backend 解析：接口保留，能力收缩
+## 这一阶段为什么只会落到 `fa2`
 
 外层边界在 [`backend.py:L28-L50`](src/backend_py.md#__codelineno-0-28)：
 
@@ -154,7 +160,7 @@ def determine_attention_backend(
 - 将来若要接回 `fa3`，边界仍然清楚
 - 当前不会把没打通的能力伪装成“已支持”
 
-## URI：把模板规格编码成模块身份
+## URI：把这次 `plan()` 所需规格编码成模块身份
 
 JIT 的第一步是把“规格”编码进 URI。见 [`jit/attention/modules.py:L372-L396`](src/jit_attention_modules_py.md#__codelineno-0-372)：
 
@@ -194,7 +200,7 @@ def get_batch_prefill_uri(
 
 因此 URI 不是装饰，它是在把“模板实例化规格”编码成可缓存、可编译、可复用的模块身份。
 
-## `gen_batch_prefill_module()`：variable-block 实际只走 `fa2`
+## `gen_batch_prefill_module()`：按规格选择 batch prefill 模块形态
 
 wrapper 最终调用的是 [`jit/attention/modules.py:L956-L1042`](src/jit_attention_modules_py.md#__codelineno-0-956)：
 
@@ -263,7 +269,7 @@ def gen_batch_prefill_module(
 
 这意味着本地版本不是重新发明 JIT 逻辑，而是在复用上游 batch prefill 的参数化模板体系。
 
-## `gen_customize_batch_prefill_module()`：生成 config、实例化单元和绑定源码
+## `gen_customize_batch_prefill_module()`：把规格落成可编译源码
 
 真正落到磁盘的是 [`jit/attention/modules.py:L1473-L1580`](src/jit_attention_modules_py.md#__codelineno-0-1473)：
 
@@ -349,10 +355,80 @@ def gen_customize_batch_prefill_module(
 
 如果你在理解“为什么要写 URI，为什么要有 config + inst 模板”时感觉熟悉，可以对照 [Flash Attention V2：调度与实例化](../flash_attention_v2/05_dispatch_and_instantiation.md) 一起看。这两者都属于“编译期模板实例化 + 运行期选择”的同一类工程问题。
 
+## `module.plan(...)`：Python plan 最终落到哪
+
+在 [`wrapper.py:L214-L252`](src/wrapper_py.md#__codelineno-0-214) 里，Python 侧最终会调用：
+
+```python
+self._cached_module = get_batch_prefill_module(self._backend, *get_module_args)
+
+kv_lens_arr_host = kv_indptr_host[1:] - kv_indptr_host[:-1]
+args = [
+    self._float_workspace_buffer,
+    self._int_workspace_buffer,
+    self._pin_memory_int_workspace_buffer,
+    qo_indptr_host,
+    kv_indptr_host,
+    kv_lens_arr_host,
+    qo_indptr_host[-1].item(),
+    num_blocks_row * num_kv_heads,
+    num_qo_heads // num_kv_heads,
+    1,
+    1,
+    False,
+    head_dim,
+    head_dim,
+    causal,
+    -1,
+]
+if self._backend == "fa2":
+    args.append(-1)
+    args.append(False)
+    args.append(0)
+self._plan_info = self._cached_module.plan(*args)
+```
+
+这一步是整个 `plan()` 的真正终点：
+
+- 前一章准备好的 metadata 被送进 runtime 模块
+- JIT 产出的 `.plan` 符号被真正调用
+- 返回值 `self._plan_info` 会成为后续 `run()` 阶段的核心输入
+
+它在 C++ 侧对应的是 [`batch_prefill.cu:L47-L75`](src/batch_prefill_cu.md#__codelineno-0-47)：
+
+```cpp
+Array<int64_t> BatchPrefillWithKVCachePlan(
+    TensorView float_workspace_buffer, TensorView int_workspace_buffer,
+    TensorView page_locked_int_workspace_buffer, TensorView qo_indptr, TensorView kv_indptr,
+    TensorView kv_len_arr, int64_t total_num_rows, int64_t batch_size, int64_t num_qo_heads,
+    int64_t num_kv_heads, int64_t page_size, bool enable_cuda_graph, int64_t head_dim_qk,
+    int64_t head_dim_vo, bool causal, int64_t window_left, int64_t fixed_split_size,
+    bool disable_split_kv, int64_t num_colocated_ctas = 0) {
+  ...
+  PrefillPlanInfo plan_info;
+  ...
+  cudaError_t status = PrefillPlan<IdType>(..., plan_info, ...);
+  ...
+  return Array(plan_info.ToVector());
+}
+```
+
+这里最重要的语义是：
+
+- C++ `plan` 会把调度结果写入 `PrefillPlanInfo`
+- 返回 Python 的不是结构体，而是序列化后的 `Array<int64_t>`
+- 后续 `run()` 再把这串 `plan_info` 恢复回来
+
+所以如果按执行顺序理解，这一章的落点其实很明确：
+
+> `plan()` 的后半段并不负责执行 attention，它负责准备“之后怎么执行”。
+
 ## 这一层的结论
 
-runtime/JIT 层的设计可以概括成一句话：
+按执行顺序看，`plan()` 的后半段做了三件事：
 
-> 保留上游 batch prefill 的模块生成机制，但把 variable-block 真正会走到的执行面压缩到 `fa2`、`plan`、`paged_run` 这一条闭环上。
+1. 根据 dtype/head_dim/backend 选择并生成 batch prefill 模块。
+2. 通过 JIT 把这组规格变成可编译的 C++/CUDA 源码。
+3. 调用 C++ `BatchPrefillWithKVCachePlan(...)` 生成序列化后的 `plan_info`。
 
-于是这层没有新增多少“算法”，反而最有价值的地方是删得足够狠，边界收得足够清楚。
+到了这一章结束时，真正执行 attention 所需的调度信息已经生成完毕；下一章才开始进入 `run()` 和底层 kernel。

@@ -5,7 +5,7 @@ tags:
   - Sparse Attention
 ---
 
-# C++ 执行链路
+# run 阶段：进入 C++ 与 CUDA
 
 **源码**:
 
@@ -16,7 +16,83 @@ tags:
 - [data/csrc/batch_prefill_paged_kernel_inst.jinja](src/batch_prefill_paged_kernel_inst_jinja.md)
 - [data/csrc/batch_prefill_ragged_kernel_inst.jinja](src/batch_prefill_ragged_kernel_inst_jinja.md)
 
+这一章只讲真正执行 attention 的后半段：
+
+1. Python `run()` 怎样重排 q/k/v
+2. `module.paged_run(...)` 怎样落到 C++
+3. C++ 怎样恢复 `plan_info`、拼装 `PagedParams`
+4. 最终怎样 dispatch 到 FA2 paged prefill kernel
+
+也就是说，前一章负责“准备怎么跑”，这一章负责“真正开始跑”。
+
 到了这一层，variable block 语义已经基本消失。C++/CUDA 代码看到的输入是 `qo_indptr / paged_kv_indptr / paged_kv_indices / last_page_len`，也就是标准 paged prefill 认识的 metadata。
+
+## `run()`：先把张量改成底层期望布局
+
+Python 侧真正的执行入口在 [`wrapper.py:L284-L394`](src/wrapper_py.md#__codelineno-0-284)：
+
+```python
+if enable_pdl is None:
+    enable_pdl = device_support_pdl(q.device)
+
+if logits_soft_cap is None:
+    logits_soft_cap = 0.0
+if sm_scale is None:
+    sm_scale = 1.0 / math.sqrt(q.size(-1))
+if rope_scale is None:
+    rope_scale = 1.0
+if rope_theta is None:
+    rope_theta = 1e4
+
+'''
+Q 改成 batch prefill 期望的 grouped-query 视图
+K/V 改成 page size = 1 的 paged cache 视图
+'''
+q = einops.rearrange(
+    q,
+    "(num_kv_heads gqa_group_size) qo_len head_dim -> (num_kv_heads qo_len) gqa_group_size head_dim",
+    num_kv_heads=self._num_kv_heads,
+).contiguous()
+k = einops.rearrange(
+    k,
+    "num_kv_heads kv_len head_dim -> (num_kv_heads kv_len) 1 1 head_dim",
+).contiguous()
+v = einops.rearrange(
+    v,
+    "num_kv_heads kv_len head_dim -> (num_kv_heads kv_len) 1 1 head_dim",
+).contiguous()
+
+'''
+把 plan() 阶段缓存的 metadata 与 plan_info 全部交给 paged_run
+'''
+self._cached_module.paged_run(
+    self._float_workspace_buffer,
+    self._int_workspace_buffer,
+    self._plan_info,
+    q,
+    k,
+    v,
+    self._qo_indptr,
+    self._paged_kv_indptr_buf,
+    self._paged_kv_indices_buf,
+    self._paged_kv_last_page_len,
+    out,
+    lse,
+    self._mask_mode,
+    TensorLayout[self._kv_layout].value,
+    -1,
+    enable_pdl,
+    ...,
+)
+```
+
+这一层的职责很明确：
+
+- `q` 被重排成 grouped-query 视图
+- `k/v` 被重排成 `page_size=1` 的 paged cache 视图
+- 前两章准备好的 metadata 和 `plan_info` 被一次性交给 `paged_run`
+
+因此 `run()` 本身不是主要算法阶段，它更像“执行前的最后一层 Python 适配”。
 
 ## binding 层：导出的只有 `plan / ragged_run / paged_run`
 
@@ -45,50 +121,6 @@ TVM_FFI_DLL_EXPORT_TYPED_FUNC(paged_run, BatchPrefillWithPagedKVCacheRun);
 - `paged_run`
 
 `ragged_run` 只是跟随 batch prefill 通用基础设施一起保留下来。
-
-## `plan()`：把调度结果编码成 `Array<int64_t>`
-
-Python 里 `self._cached_module.plan(...)` 的真正落点是 [`batch_prefill.cu:L47-L75`](src/batch_prefill_cu.md#__codelineno-0-47)：
-
-```cpp
-Array<int64_t> BatchPrefillWithKVCachePlan(
-    TensorView float_workspace_buffer, TensorView int_workspace_buffer,
-    TensorView page_locked_int_workspace_buffer, TensorView qo_indptr, TensorView kv_indptr,
-    TensorView kv_len_arr, int64_t total_num_rows, int64_t batch_size, int64_t num_qo_heads,
-    int64_t num_kv_heads, int64_t page_size, bool enable_cuda_graph, int64_t head_dim_qk,
-    int64_t head_dim_vo, bool causal, int64_t window_left, int64_t fixed_split_size,
-    bool disable_split_kv, int64_t num_colocated_ctas = 0) {
-  size_t float_workspace_size_in_bytes =
-      float_workspace_buffer.size(0) * get_element_size(float_workspace_buffer);
-  size_t int_workspace_size_in_bytes =
-      int_workspace_buffer.size(0) * get_element_size(int_workspace_buffer);
-
-  PrefillPlanInfo plan_info;
-
-  ffi::CUDADeviceGuard device_guard(float_workspace_buffer.device().device_id);
-  const cudaStream_t stream = get_stream(float_workspace_buffer.device());
-  cudaError_t status = PrefillPlan<IdType>(
-      float_workspace_buffer.data_ptr(), float_workspace_size_in_bytes,
-      int_workspace_buffer.data_ptr(), page_locked_int_workspace_buffer.data_ptr(),
-      int_workspace_size_in_bytes, plan_info, static_cast<IdType*>(qo_indptr.data_ptr()),
-      static_cast<IdType*>(kv_indptr.data_ptr()), total_num_rows, batch_size, num_qo_heads,
-      num_kv_heads, head_dim_qk, head_dim_vo, page_size, enable_cuda_graph,
-      /*sizeof_dtype_o=*/2, window_left, fixed_split_size, disable_split_kv, num_colocated_ctas,
-      stream);
-
-  TVM_FFI_ICHECK(status == cudaSuccess)
-      << "Failed to plan prefill with error: " << cudaGetErrorString(status);
-
-  return Array(plan_info.ToVector());
-}
-```
-
-这一步最重要的不是 `PrefillPlan` 的模板细节，而是输入输出语义：
-
-- 输入是 workspace、`qo_indptr`、`kv_indptr`、row/head/page 等调度参数
-- 输出不是 C++ 对象，而是 `plan_info.ToVector()` 之后的 `Array<int64_t>`
-
-所以 Python 侧保存的 `self._plan_info` 本质上是“序列化后的调度结果”，不是某个可直接操作的高层对象。
 
 ## `paged_run()` 第一段：恢复 `plan_info`，构造 `paged_kv_t`
 
@@ -231,11 +263,11 @@ DISPATCH_CTA_TILE_Q(plan_info.cta_tile_q, CTA_TILE_Q, {
 
 ## 这一层的结论
 
-把 binding 和 kernel 主线串起来，可以得到一个非常明确的工程判断：
+按执行顺序看，这一章做了四件事：
 
-1. Python `plan()` 先把 variable block 语义翻译成 paged prefill metadata
-2. C++ `plan` 再把调度索引编码进 `PrefillPlanInfo` 和 workspace
-3. `paged_run()` 恢复 `plan_info`、拼装 `PagedParams`
-4. 最终进入标准 FA2 paged prefill kernel
+1. Python `run()` 先把 q/k/v 重排成 paged prefill 期望布局。
+2. `paged_run` 进入 C++，恢复前一章产出的 `plan_info`。
+3. C++ 侧拼装 `PagedParams`，从 workspace 偏移恢复调度数组。
+4. 最终 dispatch 到标准 FA2 paged prefill kernel。
 
-因此，底层并不存在“专门为 variable block 写的新 kernel”。真正的新东西只在 metadata 翻译层；C++/CUDA 层执行的是成熟的 batch prefill 调度与 kernel 体系。
+因此，真正执行阶段并没有额外的 variable block 专属 kernel；这一层做的仍然是成熟的 paged prefill 执行路径。

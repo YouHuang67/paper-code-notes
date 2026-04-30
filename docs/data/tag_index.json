@@ -1282,25 +1282,25 @@
     "summary": "本地剥离版 variable_block_attn：variable block 元数据翻译层如何接到 FA2 paged prefill runtime、JIT 与 C++ binding"
   },
   {
-    "title": "FlashInfer Variable Block Sparse Attention - Python 入口与元数据展开",
+    "title": "FlashInfer Variable Block Sparse Attention - 初始化与 plan 前准备",
     "path": "code_analysis/flashinfer_variable_block_sparse/01_python_wrapper_and_metadata.md",
     "type": "代码分析",
     "tags": ["CUDA", "Sparse Attention", "Flash Attention"],
-    "summary": "从 wrapper 外部输入出发，分析 variable block 稀疏描述如何被整理并展开成底层可执行的 token 级索引"
+    "summary": "按执行顺序分析 wrapper 初始化、metadata 翻译、page_size=1 设计与 backend 解析，说明 plan 前状态如何建立"
   },
   {
-    "title": "FlashInfer Variable Block Sparse Attention - 运行时与模块生成",
+    "title": "FlashInfer Variable Block Sparse Attention - plan 阶段：模块准备与调度生成",
     "path": "code_analysis/flashinfer_variable_block_sparse/02_runtime_and_jit.md",
     "type": "代码分析",
     "tags": ["CUDA", "Sparse Attention", "Flash Attention"],
-    "summary": "分析 backend 选择、JIT 编译和执行模块装配，说明当前闭环为何收敛为 fa2 only"
+    "summary": "按 plan 阶段顺序分析 runtime 模块获取、JIT 生成和 C++ 调度计划生成，说明 self._plan_info 如何建立"
   },
   {
-    "title": "FlashInfer Variable Block Sparse Attention - C++ 执行链路",
+    "title": "FlashInfer Variable Block Sparse Attention - run 阶段：进入 C++ 与 CUDA",
     "path": "code_analysis/flashinfer_variable_block_sparse/03_cpp_binding_and_kernel.md",
     "type": "代码分析",
     "tags": ["CUDA", "Sparse Attention", "Flash Attention"],
-    "summary": "分析 plan 信息如何传到 C++/CUDA，怎样恢复执行参数并最终进入 FA2 paged prefill kernel"
+    "summary": "按 run 阶段顺序分析张量重排、paged_run、plan_info 恢复与 kernel dispatch，说明执行阶段怎样真正落到底层"
   },
   {
     "title": "DeepSeek-V4",

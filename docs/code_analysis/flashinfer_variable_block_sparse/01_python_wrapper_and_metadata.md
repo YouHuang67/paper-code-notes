@@ -5,7 +5,7 @@ tags:
   - Sparse Attention
 ---
 
-# Python 入口与元数据展开
+# 初始化与 plan 前准备
 
 **源码**:
 
@@ -13,7 +13,13 @@ tags:
 - [metadata.py:L22-L88](src/metadata_py.md#__codelineno-0-22)
 - [backend.py:L28-L50](src/backend_py.md#__codelineno-0-28)
 
-这一层是整套实现里最值得仔细读的部分，因为 variable block 语义基本都在这里被消化掉了。后面的 runtime/JIT/C++ 层更像是“把翻译结果接进既有 FA2 paged prefill 体系”。
+这一章只讲执行链路里最前面的部分，也就是：
+
+1. wrapper 构造时缓存了什么状态
+2. `plan()` 前半段怎样把 variable block 描述翻译成 token 级 metadata
+3. backend 在这里是怎样被解析出来的
+
+也就是说，这一章先停在“底层模块和调度真正启动之前”。
 
 ## 入口对象：wrapper 只缓存状态，不实现算法
 
@@ -69,7 +75,7 @@ def __init__(
 
 也就是说，这个对象更像“variable block -> paged prefill”的状态容器，而不是完整计算引擎。
 
-## `plan()`：先翻译元数据，再接入 batch prefill `plan`
+## `plan()` 前半段：先翻译元数据，再解析 backend
 
 [`wrapper.py:L131-L252`](src/wrapper_py.md#__codelineno-0-131) 是整个 Python 层的主线：
 
@@ -111,35 +117,10 @@ self._paged_kv_last_page_len = last_block_len.to(self.device, non_blocking=non_b
 torch.cuda.synchronize()
 
 '''
-第二段：backend 解析、模块获取、进入标准 batch prefill plan
+第二段：先完成 backend 解析
+模块获取与真正的 plan 生成放到下一章
 '''
 self._backend = resolve_attention_backend(...)
-self._cached_module = get_batch_prefill_module(self._backend, *get_module_args)
-
-kv_lens_arr_host = kv_indptr_host[1:] - kv_indptr_host[:-1]
-args = [
-    self._float_workspace_buffer,
-    self._int_workspace_buffer,
-    self._pin_memory_int_workspace_buffer,
-    qo_indptr_host,
-    kv_indptr_host,
-    kv_lens_arr_host,
-    qo_indptr_host[-1].item(),
-    num_blocks_row * num_kv_heads,
-    num_qo_heads // num_kv_heads,
-    1,
-    1,
-    False,
-    head_dim,
-    head_dim,
-    causal,
-    -1,
-]
-if self._backend == "fa2":
-    args.append(-1)
-    args.append(False)
-    args.append(0)
-self._plan_info = self._cached_module.plan(*args)
 ```
 
 这段代码可以拆成两个阶段理解。
@@ -150,13 +131,11 @@ self._plan_info = self._cached_module.plan(*args)
 - `build_last_page_len(...)`
 - `block_mask_map_to_expanded_indices(block_mask_map, block_col_sz)`
 
-第二阶段已经是标准 FlashInfer batch prefill 流程：
+第二阶段先把执行分支收敛清楚：
 
 - backend 选择
-- JIT 模块获取
-- `module.plan(...)`
 
-所以 `plan()` 这个名字有点误导。它真正先做的是“语义翻译”，然后才把翻译结果送进底层 `plan`。
+而真正的 JIT 模块获取和 `module.plan(...)` 调用，会在下一章继续展开。
 
 ## `page_size=1`：整套设计的关键压缩点
 
@@ -274,87 +253,6 @@ def block_mask_map_to_expanded_indices(
 
 这里的结果已经完全是 token-level 表达，不再保留 “block size” 这个概念。也正因为如此，后续层可以把它当作普通 paged KV metadata 使用。
 
-## `run()`：只做布局改写，然后进入 `paged_run`
-
-`run()` 的核心在 [`wrapper.py:L284-L394`](src/wrapper_py.md#__codelineno-0-284)：
-
-```python
-if enable_pdl is None:
-    enable_pdl = device_support_pdl(q.device)
-
-if logits_soft_cap is None:
-    logits_soft_cap = 0.0
-if sm_scale is None:
-    sm_scale = 1.0 / math.sqrt(q.size(-1))
-if rope_scale is None:
-    rope_scale = 1.0
-if rope_theta is None:
-    rope_theta = 1e4
-
-'''
-Q 改成 batch prefill 期望的 grouped-query 视图
-K/V 改成 page size = 1 的 paged cache 视图
-'''
-q = einops.rearrange(
-    q,
-    "(num_kv_heads gqa_group_size) qo_len head_dim -> (num_kv_heads qo_len) gqa_group_size head_dim",
-    num_kv_heads=self._num_kv_heads,
-).contiguous()
-k = einops.rearrange(
-    k,
-    "num_kv_heads kv_len head_dim -> (num_kv_heads kv_len) 1 1 head_dim",
-).contiguous()
-v = einops.rearrange(
-    v,
-    "num_kv_heads kv_len head_dim -> (num_kv_heads kv_len) 1 1 head_dim",
-).contiguous()
-
-'''
-把 plan() 阶段缓存的 metadata 全部交给 paged_run
-'''
-self._cached_module.paged_run(
-    self._float_workspace_buffer,
-    self._int_workspace_buffer,
-    self._plan_info,
-    q,
-    k,
-    v,
-    self._qo_indptr,
-    self._paged_kv_indptr_buf,
-    self._paged_kv_indices_buf,
-    self._paged_kv_last_page_len,
-    out,
-    lse,
-    self._mask_mode,
-    TensorLayout[self._kv_layout].value,
-    -1,
-    enable_pdl,
-    None,
-    None,
-    None,
-    None,
-    None,
-    None,
-    logits_soft_cap,
-    sm_scale,
-    None,
-    None,
-    None,
-    rope_scale,
-    rope_theta,
-    0,
-    self._workspace_size,
-)
-```
-
-这一步要点也很明确：
-
-- `q` 被重排成按 `num_kv_heads` 分组的 GQA 视图
-- `k/v` 被重排成 `(token, 1, 1, dim)`，正好对应 `page_size=1`
-- `run()` 并不重新计算 metadata，只消费 `plan()` 阶段缓存的结果
-
-因此 `run()` 更像是“布局适配 + 参数透传”，而不是另一个有独立语义的阶段。
-
 ## backend 边界：接口兼容，但执行路径收敛
 
 虽然 runtime/JIT 细节放在下一篇，这里先看一下 [`backend.py:L28-L50`](src/backend_py.md#__codelineno-0-28)：
@@ -379,12 +277,28 @@ def resolve_attention_backend(...):
 
 这正是“对外保留 `auto/fa2/fa3`，内部只保留 `fa2` 最小闭环”的第一现场。
 
+## 这一章结束时，系统里已经有什么
+
+当这一章讲完时，执行链路停在下面这个状态：
+
+- wrapper 已经持有 float/int workspace
+- variable block 稀疏图已经被翻译成 `qo_indptr / paged_kv_indptr / paged_kv_indices / last_page_len`
+- backend 已经被解析为当前真正可执行的 `fa2`
+
+但还没有发生两件事：
+
+- 还没展开 batch prefill 模块是怎样生成/加载出来的
+- 还没展开 C++ `plan` 和后续 `run` 的执行细节
+
+这两部分分别在后两章展开。
+
 ## 小结
 
 Python 层的职责可以压缩成三步：
 
-1. 把 variable block 稀疏图翻译成 token 级 `qo_indptr / kv_indptr / kv_indices`
-2. 用 `page_size=1` 把问题改写成普通 paged prefill
-3. 在 `run()` 中把 Q/K/V 重排成底层 ABI 期待的布局
+1. 构造 wrapper，准备 workspace 和生命周期状态。
+2. 在 `plan()` 前半段，把 variable block 稀疏图翻译成 token 级 metadata。
+3. 把问题用 `page_size=1` 改写成普通 paged prefill。
+4. 在 Python 层完成 backend 解析，为后面的模块准备和调度生成铺路。
 
-后面的 runtime、JIT、C++、CUDA 都是在消费这一层已经翻译好的结果。
+后面的 runtime、JIT、C++、CUDA 都是在消费这一章已经准备好的结果。

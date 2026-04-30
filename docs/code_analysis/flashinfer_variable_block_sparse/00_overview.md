@@ -37,17 +37,18 @@ tags:
 ## 执行链路
 
 ```text
-block_mask_map / block_row_sz / block_col_sz
-  -> build_qo_indptr()
-  -> build_last_page_len()
-  -> block_mask_map_to_expanded_indices()
-  -> resolve_attention_backend()
-  -> get_batch_prefill_module()
-  -> module.plan(...)
-  -> run() 中重排 q / k / v
-  -> module.paged_run(...)
-  -> BatchPrefillWithPagedKVCacheRun(...)
-  -> FlashInfer FA2 paged prefill kernel
+构造 VariableBlockSparseAttentionWrapper
+  -> plan():
+       1. build_qo_indptr / build_last_page_len / block_mask_map_to_expanded_indices
+       2. resolve_attention_backend
+       3. get_batch_prefill_module
+       4. module.plan(...)
+       5. BatchPrefillWithKVCachePlan(...)
+  -> run():
+       6. 重排 q / k / v 到 paged prefill 期望布局
+       7. module.paged_run(...)
+       8. BatchPrefillWithPagedKVCacheRun(...)
+       9. FlashInfer FA2 paged prefill kernel
 ```
 
 这里真正“新”的部分只到 `block_mask_map_to_expanded_indices()` 为止。后面的 plan、JIT、binding、kernel 都是在复用 FlashInfer 原有的 paged prefill 基础设施。
@@ -87,9 +88,9 @@ variable_block_attn/
 
 | 文档 | 内容 |
 |------|------|
-| [01 Python 入口与元数据展开](01_python_wrapper_and_metadata.md) | 从 wrapper 输入出发，说明 variable block 稀疏描述如何被展开成底层可执行的索引结构 |
-| [02 运行时与模块生成](02_runtime_and_jit.md) | 说明 backend 选择、JIT 编译和 batch prefill 模块是怎样准备出来的 |
-| [03 C++ 执行链路](03_cpp_binding_and_kernel.md) | 说明 Python 侧 plan 信息如何传到 C++/CUDA，并最终进入底层 kernel |
+| [01 初始化与 plan 前准备](01_python_wrapper_and_metadata.md) | 从 wrapper 构造开始，按 `plan()` 前半段顺序说明输入状态、metadata 翻译和 backend 解析 |
+| [02 plan 阶段：模块准备与调度生成](02_runtime_and_jit.md) | 按 `get_batch_prefill_module -> module.plan -> C++ plan` 的顺序说明 JIT 模块和调度信息如何生成 |
+| [03 run 阶段：进入 C++ 与 CUDA](03_cpp_binding_and_kernel.md) | 按 `run() -> paged_run -> C++ -> kernel dispatch` 的顺序说明真正执行阶段如何落到底层 |
 | [源码浏览](src/index.md) | `variable_block_attn` 核心源码页索引 |
 
 ## 源码浏览

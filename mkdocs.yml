@@ -181,9 +181,9 @@ nav:
         - BlockRadixSort 与 BlockScan: code_analysis/cub_block_primitives/01_block_radix_sort_and_scan.md
       - FlashInfer Variable Block Sparse Attention:
         - 总览: code_analysis/flashinfer_variable_block_sparse/00_overview.md
-        - Python 入口与元数据展开: code_analysis/flashinfer_variable_block_sparse/01_python_wrapper_and_metadata.md
-        - 运行时与模块生成: code_analysis/flashinfer_variable_block_sparse/02_runtime_and_jit.md
-        - C++ 执行链路: code_analysis/flashinfer_variable_block_sparse/03_cpp_binding_and_kernel.md
+        - 初始化与 plan 前准备: code_analysis/flashinfer_variable_block_sparse/01_python_wrapper_and_metadata.md
+        - plan 阶段：模块准备与调度生成: code_analysis/flashinfer_variable_block_sparse/02_runtime_and_jit.md
+        - run 阶段：进入 C++ 与 CUDA: code_analysis/flashinfer_variable_block_sparse/03_cpp_binding_and_kernel.md
       - DeepSeek V4:
         - 总览: code_analysis/deepseek_v4/00_overview.md
         - 模型架构: code_analysis/deepseek_v4/01_model_architecture.md
