@@ -50,5 +50,5 @@
   - [Python Wrapper 与 Metadata](flashinfer_variable_block_sparse/01_python_wrapper_and_metadata.md) - `wrapper.py` / `metadata.py`：`plan()`、`run()`、`page_size=1` 与 token 级 CSR 展开
   - [Runtime 与 JIT](flashinfer_variable_block_sparse/02_runtime_and_jit.md) - `prefill_runtime.py`、backend 选择、batch prefill 模块生成与 `fa2` 最小闭环
   - [C++ Binding 与 Kernel](flashinfer_variable_block_sparse/03_cpp_binding_and_kernel.md) - `batch_prefill_jit_binding.cu`、`batch_prefill.cu`、`PagedParams` 与 kernel dispatch
-  - [源码索引](flashinfer_variable_block_sparse/src/index.md) - 同步进知识库的 `variable_block_attn` 核心源码浏览入口
+  - [源码浏览：wrapper.py / metadata.py / batch_prefill.cu](flashinfer_variable_block_sparse/src/index.md) - `variable_block_attn` 关键 Python、JIT、C++/CUDA 文件的源码页索引
 - [DeepSeek V4](deepseek_v4/00_overview.md) - mHC + Hybrid Attention + MoE + TileLang 低精度推理实现
