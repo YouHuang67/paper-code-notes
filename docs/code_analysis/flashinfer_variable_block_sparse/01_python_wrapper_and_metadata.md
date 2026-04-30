@@ -100,10 +100,10 @@ def __init__(
     这些成员在 __init__ 时都还是 None，只是先占位
     '''
     self._kv_layout = "NHD"                                        # paged KV layout，后面 run() 直接透传
-    self._qo_indptr: Optional[torch.Tensor] = None                 # [H_kv * R + 1]
-    self._paged_kv_indptr_buf: Optional[torch.Tensor] = None       # [H_kv * R + 1]
-    self._paged_kv_indices_buf: Optional[torch.Tensor] = None      # [nnz_tokens]
-    self._paged_kv_last_page_len: Optional[torch.Tensor] = None    # [H_kv * R]
+    self._qo_indptr: Optional[torch.Tensor] = None                 # [H_kv * R + 1]，query 侧 CSR 行边界；第 i 行范围是 [indptr[i], indptr[i+1])
+    self._paged_kv_indptr_buf: Optional[torch.Tensor] = None       # [H_kv * R + 1]，KV 侧 CSR 行边界；同样用相邻两项夹出第 i 行 token 段
+    self._paged_kv_indices_buf: Optional[torch.Tensor] = None      # [nnz_tokens]，把所有被选中的 KV token 编号顺序拼平后的结果
+    self._paged_kv_last_page_len: Optional[torch.Tensor] = None    # [H_kv * R]，每个逻辑 request 最后一页长度；当前固定都是 1
 
     '''
     第三组状态：执行路径选择
@@ -131,6 +131,21 @@ def __init__(
    - `page_size = 1`
    - `num_heads = 1`
    - `head_dim = D`
+
+5. `indptr` 之所以是 `[H_kv * R + 1]` 而不是 `[H_kv * R]`，
+   是因为它不是“每行一个值”的数组，而是 **每行的起止边界数组**。
+   如果总共有 `H_kv * R` 行，就需要：
+   - 1 个起点 `indptr[0]`
+   - `H_kv * R - 1` 个中间边界
+   - 1 个最后的尾边界 `indptr[H_kv * R]`
+
+也可以把它直接记成：
+
+```text
+rows = H_kv * R
+indptr.shape = [rows + 1]
+第 i 行的数据范围 = [indptr[i], indptr[i + 1])
+```
 
 所以 `VariableBlockSparseAttentionWrapper` 的角色不是“自己实现一套 attention 算法”，而是：
 
@@ -191,8 +206,8 @@ num_blocks_col = block_col_sz.shape[-1]                           # C
 '''
 第一阶段：把 block 级描述翻译成 paged prefill 需要的 token 级 metadata
 '''
-qo_indptr = build_qo_indptr(block_row_sz)                         # [H_kv * R + 1]
-qo_indptr_host = qo_indptr.to("cpu", non_blocking=non_blocking)   # host mirror，给 C++ plan 用
+qo_indptr = build_qo_indptr(block_row_sz)                         # [H_kv * R + 1]，第 i 个逻辑 request 的 query token 范围是 [qo_indptr[i], qo_indptr[i+1])
+qo_indptr_host = qo_indptr.to("cpu", non_blocking=non_blocking)   # host mirror，C++ plan 会按这个边界数组理解 query 分段
 last_block_len = build_last_page_len(
     block_mask_map,
     num_blocks_row,
@@ -202,9 +217,9 @@ last_block_len = build_last_page_len(
 kv_indptr, kv_indices = block_mask_map_to_expanded_indices(
     block_mask_map,
     block_col_sz,
-)                                                                 # kv_indptr:[H_kv * R + 1], kv_indices:[nnz_tokens]
-kv_indptr_host = kv_indptr.to("cpu", non_blocking=non_blocking)   # host mirror
-kv_indices_host = kv_indices.to("cpu", non_blocking=non_blocking) # host mirror
+)                                                                 # kv_indptr:[H_kv * R + 1] 行边界；kv_indices:[nnz_tokens] 每行真正要访问的 KV token 编号
+kv_indptr_host = kv_indptr.to("cpu", non_blocking=non_blocking)   # host mirror，C++ plan 会按这个边界数组理解每行 KV 段
+kv_indices_host = kv_indices.to("cpu", non_blocking=non_blocking) # host mirror，纯粹给断言和后续运行时使用
 
 self._qo_indptr = qo_indptr.to(self.device, non_blocking=non_blocking)
 self._paged_kv_indptr_buf = kv_indptr.to(self.device, non_blocking=non_blocking)
