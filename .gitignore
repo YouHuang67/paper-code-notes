@@ -13,6 +13,12 @@ venv/
 
 # References (not tracked)
 refs/
+!refs/
+refs/*
+!refs/codes/
+refs/codes/*
+!refs/codes/flashinfer_variable_block_sparse/
+!refs/codes/flashinfer_variable_block_sparse/**
 
 # IDE/Editor
 .vscode/

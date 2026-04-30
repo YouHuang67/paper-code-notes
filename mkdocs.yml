@@ -181,8 +181,9 @@ nav:
         - BlockRadixSort 与 BlockScan: code_analysis/cub_block_primitives/01_block_radix_sort_and_scan.md
       - FlashInfer Variable Block Sparse Attention:
         - 总览: code_analysis/flashinfer_variable_block_sparse/00_overview.md
-        - Python Wrapper: code_analysis/flashinfer_variable_block_sparse/01_python_wrapper.md
-        - Hopper Sparse Mainloop: code_analysis/flashinfer_variable_block_sparse/02_sparse_mainloop.md
+        - Python Wrapper 与 Metadata: code_analysis/flashinfer_variable_block_sparse/01_python_wrapper_and_metadata.md
+        - Runtime 与 JIT: code_analysis/flashinfer_variable_block_sparse/02_runtime_and_jit.md
+        - C++ Binding 与 Kernel: code_analysis/flashinfer_variable_block_sparse/03_cpp_binding_and_kernel.md
       - DeepSeek V4:
         - 总览: code_analysis/deepseek_v4/00_overview.md
         - 模型架构: code_analysis/deepseek_v4/01_model_architecture.md
@@ -218,3 +219,5 @@ nav:
       - generate.py: code_analysis/deepseek_v4/src/generate_py.md
       - model.py: code_analysis/deepseek_v4/src/model_py.md
       - kernel.py: code_analysis/deepseek_v4/src/kernel_py.md
+    - FlashInfer Variable Block Sparse:
+      - code_analysis/flashinfer_variable_block_sparse/src/index.md

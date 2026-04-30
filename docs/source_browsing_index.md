@@ -11,4 +11,5 @@ tags:
 | 项目 | 框架 | 文件数 | 解读文档 |
 |------|------|--------|---------|
 | [Flash Attention V2](code_analysis/flash_attention_v2/src/index.md) | CuTe + CUTLASS 2.x | 14 | [代码分析](code_analysis/flash_attention_v2/00_overview.md) |
+| [FlashInfer Variable Block Sparse](code_analysis/flashinfer_variable_block_sparse/src/index.md) | PyTorch + JIT + FA2 Paged Prefill | 24 | [代码分析](code_analysis/flashinfer_variable_block_sparse/00_overview.md) |
 | [DeepSeek V4](code_analysis/deepseek_v4/src/index.md) | PyTorch + TileLang | 6 | [代码分析](code_analysis/deepseek_v4/00_overview.md) |
