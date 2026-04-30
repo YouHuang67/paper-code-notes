@@ -90,7 +90,7 @@ variable_block_attn/
 | [01 Python Wrapper 与 Metadata](01_python_wrapper_and_metadata.md) | `wrapper.py` / `metadata.py`：`plan()`、`run()`、`page_size=1` 与 token 级 CSR 展开 |
 | [02 Runtime 与 JIT](02_runtime_and_jit.md) | `prefill_runtime.py`、backend 选择、URI、batch prefill 模块生成 |
 | [03 C++ Binding 与 Kernel](03_cpp_binding_and_kernel.md) | `plan_info` 序列化/恢复、`PagedParams` 装配、workspace 偏移与最终 dispatch |
-| [源码浏览：wrapper.py / metadata.py / batch_prefill.cu](src/index.md) | `variable_block_attn` 关键 Python、JIT、C++/CUDA 文件的源码页索引 |
+| [源码浏览](src/index.md) | `variable_block_attn` 核心源码页索引 |
 
 ## 源码浏览
 
