@@ -8,6 +8,8 @@ tags:
 
 **原始文件**: `refs/codes/flashinfer_variable_block_sparse/variable_block_attn/prefill_runtime.py`
 
+**仓库**: `refs/codes/flashinfer_variable_block_sparse/variable_block_attn`
+
 **解读**: [代码分析](../00_overview.md)
 
 ```python linenums="1"

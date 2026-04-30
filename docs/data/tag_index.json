@@ -1278,7 +1278,7 @@
     "title": "FlashInfer Variable Block Sparse Attention - 总览",
     "path": "code_analysis/flashinfer_variable_block_sparse/00_overview.md",
     "type": "代码分析",
-    "tags": ["CUDA", "CUTLASS", "Sparse Attention", "Flash Attention"],
+    "tags": ["CUDA", "Sparse Attention", "Flash Attention"],
     "summary": "本地剥离版 variable_block_attn：variable block 元数据翻译层如何接到 FA2 paged prefill runtime、JIT 与 C++ binding"
   },
   {
@@ -1292,14 +1292,14 @@
     "title": "FlashInfer Variable Block Sparse Attention - Runtime 与 JIT",
     "path": "code_analysis/flashinfer_variable_block_sparse/02_runtime_and_jit.md",
     "type": "代码分析",
-    "tags": ["CUDA", "CUTLASS", "Sparse Attention", "Flash Attention"],
+    "tags": ["CUDA", "Sparse Attention", "Flash Attention"],
     "summary": "prefill_runtime、backend 与 JIT 模块生成：接口保留 auto/fa2/fa3，但当前执行闭环收敛为 fa2 only"
   },
   {
     "title": "FlashInfer Variable Block Sparse Attention - C++ Binding 与 Kernel",
     "path": "code_analysis/flashinfer_variable_block_sparse/03_cpp_binding_and_kernel.md",
     "type": "代码分析",
-    "tags": ["CUDA", "CUTLASS", "Sparse Attention", "Flash Attention"],
+    "tags": ["CUDA", "Sparse Attention", "Flash Attention"],
     "summary": "batch_prefill_jit_binding.cu 与 batch_prefill.cu：plan_info 恢复、PagedParams 装配、FA2 paged prefill kernel dispatch"
   },
   {

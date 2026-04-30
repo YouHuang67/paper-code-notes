@@ -7,31 +7,23 @@ tags:
 
 # Python Wrapper 与 Metadata
 
-**核心文件**:
+**源码**:
 
-- [`wrapper.py`](src/wrapper_py.md)
-- [`metadata.py`](src/metadata_py.md)
-- [`backend.py`](src/backend_py.md)
+- [wrapper.py:L41-L397](src/wrapper_py.md#__codelineno-0-41)
+- [metadata.py:L22-L88](src/metadata_py.md#__codelineno-0-22)
+- [backend.py:L28-L50](src/backend_py.md#__codelineno-0-28)
 
-## 入口对象缓存了什么
+这一层是整套实现里最值得仔细读的部分，因为 variable block 语义基本都在这里被消化掉了。后面的 runtime/JIT/C++ 层更像是“把翻译结果接进既有 FA2 paged prefill 体系”。
 
-这套实现只有一个公开入口：
+## 入口对象：wrapper 只缓存状态，不实现算法
+
+公开入口只有一个：
 
 ```python
 from variable_block_attn import VariableBlockSparseAttentionWrapper
 ```
 
-对应的导出非常薄，只是把类从 [`wrapper.py`](src/wrapper_py.md) 重新暴露出来：
-
-```python
-from .wrapper import VariableBlockSparseAttentionWrapper
-
-__all__ = ["VariableBlockSparseAttentionWrapper"]
-```
-
-真正值得看的，是 `VariableBlockSparseAttentionWrapper.__init__` 和 `plan()`。
-
-下面这段代码直接决定了 wrapper 在生命周期里缓存哪些状态：
+真正有信息量的是 [`wrapper.py:L74-L111`](src/wrapper_py.md#__codelineno-0-74) 的构造函数：
 
 ```python
 @flashinfer_api
@@ -40,6 +32,10 @@ def __init__(
     float_workspace_buffer: torch.Tensor,
     backend: str = "auto",
 ) -> None:
+    '''
+    float workspace: split-k 中间结果与 merge 临时缓冲
+    int workspace: request/tile/merge 等调度数组
+    '''
     self._float_workspace_buffer = float_workspace_buffer
     self.device = float_workspace_buffer.device
     self._workspace_size = (
@@ -48,15 +44,16 @@ def __init__(
     self._int_workspace_buffer = torch.empty(
         (8 * 1024 * 1024,), dtype=torch.uint8, device=self.device
     )
-    self._kv_lens_buffer = torch.empty(
-        (32768,), dtype=torch.int32, device=self.device
-    )
     self._pin_memory_int_workspace_buffer = torch.empty(
         self._int_workspace_buffer.shape,
         dtype=torch.uint8,
         pin_memory=True,
         device="cpu",
     )
+
+    '''
+    plan() 完成后常驻的 paged prefill metadata
+    '''
     self._kv_layout = "NHD"
     self._qo_indptr: Optional[torch.Tensor] = None
     self._paged_kv_indptr_buf: Optional[torch.Tensor] = None
@@ -65,22 +62,16 @@ def __init__(
     self._backend = backend
 ```
 
-这里可以直接读出四层状态：
+这里有两个阅读点：
 
-- `float_workspace_buffer`
-  - 给 split-k 的中间结果和 merge 使用
-- `int_workspace_buffer`
-  - 给 request/tile/merge 等调度索引使用
-- `pin_memory_int_workspace_buffer`
-  - 给 host-device 规划过程使用
-- `*_indptr / *_indices / *_last_page_len`
-  - `plan()` 完成后常驻的 paged prefill 元数据
+- 当前代码已经没有旧版本里那种 `_kv_lens_buffer` 常驻状态，wrapper 缓存的就是 workspace、layout 和 plan 后元数据
+- wrapper 本身并不“持有一套 attention 算法”，它只是缓存翻译结果和 runtime 句柄
 
-注意这里的重点不是“wrapper 自己能算 attention”，而是“wrapper 只是缓存翻译后的元数据和 runtime 句柄”。真正的调度初始化发生在 `plan()`，真正的算子调用发生在 `run()`。
+也就是说，这个对象更像“variable block -> paged prefill”的状态容器，而不是完整计算引擎。
 
-## `plan()` 的本质不是计划，而是语义翻译
+## `plan()`：先翻译元数据，再接入 batch prefill `plan`
 
-`plan()` 的完整关键路径如下：
+[`wrapper.py:L131-L252`](src/wrapper_py.md#__codelineno-0-131) 是整个 Python 层的主线：
 
 ```python
 q_data_type = canonicalize_torch_dtype(q_data_type)
@@ -95,6 +86,9 @@ if logits_soft_cap is None:
 num_blocks_row = block_row_sz.shape[-1]
 num_blocks_col = block_col_sz.shape[-1]
 
+'''
+第一段：把 block 级描述翻译成 paged prefill 需要的 token 级 metadata
+'''
 qo_indptr = build_qo_indptr(block_row_sz)
 qo_indptr_host = qo_indptr.to("cpu", non_blocking=non_blocking)
 last_block_len = build_last_page_len(
@@ -112,43 +106,17 @@ kv_indices_host = kv_indices.to("cpu", non_blocking=non_blocking)
 
 self._qo_indptr = qo_indptr.to(self.device, non_blocking=non_blocking)
 self._paged_kv_indptr_buf = kv_indptr.to(self.device, non_blocking=non_blocking)
-self._paged_kv_indices_buf = kv_indices.to(
-    self.device,
-    non_blocking=non_blocking,
-)
-self._paged_kv_last_page_len = last_block_len.to(
-    self.device,
-    non_blocking=non_blocking,
-)
+self._paged_kv_indices_buf = kv_indices.to(self.device, non_blocking=non_blocking)
+self._paged_kv_last_page_len = last_block_len.to(self.device, non_blocking=non_blocking)
 torch.cuda.synchronize()
-self._mask_mode = MaskMode.CAUSAL.value if causal else MaskMode.NON_CAUSAL.value
 
-self._backend = resolve_attention_backend(
-    self._backend,
-    self.device,
-    PosEncodingMode[pos_encoding_mode].value,
-    use_fp16_qk_reduction,
-    self._mask_mode == MaskMode.CUSTOM.value,
-    q_data_type,
-    kv_data_type,
-)
-
-get_module_args = (
-    q_data_type,
-    kv_data_type,
-    self._o_dtype,
-    kv_indptr_host.dtype,
-    head_dim,
-    head_dim,
-    PosEncodingMode[pos_encoding_mode].value,
-    False,
-    logits_soft_cap > 0,
-    use_fp16_qk_reduction,
-)
+'''
+第二段：backend 解析、模块获取、进入标准 batch prefill plan
+'''
+self._backend = resolve_attention_backend(...)
 self._cached_module = get_batch_prefill_module(self._backend, *get_module_args)
 
 kv_lens_arr_host = kv_indptr_host[1:] - kv_indptr_host[:-1]
-
 args = [
     self._float_workspace_buffer,
     self._int_workspace_buffer,
@@ -174,39 +142,40 @@ if self._backend == "fa2":
 self._plan_info = self._cached_module.plan(*args)
 ```
 
-这段代码里面，真正“variable block 特有”的事情只有前半段：
+这段代码可以拆成两个阶段理解。
+
+第一阶段是 variable block 特有逻辑：
 
 - `build_qo_indptr(block_row_sz)`
 - `build_last_page_len(...)`
 - `block_mask_map_to_expanded_indices(block_mask_map, block_col_sz)`
 
-后半段已经是标准 FlashInfer paged prefill 体系：
+第二阶段已经是标准 FlashInfer batch prefill 流程：
 
 - backend 选择
-- batch prefill 模块获取
+- JIT 模块获取
 - `module.plan(...)`
 
-所以工程上最值得记住的一句话是：
+所以 `plan()` 这个名字有点误导。它真正先做的是“语义翻译”，然后才把翻译结果送进底层 `plan`。
 
-> variable block 的本体不在 CUDA kernel，而在元数据翻译层。
+## `page_size=1`：整套设计的关键压缩点
 
-## 为什么 `page_size=1` 是整个设计的关键
-
-在 `plan()` 里有两个非常不起眼、但决定整套设计的常量：
+在 [`wrapper.py:L230-L252`](src/wrapper_py.md#__codelineno-0-230) 里有两个决定全局设计的常量：
 
 ```python
-last_block_len = build_last_page_len(...)
-...
 args = [
-    ...
+    ...,
+    num_qo_heads // num_kv_heads,
     1,
     1,
     False,
+    head_dim,
+    head_dim,
     ...
 ]
 ```
 
-而 `metadata.py` 对 `last_page_len` 的实现是：
+同时 [`metadata.py:L32-L42`](src/metadata_py.md#__codelineno-0-32) 里 `last_page_len` 被固定为 1：
 
 ```python
 def build_last_page_len(
@@ -222,22 +191,17 @@ def build_last_page_len(
     )
 ```
 
-这说明当前实现明确选择了：
+这意味着当前实现明确采用：
 
 - `page_size = 1`
-- 每个 token 都被视作一个 page
-- `last_page_len` 自然恒为 1
+- 每个 token 视作一个 page
+- `last_page_len` 恒等于 1
 
-这一步把“变长 block”问题，转成了“token 级 page table”问题。于是底层 kernel 不需要知道什么叫 variable block，它只需要知道：
+于是“变长 block”问题被转写成了“token 级 page table”问题。底层 kernel 不需要知道 block 的原始尺寸，只需要知道每一行 query 最终对应哪些 token 索引。
 
-- 第 `i` 行 query 对应哪些 KV token
-- 这些 KV token 在扁平化 cache 里的下标是什么
+## `metadata.py`：真正的语义核心
 
-## `metadata.py` 是真正的语义核心
-
-`metadata.py` 只有 88 行，但这是整套实现里最关键的文件。
-
-完整核心逻辑如下：
+[`metadata.py:L22-L88`](src/metadata_py.md#__codelineno-0-22) 只有几十行，但它完成了最关键的 block-to-token 展开：
 
 ```python
 def build_qo_indptr(block_row_sz: torch.Tensor) -> torch.Tensor:
@@ -250,27 +214,17 @@ def build_qo_indptr(block_row_sz: torch.Tensor) -> torch.Tensor:
     )
 
 
-def build_last_page_len(
-    block_mask_map: torch.Tensor,
-    num_blocks_row: int,
-    num_kv_heads: int,
-) -> torch.Tensor:
-    return torch.full(
-        (num_blocks_row * num_kv_heads,),
-        1,
-        dtype=torch.int32,
-        device=block_mask_map.device,
-    )
-
-
 def block_mask_map_to_expanded_indices(
-    block_mask_map: torch.Tensor,
-    block_col_sz: torch.Tensor,
+    block_mask_map: torch.Tensor,  # [H, R, C]
+    block_col_sz: torch.Tensor,    # [H, C]
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     device = block_mask_map.device
     dtype_i = torch.int32
 
-    row_lengths = (block_mask_map * block_col_sz[:, None, :]).sum(-1)
+    '''
+    每个 (head, row) 下，先算出它总共会展开出多少个 KV token
+    '''
+    row_lengths = (block_mask_map * block_col_sz[:, None, :]).sum(-1)  # [H, R]
     kv_indptr = torch.cat(
         [
             torch.zeros(1, dtype=dtype_i, device=device),
@@ -279,10 +233,16 @@ def block_mask_map_to_expanded_indices(
         dim=0,
     )
 
+    '''
+    每个列块在本 head 内的 token 起始偏移
+    '''
     col_offset = torch.cumsum(block_col_sz.to(dtype_i), 1) - block_col_sz
     head_len = block_col_sz.sum(1, dtype=dtype_i)
     head_offset = torch.cumsum(head_len, 0) - head_len
 
+    '''
+    把选中的 (h, r, c) 逐块展开成连续 token 下标
+    '''
     h_idx, _, c_idx = block_mask_map.nonzero(as_tuple=True)
     lengths = block_col_sz[h_idx, c_idx].to(dtype_i)
     base = head_offset[h_idx] + col_offset[h_idx, c_idx]
@@ -297,91 +257,44 @@ def block_mask_map_to_expanded_indices(
     )
 ```
 
-这段代码完成了两层翻译。
+它做了两件事。
 
-### 第一层：Q 侧分段
+第一件事是为 Q 侧构造 CSR 风格的分段：
 
-`build_qo_indptr` 很直白：
+- `block_row_sz.flatten()` 把 `(kv_head, row_block)` 拍平
+- `cumsum` 得到每一段 query token 的起止边界
+- `qo_indptr` 最终表达的是“第几个 `(head, row)` 对应哪一段 query token”
 
-- `block_row_sz` 先 flatten
-- 再做 `cumsum`
-- 得到 `[H * R + 1]` 长度的前缀和
+第二件事是把 KV 侧的块稀疏图展开成 token 索引：
 
-它表达的是：
+- `row_lengths` 算每个 `(head, row)` 最终选中多少个 token
+- `kv_indptr` 记录每一行的 token 段边界
+- `col_offset + head_offset` 找到每个列块在扁平 KV 空间里的起点
+- `repeat_interleave + offsets_within` 把变长列块逐 token 展开
 
-- 第 0 个 `(kv_head, row_block)` 的 query token 范围
-- 第 1 个 `(kv_head, row_block)` 的 query token 范围
-- ...
+这里的结果已经完全是 token-level 表达，不再保留 “block size” 这个概念。也正因为如此，后续层可以把它当作普通 paged KV metadata 使用。
 
-也就是把“按块组织”的 query 行，压平成 paged prefill 认识的 CSR 风格 row indptr。
+## `run()`：只做布局改写，然后进入 `paged_run`
 
-### 第二层：KV 侧从 block 稀疏图到 token 级索引
-
-`block_mask_map_to_expanded_indices` 才是最重要的一步。
-
-它先算：
+`run()` 的核心在 [`wrapper.py:L284-L394`](src/wrapper_py.md#__codelineno-0-284)：
 
 ```python
-row_lengths = (block_mask_map * block_col_sz[:, None, :]).sum(-1)
-```
+if enable_pdl is None:
+    enable_pdl = device_support_pdl(q.device)
 
-含义是：
+if logits_soft_cap is None:
+    logits_soft_cap = 0.0
+if sm_scale is None:
+    sm_scale = 1.0 / math.sqrt(q.size(-1))
+if rope_scale is None:
+    rope_scale = 1.0
+if rope_theta is None:
+    rope_theta = 1e4
 
-- `block_mask_map[h, r, c] = 1` 表示第 `h` 个 KV head 的第 `r` 个 query block 需要第 `c` 个 KV block
-- 而 `block_col_sz[h, c]` 是这个 KV block 真实包含的 token 数
-- 所以按列求和后，得到每个 `(h, r)` 最终访问多少个 KV token
-
-接着它构造：
-
-- `col_offset`
-  - 每个列块在所属 head 内的起始 token 偏移
-- `head_offset`
-  - 每个 head 在全局扁平 KV 空间中的基址
-
-然后用：
-
-```python
-h_idx, _, c_idx = block_mask_map.nonzero(as_tuple=True)
-```
-
-把所有被选中的 `(head, row, col)` 抽出来，转成：
-
-- `lengths`
-  - 这个被选中的列块有多长
-- `base`
-  - 这个被选中的列块在全局扁平 KV 里的起始 token 下标
-
-最后通过：
-
-```python
-cum = torch.cumsum(lengths, 0)
-starts = torch.repeat_interleave(cum - lengths, lengths)
-offsets_within = torch.arange(cum[-1], device=device) - starts
-kv_indices = torch.repeat_interleave(base, lengths) + offsets_within
-```
-
-把 block 级别的选择，完全展开成 token 级别的连续索引。
-
-这一步之后，底层 runtime 看到的已经不是：
-
-- 第 `r` 行选中了哪些 block
-
-而是：
-
-- 第 `r` 行应该访问扁平 KV 序列里的哪些 token 下标
-
-也因此，这里的输出实际上就是一个 token 级 CSR：
-
-- `kv_indptr`
-  - 每个 `(head, row_block)` 对应的 token 段边界
-- `kv_indices`
-  - 每个 token 的真实 KV 全局下标
-
-## `run()` 只是协议重排，不再重新理解 variable block
-
-`run()` 的关键逻辑如下：
-
-```python
+'''
+Q 改成 batch prefill 期望的 grouped-query 视图
+K/V 改成 page size = 1 的 paged cache 视图
+'''
 q = einops.rearrange(
     q,
     "(num_kv_heads gqa_group_size) qo_len head_dim -> (num_kv_heads qo_len) gqa_group_size head_dim",
@@ -396,6 +309,9 @@ v = einops.rearrange(
     "num_kv_heads kv_len head_dim -> (num_kv_heads kv_len) 1 1 head_dim",
 ).contiguous()
 
+'''
+把 plan() 阶段缓存的 metadata 全部交给 paged_run
+'''
 self._cached_module.paged_run(
     self._float_workspace_buffer,
     self._int_workspace_buffer,
@@ -431,48 +347,44 @@ self._cached_module.paged_run(
 )
 ```
 
-这里最重要的是理解：
+这一步要点也很明确：
 
-- `run()` 不再做 variable block 语义分析
-- 它只负责把 `q/k/v` 排成底层 ABI 期望的形状
-- 然后把 `plan()` 缓存好的元数据直接交给 `paged_run`
+- `q` 被重排成按 `num_kv_heads` 分组的 GQA 视图
+- `k/v` 被重排成 `(token, 1, 1, dim)`，正好对应 `page_size=1`
+- `run()` 并不重新计算 metadata，只消费 `plan()` 阶段缓存的结果
 
-也就是说，热路径上最重要的不是“重新做图分析”，而是“避免任何多余逻辑”。
+因此 `run()` 更像是“布局适配 + 参数透传”，而不是另一个有独立语义的阶段。
 
-### 重排后的形状为什么长这样
+## backend 边界：接口兼容，但执行路径收敛
 
-Q 被重排成：
+虽然 runtime/JIT 细节放在下一篇，这里先看一下 [`backend.py:L28-L50`](src/backend_py.md#__codelineno-0-28)：
 
-```text
-[num_qo_heads, qo_len, d]
--> [num_kv_heads * qo_len, gqa_group_size, d]
+```python
+def resolve_attention_backend(...):
+    if backend == "auto":
+        backend = determine_attention_backend(...)
+
+    if backend == "fa3":
+        raise NotImplementedError(_FA3_NOT_SUPPORTED_MSG)
+    if backend != "fa2":
+        raise ValueError(f"Unsupported backend: {backend}")
+    return backend
 ```
 
-K/V 被重排成：
+这段逻辑和 `plan()` 紧密相关，因为它解释了为什么当前 wrapper 看起来支持三种 backend，但真正 plan 下去只会落到 `fa2`：
 
-```text
-[num_kv_heads, kv_len, d]
--> [num_kv_heads * kv_len, 1, 1, d]
-```
+- `auto` 仍然保留上游同名接口
+- 运行期如果检测到 `fa3` 能力，也不会继续走下去
+- 当前闭环只允许 `fa2`
 
-这本质上是在做两件事：
+这正是“对外保留 `auto/fa2/fa3`，内部只保留 `fa2` 最小闭环”的第一现场。
 
-- 把 head 维部分压到“批次/行”语义里
-- 把底层 `PagedParams` 需要的 paged cache 布局准备出来
+## 小结
 
-从这里也能看出，底层 runtime 并不知道“原来你有个 variable block mask”。它只知道：
+Python 层的职责可以压缩成三步：
 
-- query 行如何分段
-- 每行对应哪些 paged KV token
+1. 把 variable block 稀疏图翻译成 token 级 `qo_indptr / kv_indptr / kv_indices`
+2. 用 `page_size=1` 把问题改写成普通 paged prefill
+3. 在 `run()` 中把 Q/K/V 重排成底层 ABI 期待的布局
 
-## Python 层的最终结论
-
-把 [`wrapper.py`](src/wrapper_py.md) 和 [`metadata.py`](src/metadata_py.md) 连起来看，这套实现最关键的工程思想其实很朴素：
-
-1. 在 `plan()` 阶段一次性完成 block 语义到 token 语义的翻译
-2. 把翻译结果缓存成 paged prefill 能直接消费的 `indptr + indices`
-3. 在 `run()` 热路径里完全避免重新理解稀疏结构
-4. 尽量把后续执行交回成熟的 FA2 paged prefill runtime
-
-这就是为什么这套代码虽然名叫 variable block sparse attention，但它最值得分析的部分其实不是 kernel，而是 metadata 展开。
-
+后面的 runtime、JIT、C++、CUDA 都是在消费这一层已经翻译好的结果。

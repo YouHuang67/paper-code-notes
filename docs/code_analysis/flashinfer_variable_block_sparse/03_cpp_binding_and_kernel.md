@@ -7,18 +7,20 @@ tags:
 
 # C++ Binding 与 Kernel
 
-**核心文件**:
+**源码**:
 
-- [`data/csrc/batch_prefill_jit_binding.cu`](src/batch_prefill_jit_binding_cu.md)
-- [`data/csrc/batch_prefill.cu`](src/batch_prefill_cu.md)
-- [`data/csrc/batch_prefill_customize_config.jinja`](src/batch_prefill_customize_config_jinja.md)
-- [`data/csrc/batch_prefill_paged_kernel_inst.jinja`](src/batch_prefill_paged_kernel_inst_jinja.md)
-- [`data/csrc/batch_prefill_ragged_kernel_inst.jinja`](src/batch_prefill_ragged_kernel_inst_jinja.md)
-- [`data/csrc/tvm_ffi_utils.h`](src/tvm_ffi_utils_h.md)
+- [data/csrc/batch_prefill_jit_binding.cu:L22-L50](src/batch_prefill_jit_binding_cu.md#__codelineno-0-22)
+- [data/csrc/batch_prefill.cu:L47-L75](src/batch_prefill_cu.md#__codelineno-0-47)
+- [data/csrc/batch_prefill.cu:L203-L334](src/batch_prefill_cu.md#__codelineno-0-203)
+- [data/csrc/batch_prefill_customize_config.jinja](src/batch_prefill_customize_config_jinja.md)
+- [data/csrc/batch_prefill_paged_kernel_inst.jinja](src/batch_prefill_paged_kernel_inst_jinja.md)
+- [data/csrc/batch_prefill_ragged_kernel_inst.jinja](src/batch_prefill_ragged_kernel_inst_jinja.md)
 
-## 先看 binding 层：导出的其实只有三个符号
+到了这一层，variable block 语义已经基本消失。C++/CUDA 代码看到的输入是 `qo_indptr / paged_kv_indptr / paged_kv_indices / last_page_len`，也就是标准 paged prefill 认识的 metadata。
 
-`batch_prefill_jit_binding.cu` 本身非常短：
+## binding 层：导出的只有 `plan / ragged_run / paged_run`
+
+[`batch_prefill_jit_binding.cu:L22-L50`](src/batch_prefill_jit_binding_cu.md#__codelineno-0-22) 非常短，但它把 Python 侧协议完全钉死了：
 
 ```cpp
 Array<int64_t> BatchPrefillWithKVCachePlan(
@@ -29,45 +31,24 @@ Array<int64_t> BatchPrefillWithKVCachePlan(
     int64_t head_dim_vo, bool causal, int64_t window_left, int64_t fixed_split_size,
     bool disable_split_kv, int64_t num_colocated_ctas);
 
-void BatchPrefillWithRaggedKVCacheRun(TensorView float_workspace_buffer,
-                                      TensorView int_workspace_buffer, Array<int64_t> plan_info_vec,
-                                      TensorView q, TensorView k, TensorView v,
-                                      TensorView qo_indptr, TensorView kv_indptr, TensorView o,
-                                      Optional<TensorView> maybe_lse, int64_t mask_mode_code,
-                                      int64_t layout, int64_t window_left,
-                                      bool enable_pdl ADDITIONAL_FUNC_PARAMS);
-
-void BatchPrefillWithPagedKVCacheRun(TensorView float_workspace_buffer,
-                                     TensorView int_workspace_buffer, Array<int64_t> plan_info_vec,
-                                     TensorView q, TensorView paged_k_cache,
-                                     TensorView paged_v_cache, TensorView qo_indptr,
-                                     TensorView paged_kv_indptr, TensorView paged_kv_indices,
-                                     TensorView paged_kv_last_page_len, TensorView o,
-                                     Optional<TensorView> maybe_lse, int64_t mask_mode_code,
-                                     int64_t layout, int64_t window_left,
-                                     bool enable_pdl ADDITIONAL_FUNC_PARAMS);
+void BatchPrefillWithRaggedKVCacheRun(...);
+void BatchPrefillWithPagedKVCacheRun(...);
 
 TVM_FFI_DLL_EXPORT_TYPED_FUNC(plan, BatchPrefillWithKVCachePlan);
 TVM_FFI_DLL_EXPORT_TYPED_FUNC(ragged_run, BatchPrefillWithRaggedKVCacheRun);
 TVM_FFI_DLL_EXPORT_TYPED_FUNC(paged_run, BatchPrefillWithPagedKVCacheRun);
 ```
 
-这层做的事情极少，但很重要：
-
-- 把 C++ 函数签名和 Python 侧调用协议固定下来
-- 用 TVM FFI 宏导出 `plan / ragged_run / paged_run`
-- 让 JIT 编译出来的模块在 Python 侧可直接拿到 `.plan` 与 `.paged_run`
-
-对于 variable block 路径，真正会走的是：
+对 variable block 路径来说，真正会走的是：
 
 - `plan`
 - `paged_run`
 
-`ragged_run` 只是跟随 batch prefill 基础设施一并保留。
+`ragged_run` 只是跟随 batch prefill 通用基础设施一起保留下来。
 
-## `plan()` 在 C++ 侧到底干了什么
+## `plan()`：把调度结果编码成 `Array<int64_t>`
 
-`batch_prefill.cu` 里的 `BatchPrefillWithKVCachePlan` 是 Python `module.plan(...)` 的真正落点：
+Python 里 `self._cached_module.plan(...)` 的真正落点是 [`batch_prefill.cu:L47-L75`](src/batch_prefill_cu.md#__codelineno-0-47)：
 
 ```cpp
 Array<int64_t> BatchPrefillWithKVCachePlan(
@@ -102,32 +83,19 @@ Array<int64_t> BatchPrefillWithKVCachePlan(
 }
 ```
 
-这一步最该注意的不是模板细节，而是它的输入和输出语义：
+这一步最重要的不是 `PrefillPlan` 的模板细节，而是输入输出语义：
 
-- 输入：
-  - workspace
-  - `qo_indptr`
-  - `kv_indptr`
-  - 行长度、head dim、page size 等规划参数
-- 输出：
-  - `PrefillPlanInfo` 被压平成 `Array<int64_t>`
+- 输入是 workspace、`qo_indptr`、`kv_indptr`、row/head/page 等调度参数
+- 输出不是 C++ 对象，而是 `plan_info.ToVector()` 之后的 `Array<int64_t>`
 
-也就是说，Python 侧拿到的 `self._plan_info` 并不是抽象对象，而是一串编码后的调度结果。之后 `paged_run()` 会再次把它恢复回来。
+所以 Python 侧保存的 `self._plan_info` 本质上是“序列化后的调度结果”，不是某个可直接操作的高层对象。
 
-## `paged_run()` 的核心：恢复 plan_info，装配 PagedParams，再 dispatch
+## `paged_run()` 第一段：恢复 `plan_info`，构造 `paged_kv_t`
 
-最值得看的部分是 `BatchPrefillWithPagedKVCacheRun`：
+运行阶段的主线从 [`batch_prefill.cu:L203-L267`](src/batch_prefill_cu.md#__codelineno-0-203) 开始：
 
 ```cpp
-void BatchPrefillWithPagedKVCacheRun(TensorView float_workspace_buffer,
-                                     TensorView int_workspace_buffer, Array<int64_t> plan_info_vec,
-                                     TensorView q, TensorView paged_k_cache,
-                                     TensorView paged_v_cache, TensorView qo_indptr,
-                                     TensorView paged_kv_indptr, TensorView paged_kv_indices,
-                                     TensorView paged_kv_last_page_len, TensorView o,
-                                     Optional<TensorView> maybe_lse, int64_t mask_mode_code,
-                                     int64_t layout, int64_t window_left,
-                                     bool enable_pdl ADDITIONAL_FUNC_PARAMS) {
+void BatchPrefillWithPagedKVCacheRun(... ) {
   PrefillPlanInfo plan_info;
   plan_info.FromVector(std::vector<int64_t>(plan_info_vec.begin(), plan_info_vec.end()));
   QKVLayout kv_layout = static_cast<QKVLayout>(layout);
@@ -145,175 +113,129 @@ void BatchPrefillWithPagedKVCacheRun(TensorView float_workspace_buffer,
 
   ...
 
-  DISPATCH_context(
-      DTypeQ, DTypeKV, DTypeO, IdType, MASK_MODE, HEAD_DIM_QK, HEAD_DIM_VO, POS_ENCODING_MODE,
-      USE_SLIDING_WINDOW, USE_LOGITS_SOFT_CAP, USE_FP16_QK_REDUCTION, AttentionVariant,
-      RaggedParams, PagedParams, [&] {
-        PagedParams params;
+  DISPATCH_context(..., [&] {
+    PagedParams params;
 
-        params.q = static_cast<DTypeQ*>(q.data_ptr());
-        paged_kv_t<DTypeKV, IdType> paged_kv(
-            num_kv_heads, page_size, HEAD_DIM_VO, batch_size, kv_layout,
-            static_cast<DTypeKV*>(paged_k_cache.data_ptr()),
-            static_cast<DTypeKV*>(paged_v_cache.data_ptr()), kv_cache_strides,
-            static_cast<IdType*>(paged_kv_indices.data_ptr()),
-            static_cast<IdType*>(paged_kv_indptr.data_ptr()),
-            static_cast<IdType*>(paged_kv_last_page_len.data_ptr()));
-        params.paged_kv = paged_kv;
-        params.q_indptr = static_cast<IdType*>(qo_indptr.data_ptr());
-        params.o = static_cast<DTypeO*>(o.data_ptr());
-
-        params.lse = maybe_lse ? static_cast<float*>(maybe_lse.value().data_ptr()) : nullptr;
-        params.num_qo_heads = num_qo_heads;
-        params.group_size = uint_fastdiv(num_qo_heads / paged_kv.num_heads);
-        params.q_stride_n = q_stride_n;
-        params.q_stride_h = q_stride_h;
-        params.window_left = window_left;
-
-        ...
-
-        params.request_indices =
-            GetPtrFromBaseOffset<IdType>(int_buffer_ptr, plan_info.request_indices_offset);
-        params.qo_tile_indices =
-            GetPtrFromBaseOffset<IdType>(int_buffer_ptr, plan_info.qo_tile_indices_offset);
-        params.kv_tile_indices =
-            GetPtrFromBaseOffset<IdType>(int_buffer_ptr, plan_info.kv_tile_indices_offset);
-        params.o_indptr = GetPtrFromBaseOffset<IdType>(int_buffer_ptr, plan_info.o_indptr_offset);
-        params.kv_chunk_size_ptr =
-            GetPtrFromBaseOffset<IdType>(int_buffer_ptr, plan_info.kv_chunk_size_ptr_offset);
-        if (plan_info.split_kv) {
-          params.merge_indptr =
-              GetPtrFromBaseOffset<IdType>(int_buffer_ptr, plan_info.merge_indptr_offset);
-          tmp_v = GetPtrFromBaseOffset<DTypeO>(float_buffer_ptr, plan_info.v_offset);
-          tmp_s = GetPtrFromBaseOffset<float>(float_buffer_ptr, plan_info.s_offset);
-          ...
-        }
-
-        DISPATCH_CTA_TILE_Q(plan_info.cta_tile_q, CTA_TILE_Q, {
-          status = flashinfer::BatchPrefillWithPagedKVCacheDispatched<
-              CTA_TILE_Q, HEAD_DIM_QK, HEAD_DIM_VO, POS_ENCODING_MODE,
-              /*use_fp16_qk_reduction=*/USE_FP16_QK_REDUCTION, MASK_MODE, AttentionVariant,
-              PagedParams>(params, tmp_v, tmp_s, enable_pdl, stream);
-        });
-      });
-}
+    params.q = static_cast<DTypeQ*>(q.data_ptr());
+    paged_kv_t<DTypeKV, IdType> paged_kv(
+        num_kv_heads, page_size, HEAD_DIM_VO, batch_size, kv_layout,
+        static_cast<DTypeKV*>(paged_k_cache.data_ptr()),
+        static_cast<DTypeKV*>(paged_v_cache.data_ptr()), kv_cache_strides,
+        static_cast<IdType*>(paged_kv_indices.data_ptr()),
+        static_cast<IdType*>(paged_kv_indptr.data_ptr()),
+        static_cast<IdType*>(paged_kv_last_page_len.data_ptr()));
+    params.paged_kv = paged_kv;
+    params.q_indptr = static_cast<IdType*>(qo_indptr.data_ptr());
+    params.o = static_cast<DTypeO*>(o.data_ptr());
+    params.lse = maybe_lse ? static_cast<float*>(maybe_lse.value().data_ptr()) : nullptr;
+    params.num_qo_heads = num_qo_heads;
+    params.group_size = uint_fastdiv(num_qo_heads / paged_kv.num_heads);
+    params.q_stride_n = q_stride_n;
+    params.q_stride_h = q_stride_h;
+    params.window_left = window_left;
 ```
 
-这段代码非常值得慢读，因为它把整套闭环串起来了。
+这段代码把前面几篇文档的两条主线接上了：
 
-### 第一步：把 Python 侧的 `plan_info_vec` 恢复成结构体
+- `plan_info.FromVector(...)` 对应 Python `plan()` 阶段缓存下来的序列化调度信息
+- `paged_kv_t(...)` 对应 Python metadata 层构造的 `paged_kv_indptr / paged_kv_indices / last_page_len`
 
-```cpp
-PrefillPlanInfo plan_info;
-plan_info.FromVector(...)
-```
+从这里开始，variable block 已经完全不再以“块”的形式出现了。底层只看到一个普通 paged KV 结构。
 
-这说明 Python 侧保存的 `self._plan_info` 只是序列化后的计划结果；真正运行前要恢复为结构化调度信息。
+## `paged_run()` 第二段：从 workspace 偏移恢复调度数组
 
-### 第二步：构造 `paged_kv_t`
+真正体现 `plan()` 价值的是 [`batch_prefill.cu:L295-L318`](src/batch_prefill_cu.md#__codelineno-0-295)：
 
 ```cpp
-paged_kv_t<DTypeKV, IdType> paged_kv(
-    num_kv_heads, page_size, HEAD_DIM_VO, batch_size, kv_layout,
-    ...,
-    static_cast<IdType*>(paged_kv_indices.data_ptr()),
-    static_cast<IdType*>(paged_kv_indptr.data_ptr()),
-    static_cast<IdType*>(paged_kv_last_page_len.data_ptr()));
-```
-
-这一步最关键：
-
-- `paged_kv_indices`
-- `paged_kv_indptr`
-- `paged_kv_last_page_len`
-
-正是前面 Python metadata 翻译层的最终产物。
-
-也就是说，variable block 语义在这里第一次完全“消失”了，底层只看到一个普通 paged KV 结构。
-
-### 第三步：从 workspace 偏移恢复 plan 阶段产出的调度数组
-
-```cpp
-params.request_indices = GetPtrFromBaseOffset(...)
-params.qo_tile_indices = GetPtrFromBaseOffset(...)
-params.kv_tile_indices = GetPtrFromBaseOffset(...)
-params.o_indptr = GetPtrFromBaseOffset(...)
-params.kv_chunk_size_ptr = GetPtrFromBaseOffset(...)
-```
-
-这表示 `plan()` 做的重活，并不是某种“逻辑计划”的抽象描述，而是已经把运行需要的 request/tile/merge 索引全部算好并布局进 workspace 了。
-
-运行时只是：
-
-- 按偏移取出这些数组
-- 挂到 `PagedParams`
-- 交给 kernel
-
-### 第四步：如果 split-kv 被启用，还要恢复 merge 所需的中间缓冲
-
-```cpp
+params.request_indices =
+    GetPtrFromBaseOffset<IdType>(int_buffer_ptr, plan_info.request_indices_offset);
+params.qo_tile_indices =
+    GetPtrFromBaseOffset<IdType>(int_buffer_ptr, plan_info.qo_tile_indices_offset);
+params.kv_tile_indices =
+    GetPtrFromBaseOffset<IdType>(int_buffer_ptr, plan_info.kv_tile_indices_offset);
+params.o_indptr = GetPtrFromBaseOffset<IdType>(int_buffer_ptr, plan_info.o_indptr_offset);
+params.kv_chunk_size_ptr =
+    GetPtrFromBaseOffset<IdType>(int_buffer_ptr, plan_info.kv_chunk_size_ptr_offset);
 if (plan_info.split_kv) {
-  params.merge_indptr = ...
-  tmp_v = ...
-  tmp_s = ...
+  params.merge_indptr =
+      GetPtrFromBaseOffset<IdType>(int_buffer_ptr, plan_info.merge_indptr_offset);
+  tmp_v = GetPtrFromBaseOffset<DTypeO>(float_buffer_ptr, plan_info.v_offset);
+  tmp_s = GetPtrFromBaseOffset<float>(float_buffer_ptr, plan_info.s_offset);
+  if (plan_info.enable_cuda_graph) {
+    params.block_valid_mask =
+        GetPtrFromBaseOffset<bool>(int_buffer_ptr, plan_info.block_valid_mask_offset);
+  }
+}
+params.padded_batch_size = plan_info.padded_batch_size;
+params.max_total_num_rows = plan_info.total_num_rows;
+if (plan_info.enable_cuda_graph) {
+  params.total_num_rows =
+      GetPtrFromBaseOffset<uint32_t>(int_buffer_ptr, plan_info.total_num_rows_offset);
 }
 ```
 
-这说明 float workspace 的存在并不是装饰，它要给 split-k 的中间结果与 merge 服务。
+这段代码很关键，因为它说明：
 
-### 第五步：按编译期实例和运行时 `cta_tile_q` 做最终 dispatch
+- `plan()` 并不是只算出几个标量参数
+- 它已经把运行期真正需要的 request/tile/merge 索引组织进 workspace
+- `paged_run()` 只是根据 `plan_info` 记录的 offset 再把这些数组挂回 `PagedParams`
+
+如果 `split_kv` 开启，还会同时恢复：
+
+- `merge_indptr`
+- `tmp_v`
+- `tmp_s`
+
+这也是为什么 wrapper 构造函数一开始就必须持有 float/int 两类 workspace。
+
+## 最终 dispatch：编译期模板实例 + 运行期 `cta_tile_q`
+
+最后的落点很短，但非常典型，见 [`batch_prefill.cu:L321-L328`](src/batch_prefill_cu.md#__codelineno-0-321)：
 
 ```cpp
+cudaError_t status = cudaSuccess;
+
 DISPATCH_CTA_TILE_Q(plan_info.cta_tile_q, CTA_TILE_Q, {
-  status = flashinfer::BatchPrefillWithPagedKVCacheDispatched<...>(...);
+  status = flashinfer::BatchPrefillWithPagedKVCacheDispatched<
+      CTA_TILE_Q, HEAD_DIM_QK, HEAD_DIM_VO, POS_ENCODING_MODE,
+      /*use_fp16_qk_reduction=*/USE_FP16_QK_REDUCTION, MASK_MODE, AttentionVariant,
+      PagedParams>(params, tmp_v, tmp_s, enable_pdl, stream);
 });
 ```
 
-这里的 dispatch 是典型的“编译期模板实例 + 运行期选择”模式。要理解它，可以配合：
+这就是典型的“编译期模板实例化 + 运行期选择”的两阶段 dispatch：
+
+- `HEAD_DIM_QK`、`MASK_MODE`、`POS_ENCODING_MODE`、`AttentionVariant` 等由 JIT 规格决定，编译期固定
+- `cta_tile_q` 由 `plan()` 输出，运行期再做一层选择
+
+要理解这种模式，可以一起看：
 
 - [CUDA 基础：CUTLASS/CuTe 编程模型](../cuda_foundations/02_cuda_cutlass_cute_programming_model.md)
-- [Flash Attention V2：Dispatch 与实例化](../flash_attention_v2/05_dispatch_and_instantiation.md)
+- [Flash Attention V2：调度与实例化](../flash_attention_v2/05_dispatch_and_instantiation.md)
 
-一起看。
+## Jinja 模板：不是业务逻辑，而是实例化骨架
 
-## Jinja 模板的作用：不是写逻辑，而是铺实例化矩阵
+这一层还会看到三份模板：
 
-`batch_prefill_customize_config.jinja`、`batch_prefill_paged_kernel_inst.jinja`、`batch_prefill_ragged_kernel_inst.jinja` 这几份模板不要读成“业务逻辑文件”，它们是实例化骨架。
+- [batch_prefill_customize_config.jinja](src/batch_prefill_customize_config_jinja.md)
+- [batch_prefill_paged_kernel_inst.jinja](src/batch_prefill_paged_kernel_inst_jinja.md)
+- [batch_prefill_ragged_kernel_inst.jinja](src/batch_prefill_ragged_kernel_inst_jinja.md)
 
-例如 paged kernel 模板非常短：
+它们的作用不是承载算法逻辑，而是：
 
-```cpp
-#include "batch_prefill_config.inc"
+- 把 JIT 规格写进 `batch_prefill_config.inc`
+- 为不同 `mask_mode` 生成实例化单元
+- 让编译器只为当前规格产出必要符号
 
-namespace flashinfer {
+这也是上一节里 URI 和 `gen_customize_batch_prefill_module()` 必须存在的原因。
 
-template cudaError_t BatchPrefillWithPagedKVCacheDispatched<
-    CTA_TILE_Q, HEAD_DIM_QK, HEAD_DIM_VO, POS_ENCODING_MODE,
-    USE_FP16_QK_REDUCTION, MASK_MODE, AttentionVariant, Params>(
-    Params params, typename Params::DTypeO* tmp_v, float* tmp_s, bool enable_pdl,
-    cudaStream_t stream);
+## 这一层的结论
 
-}
-```
+把 binding 和 kernel 主线串起来，可以得到一个非常明确的工程判断：
 
-它真正的意义是：
+1. Python `plan()` 先把 variable block 语义翻译成 paged prefill metadata
+2. C++ `plan` 再把调度索引编码进 `PrefillPlanInfo` 和 workspace
+3. `paged_run()` 恢复 `plan_info`、拼装 `PagedParams`
+4. 最终进入标准 FA2 paged prefill kernel
 
-- 把配置文件里的宏和类型别名代入
-- 形成当前规格下的模板实例化单元
-- 让编译器只为需要的那一组配置产出符号
-
-这也是为什么 JIT 层要先写 `batch_prefill_config.inc`，再生成这些 `.cu`。
-
-## 这一层的最终结论
-
-把 [`batch_prefill_jit_binding.cu`](src/batch_prefill_jit_binding_cu.md) 和 [`batch_prefill.cu`](src/batch_prefill_cu.md) 串起来看，可以得到一个很清晰的判断：
-
-1. Python `plan()` 的产物是序列化后的 `plan_info` 与 GPU/CPU 元数据
-2. C++ `plan` 会把调度细节计算完并编码回 `plan_info`
-3. `paged_run` 在运行时恢复调度信息、拼装 `PagedParams`
-4. kernel 看到的只是标准 paged prefill 输入
-
-因此，底层并不存在一个“专门为 variable block 写的新 kernel”。真正发生的事情是：
-
-> variable block 语义在 Python metadata 层被翻译完毕，C++/CUDA 层执行的是成熟的 FA2 paged prefill 内核与调度体系。
-
+因此，底层并不存在“专门为 variable block 写的新 kernel”。真正的新东西只在 metadata 翻译层；C++/CUDA 层执行的是成熟的 batch prefill 调度与 kernel 体系。

@@ -7,60 +7,50 @@ tags:
 
 # FlashInfer Variable Block Sparse：总览
 
-**源码位置**: `refs/codes/flashinfer_variable_block_sparse/variable_block_attn/` · [源码索引](src/index.md)
+**源码仓库**: `refs/codes/flashinfer_variable_block_sparse/variable_block_attn`
 
-**分析对象**: 本库同步的 `variable_block_attn/`，它不是完整 FlashInfer，而是从上游定制化剥离出来、专门服务 `VariableBlockSparseAttentionWrapper` 的最小闭环。
+**分析范围**: [`wrapper.py:L41-L397`](src/wrapper_py.md#__codelineno-0-41)、[`metadata.py:L22-L88`](src/metadata_py.md#__codelineno-0-22)、[`prefill_runtime.py:L32-L108`](src/prefill_runtime_py.md#__codelineno-0-32)、[`jit/attention/modules.py:L372-L1580`](src/jit_attention_modules_py.md#__codelineno-0-372)、[`data/csrc/batch_prefill_jit_binding.cu:L22-L50`](src/batch_prefill_jit_binding_cu.md#__codelineno-0-22)、[`data/csrc/batch_prefill.cu:L47-L334`](src/batch_prefill_cu.md#__codelineno-0-47)
 
-## 先看清边界
+这组代码不是完整 FlashInfer，也不是一套重新实现的 variable-block attention kernel。它是从上游剥离出的一个最小闭环，目标只有一个：让 `VariableBlockSparseAttentionWrapper` 能把 variable block 稀疏描述翻译成 FlashInfer 已有的 FA2 paged prefill 执行路径。
 
-这一组代码的定位，和上游 `flashinfer` 仓库里那种“完整注意力内核集合”不同。
+## 核心判断
 
-- 对外 API 仍保留 `backend="auto" | "fa2" | "fa3"`
-- 内部真实可执行路径已经收敛为 `fa2`
-- `fa3` 目前只保留接口边界和错误提示
-- 真正的计算内核并不是“新写了一套 variable block attention kernel”
-- 核心定制点是把 variable block 元数据翻译成 FA2 paged prefill 能直接消费的 ABI
+- 对外接口仍保留 `backend="auto" | "fa2" | "fa3"`，但当前本地实现内部只真正接通了 `fa2`
+- 这套代码最重要的部分不是 CUDA kernel，而是 Python 侧的 metadata 翻译层
+- variable block 语义在进入 C++/CUDA 前就已经被压平成 token-level paged KV 索引
+- 底层执行的仍是 FlashInfer 原生的 batch prefill plan + paged_run + kernel dispatch 体系
 
-这也是阅读这套代码时最容易走偏的地方。它看上去带了很多 FlashInfer JIT/runtime 文件，但真正和 variable block 语义直接绑定的部分非常少，主要集中在 [`wrapper.py`](src/wrapper_py.md) 和 [`metadata.py`](src/metadata_py.md)。
+如果只记一句话，可以记成：
 
-## 这套实现到底在解决什么问题
+> `variable_block_attn` 的价值不在“写了新 kernel”，而在“把 variable block 稀疏图稳定翻译到 FA2 paged prefill ABI 上”。
 
-普通 block sparse attention 往往默认所有 block 的行高、列宽固定，例如 `128 x 128`。但在一些聚类、压缩或动态路由场景里，Q/KV block 实际是变长的：
+## 核心文件
 
-- 第 0 个 query block 可能长 64
-- 第 1 个 query block 可能长 192
-- 第 2 个 key block 可能长 96
-- 不同 KV head 还可能拥有不同稀疏图
+- [wrapper.py:L41-L397](src/wrapper_py.md#__codelineno-0-41)：公开入口 `VariableBlockSparseAttentionWrapper`，负责 `plan()` / `run()` 生命周期
+- [metadata.py:L22-L88](src/metadata_py.md#__codelineno-0-22)：把 block 级稀疏图展开成 token 级 `qo_indptr / kv_indptr / kv_indices`
+- [prefill_runtime.py:L32-L108](src/prefill_runtime_py.md#__codelineno-0-32)：当前最薄的 runtime 封装，只保留 `plan` 和 `paged_run`
+- [backend.py:L28-L50](src/backend_py.md#__codelineno-0-28)：`auto/fa2/fa3` 边界，明确拒绝未接通的 `fa3`
+- [jit/attention/modules.py:L956-L1580](src/jit_attention_modules_py.md#__codelineno-0-956)：batch prefill 模块规格编码、模板渲染与实例生成
+- [data/csrc/batch_prefill_jit_binding.cu:L22-L50](src/batch_prefill_jit_binding_cu.md#__codelineno-0-22)：TVM FFI 导出 `plan/ragged_run/paged_run`
+- [data/csrc/batch_prefill.cu:L47-L334](src/batch_prefill_cu.md#__codelineno-0-47)：`PrefillPlanInfo`、`PagedParams`、workspace 偏移恢复与最终 dispatch
 
-如果沿用固定 block 方案，就只能：
-
-- pad 到统一大小，浪费计算和带宽
-- 或者截断/拆块，引入额外复杂度
-
-`VariableBlockSparseAttentionWrapper` 的办法不是为“任意 block 大小”重新发明 kernel，而是做一个映射：
+## 执行链路
 
 ```text
-variable block sparse attention
--> token-level paged KV representation
--> FlashInfer FA2 batch prefill runtime
+block_mask_map / block_row_sz / block_col_sz
+  -> build_qo_indptr()
+  -> build_last_page_len()
+  -> block_mask_map_to_expanded_indices()
+  -> resolve_attention_backend()
+  -> get_batch_prefill_module()
+  -> module.plan(...)
+  -> run() 中重排 q / k / v
+  -> module.paged_run(...)
+  -> BatchPrefillWithPagedKVCacheRun(...)
+  -> FlashInfer FA2 paged prefill kernel
 ```
 
-换句话说，它把“变长块稀疏”问题翻译成了“page size = 1 的 paged prefill”问题。
-
-## 一句话版执行链路
-
-```text
-用户传入 block_mask_map / block_row_sz / block_col_sz
--> Python 侧展开出 qo_indptr / kv_indptr / kv_indices
--> 选择 backend，拿到 batch prefill JIT 模块
--> plan() 产出 split-k / tile / merge 的 plan_info
--> run() 重排 q/k/v 为 paged prefill 期望布局
--> paged_run() 进入 TVM FFI binding
--> C++ 侧把 plan_info 和张量指针拼成 PagedParams
--> 复用 FlashInfer 原生 FA2 paged prefill kernel
-```
-
-这个链路里，真正和 variable block 语义绑定的，只有前半段的“元数据翻译层”。一旦 `qo_indptr / kv_indptr / kv_indices / last_page_len` 准备好，后面就已经是标准 paged prefill 路径。
+这里真正“新”的部分只到 `block_mask_map_to_expanded_indices()` 为止。后面的 plan、JIT、binding、kernel 都是在复用 FlashInfer 原有的 paged prefill 基础设施。
 
 ## 代码结构
 
@@ -73,7 +63,6 @@ variable_block_attn/
 ├── prefill_runtime.py
 ├── common.py
 ├── jit/
-│   ├── __init__.py
 │   ├── core.py / cpp_ext.py / env.py / utils.py
 │   └── attention/
 │       ├── modules.py
@@ -88,65 +77,54 @@ variable_block_attn/
 └── data/include/flashinfer/**
 ```
 
-## 代码阅读顺序
+可以把它压成三层：
 
-### 1. 先读 Python 语义层
+- Python 语义层：variable block 元数据翻译
+- runtime/JIT 层：把规格编码成可缓存、可编译的 batch prefill 模块
+- C++/CUDA 层：恢复 `plan_info`、拼装 `PagedParams`、进入标准 paged prefill kernel
 
-- [01 Python Wrapper 与 Metadata](01_python_wrapper_and_metadata.md)
+## 文档导航
 
-重点是：
+| 文档 | 内容 |
+|------|------|
+| [01 Python Wrapper 与 Metadata](01_python_wrapper_and_metadata.md) | `wrapper.py` / `metadata.py`：`plan()`、`run()`、`page_size=1` 与 token 级 CSR 展开 |
+| [02 Runtime 与 JIT](02_runtime_and_jit.md) | `prefill_runtime.py`、backend 选择、URI、batch prefill 模块生成 |
+| [03 C++ Binding 与 Kernel](03_cpp_binding_and_kernel.md) | `plan_info` 序列化/恢复、`PagedParams` 装配、workspace 偏移与最终 dispatch |
+| [源码索引](src/index.md) | 同步进知识库的本地源码浏览入口 |
 
-- wrapper 对象缓存了什么
-- `plan()` 如何把 block 级描述翻译成 token 级 CSR
-- 为什么 `page_size=1`
-- `run()` 如何把外部张量变成 runtime ABI
+## 源码浏览
 
-### 2. 再读 runtime / JIT 层
+| 文件 | 行数 | 源码页 |
+|------|------|--------|
+| wrapper.py | 397 | [浏览](src/wrapper_py.md) |
+| metadata.py | 88 | [浏览](src/metadata_py.md) |
+| backend.py | 51 | [浏览](src/backend_py.md) |
+| prefill_runtime.py | 108 | [浏览](src/prefill_runtime_py.md) |
+| common.py | 1236 | [浏览](src/common_py.md) |
+| jit/attention/modules.py | 1888 | [浏览](src/jit_attention_modules_py.md) |
+| data/csrc/batch_prefill_jit_binding.cu | 50 | [浏览](src/batch_prefill_jit_binding_cu.md) |
+| data/csrc/batch_prefill.cu | 334 | [浏览](src/batch_prefill_cu.md) |
 
-- [02 Runtime 与 JIT](02_runtime_and_jit.md)
+完整索引见 [src/index.md](src/index.md)。
 
-重点是：
+## 前置知识与关联笔记
 
-- `backend="auto"` 为什么在当前环境会落到 `fa2`
-- `prefill_runtime.py` 为什么说是“更薄的一层”
-- `jit/attention/modules.py` 如何生成 FA2 的 batch prefill 模块
-- 为什么当前实现可以说是 `fa2` only 最小闭环
-
-### 3. 最后读 C++ binding / kernel 层
-
-- [03 C++ Binding 与 Kernel](03_cpp_binding_and_kernel.md)
-
-重点是：
-
-- `plan` / `paged_run` 符号如何导出
-- `plan_info` 如何在 C++ 侧恢复成 `PrefillPlanInfo`
-- `PagedParams` 到底装了哪些东西
-- 为什么这里没有“variable block kernel”，只有“paged prefill kernel”
-
-### 4. 源码浏览
-
-- [源码索引](src/index.md)
-
-## 阅读前置
-
-这组代码不要求你先懂 Hopper sparse mainloop，但最好先有下面几块基础：
+阅读这组代码时，最常需要回看的不是 Hopper 新指令，而是下面这些基础页：
 
 - [CUDA 基础：执行模型与内存访问](../cuda_foundations/01_cuda_execution_model_and_memory.md)
 - [CUDA 基础：CUTLASS/CuTe 编程模型](../cuda_foundations/02_cuda_cutlass_cute_programming_model.md)
 - [CUDA 基础：分块、数据搬运与局部性](../cuda_foundations/04_cuda_tiling_data_movement_and_locality.md)
 - [CUDA 基础：计算、带宽与算存权衡](../cuda_foundations/06_cuda_compute_memory_tradeoffs.md)
-- [Flash Attention V2：Dispatch 与实例化](../flash_attention_v2/05_dispatch_and_instantiation.md)
+- [Flash Attention V2：调度与实例化](../flash_attention_v2/05_dispatch_and_instantiation.md)
 
-其中最后一篇尤其有帮助，因为这套代码虽然不是 FA2 原仓代码，但它在 JIT 模板生成、编译期分发、实例化策略上的思路是同类问题。
+最后一篇尤其重要，因为 `variable_block_attn` 虽然不是 FA2 原仓源码，但它在“模板规格编码 -> JIT 生成 -> 编译期实例 + 运行期 dispatch”这条链路上和 FA2 是同类问题。
 
-## 核心结论
+## 阅读抓手
 
-如果要把整套实现压缩成一句工程判断，那就是：
+读后面三篇时，可以始终盯住三个问题：
 
-> `variable_block_attn` 的价值不在于“另起炉灶写了新 attention kernel”，而在于“把 variable block 语义稳定地翻译到了 FlashInfer FA2 paged prefill 的成熟执行路径上”。
+1. variable block 稀疏图是怎样被压平成 token 级 CSR / paged KV 索引的？
+2. 为什么当前实现能说“接口保留 auto/fa2/fa3，内部只保留 fa2 最小闭环”？
+3. C++/CUDA 层到底有没有 variable block 专属 kernel，还是只是在复用 paged prefill kernel？
 
-所以阅读它时，最该关注的是：
-
-1. block 级稀疏图如何被压平为 token 级索引
-2. plan/runtime/JIT 边界如何最小化复用上游
-3. 这套迁移删掉了什么、保留了什么、故意没有接什么
+后面的拆解基本都在回答这三个问题。

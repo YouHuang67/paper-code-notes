@@ -7,21 +7,20 @@ tags:
 
 # Runtime 与 JIT
 
-**核心文件**:
+**源码**:
 
-- [`prefill_runtime.py`](src/prefill_runtime_py.md)
-- [`backend.py`](src/backend_py.md)
-- [`common.py`](src/common_py.md)
-- [`jit/attention/modules.py`](src/jit_attention_modules_py.md)
-- [`jit/core.py`](src/jit_core_py.md)
-- [`jit/cpp_ext.py`](src/jit_cpp_ext_py.md)
-- [`jit/env.py`](src/jit_env_py.md)
+- [prefill_runtime.py:L32-L108](src/prefill_runtime_py.md#__codelineno-0-32)
+- [backend.py:L28-L50](src/backend_py.md#__codelineno-0-28)
+- [common.py:L459-L501](src/common_py.md#__codelineno-0-459)
+- [jit/attention/modules.py:L372-L396](src/jit_attention_modules_py.md#__codelineno-0-372)
+- [jit/attention/modules.py:L956-L1042](src/jit_attention_modules_py.md#__codelineno-0-956)
+- [jit/attention/modules.py:L1473-L1580](src/jit_attention_modules_py.md#__codelineno-0-1473)
 
-## runtime 层为什么说是“更薄的一层”
+这一层的重点不是某个复杂算法，而是“边界收缩得有多干净”。本地 `variable_block_attn` 只留下了 wrapper 真正会走到的 batch prefill 闭环，其余上游分支基本都被裁掉了。
 
-当前的 `prefill_runtime.py` 只有一个关键入口：`get_batch_prefill_module`。
+## `prefill_runtime.py`：只保留 `plan` 和 `paged_run`
 
-完整主逻辑如下：
+当前 runtime 主入口只有 [`prefill_runtime.py:L32-L108`](src/prefill_runtime_py.md#__codelineno-0-32)：
 
 ```python
 @functools.cache
@@ -70,28 +69,7 @@ def get_batch_prefill_module(backend, *args):
         assert backend == "fa2"
         assert not is_float8(q)
         paged_run_func(
-            float_workspace_buffer,
-            int_workspace_buffer,
-            plan_info_vec,
-            q,
-            paged_k_cache,
-            paged_v_cache,
-            qo_indptr,
-            paged_kv_indptr,
-            paged_kv_indices,
-            paged_kv_last_page_len,
-            o,
-            maybe_lse,
-            mask_mode,
-            layout,
-            window_left,
-            enable_pdl,
-            maybe_custom_mask,
-            maybe_mask_indptr,
-            maybe_alibi_slopes,
-            maybe_prefix_len_ptr,
-            maybe_token_pos_in_items_ptr,
-            maybe_max_item_len_ptr,
+            ...,
             logits_soft_cap,
             sm_scale,
             1.0 / rope_scale,
@@ -103,20 +81,17 @@ def get_batch_prefill_module(backend, *args):
     return SimpleNamespace(plan=module.plan, paged_run=paged_run)
 ```
 
-这份实现和完整 FlashInfer 相比，最大的变化不是“多了什么”，而是“删掉了很多没必要的东西”：
+这段代码很能说明当前迁移的定位：
 
-- 不再保留庞杂的 prefill 入口矩阵
-- 不再暴露与 variable block 无关的其它 runtime 路径
-- 只留下 `plan` 和 `paged_run` 这一条最小闭环
-- 对 `fa3` 直接报错，而不是继续分叉复杂 runtime
+- runtime 不再维护一大组 prefill 入口矩阵
+- `fa3` 明确拒绝，不做半接线状态的伪支持
+- 对 wrapper 来说，导出面只剩下 `plan` 和 `paged_run`
 
-这就解释了为什么它可以说是：
+所以它确实是“面向 variable-block wrapper 的 batch prefill runtime 薄封装”。
 
-> 面向 variable-block wrapper 的 batch prefill runtime 薄封装。
+## backend 解析：接口保留，能力收缩
 
-## backend 选择逻辑：接口保留，能力收缩
-
-backend 的边界写在 [`backend.py`](src/backend_py.md)：
+外层边界在 [`backend.py:L28-L50`](src/backend_py.md#__codelineno-0-28)：
 
 ```python
 def resolve_attention_backend(
@@ -145,13 +120,7 @@ def resolve_attention_backend(
     return backend
 ```
 
-这里最容易误解的是：
-
-- `auto` 不是写死成 `fa2`
-- 而是仍然保留了设备感知检测
-- 只是检测结果如果是 `fa3`，当前版本不会继续执行
-
-真正的检测逻辑在 [`common.py`](src/common_py.md)：
+而 [`common.py:L459-L501`](src/common_py.md#__codelineno-0-459) 里的检测逻辑仍然保留：
 
 ```python
 def determine_attention_backend(
@@ -174,22 +143,20 @@ def determine_attention_backend(
         return "fa2"
 ```
 
-这代表当前设计刻意保留了两层语义：
+这说明当前实现刻意保留了两层语义：
 
-- 接口层仍与上游一致
-- 实现层则明确收缩到当前真正打通的 `fa2`
+- API 层仍与上游对齐，可以说 `auto/fa2/fa3`
+- 执行层则只允许真正打通的 `fa2`
 
-这么做的好处是：
+这么做的好处很工程化：
 
-- 调用方式不需要因为迁移而重写
-- 将来若要接回 `fa3`，边界还在
-- 当前不会把“未接通”伪装成“已支持”
+- 调用端接口不用因为迁移而改写
+- 将来若要接回 `fa3`，边界仍然清楚
+- 当前不会把没打通的能力伪装成“已支持”
 
-## JIT 入口：规格先编码，再生成源码，再编译
+## URI：把模板规格编码成模块身份
 
-JIT 层的第一步是把规格编码成 URI。
-
-[`jit/attention/modules.py`](src/jit_attention_modules_py.md) 中的 `get_batch_prefill_uri`：
+JIT 的第一步是把“规格”编码进 URI。见 [`jit/attention/modules.py:L372-L396`](src/jit_attention_modules_py.md#__codelineno-0-372)：
 
 ```python
 def get_batch_prefill_uri(
@@ -219,19 +186,17 @@ def get_batch_prefill_uri(
     )
 ```
 
-这一步不是装饰，而是整个 JIT 缓存的 key：
+它本质上是在做 JIT 缓存 key：
 
 - dtype 组合不同，URI 不同
 - head dim 不同，URI 不同
-- pos encoding / soft cap / fp16 qk reduction 不同，URI 不同
+- pos encoding / soft cap / fp16-qk reduction 不同，URI 不同
 
-所以 URI 本质上是在做一件事：
+因此 URI 不是装饰，它是在把“模板实例化规格”编码成可缓存、可编译、可复用的模块身份。
 
-> 把“模板实例化规格”编码成可缓存、可编译、可复用的模块身份。
+## `gen_batch_prefill_module()`：variable-block 实际只走 `fa2`
 
-## `gen_batch_prefill_module`：当前 variable-block 真正会走到哪一支
-
-现在的 variable-block 路径最终会走进：
+wrapper 最终调用的是 [`jit/attention/modules.py:L956-L1042`](src/jit_attention_modules_py.md#__codelineno-0-956)：
 
 ```python
 def gen_batch_prefill_module(
@@ -248,7 +213,6 @@ def gen_batch_prefill_module(
     use_fp16_qk_reduction: bool,
 ) -> JitSpec:
     uri = get_batch_prefill_uri(...)
-
     fp8_enabled = dtype_q in [torch.float8_e4m3fn, torch.float8_e5m2]
 
     assert backend in ["fa2", "fa3"]
@@ -280,7 +244,10 @@ def gen_batch_prefill_module(
             "token_pos_in_items_len",
         ]
         additional_scalar_dtypes = ["double", "double", "double", "double", "int64_t"]
-        variant_name = f"DefaultAttention<use_custom_mask, {str(use_sliding_window).lower()}, {str(use_logits_soft_cap).lower()}, {str(pos_encoding_mode == 2).lower()}>"
+        variant_name = (
+            f"DefaultAttention<use_custom_mask, {str(use_sliding_window).lower()}, "
+            f"{str(use_logits_soft_cap).lower()}, {str(pos_encoding_mode == 2).lower()}>"
+        )
         variant_decl = "#include<flashinfer/attention/variants.cuh>"
     else:
         ...
@@ -288,19 +255,17 @@ def gen_batch_prefill_module(
     return gen_customize_batch_prefill_module(...)
 ```
 
-虽然这个函数仍然保留了 `fa3` 分支结构，但对当前 variable-block 闭环来说，真正重要的是：
+虽然这里还保留了 `fa3` 分支的壳，但对当前 `variable_block_attn` 闭环来说，真正重要的是：
 
-- 它使用的是 `fa2` 的 batch prefill 模板
-- `fp8_enabled` 在当前闭环里直接被排除
-- 额外参数位虽然保留，但 `run()` 大多传 `None`
+- wrapper 经过 `resolve_attention_backend()` 之后只会允许 `fa2`
+- `fa2` 下直接排除了 fp8 tensor core 路径
+- additional tensor/scalar 参数仍保持与上游 batch prefill ABI 一致
 
-因此，从“当前实际执行路径”的角度，这段代码应当读成：
+这意味着本地版本不是重新发明 JIT 逻辑，而是在复用上游 batch prefill 的参数化模板体系。
 
-> 用上游 batch prefill 的 `fa2` 模板体系，实例化一个最适合当前 `dtype/head_dim/pos_encoding` 组合的模块。
+## `gen_customize_batch_prefill_module()`：生成 config、实例化单元和绑定源码
 
-## `gen_customize_batch_prefill_module`：真正生成哪些源码
-
-JIT 的主体在 `gen_customize_batch_prefill_module`：
+真正落到磁盘的是 [`jit/attention/modules.py:L1473-L1580`](src/jit_attention_modules_py.md#__codelineno-0-1473)：
 
 ```python
 def gen_customize_batch_prefill_module(
@@ -318,12 +283,14 @@ def gen_customize_batch_prefill_module(
     additional_scalar_dtypes: List[str],
     variant_name: str,
     variant_decl: str,
-    pos_encoding_mode: int = 0,
-    use_sliding_window: bool = False,
-    use_logits_soft_cap: bool = False,
-    use_fp16_qk_reduction: bool = False,
-    fp8_enabled: bool = False,
+    ...
 ) -> JitSpec:
+    if backend != "fa2":
+        raise NotImplementedError(
+            "variable_block_attn only keeps the fa2 batch prefill codegen path; "
+            f"got backend={backend!r}"
+        )
+
     kwargs = {
         "variant_decl": variant_decl,
         "variant_name": variant_name,
@@ -338,43 +305,28 @@ def gen_customize_batch_prefill_module(
         "use_logits_soft_cap": str(use_logits_soft_cap).lower(),
         "use_fp16_qk_reduction": str(use_fp16_qk_reduction).lower(),
     }
-    gen_directory = jit_env.FLASHINFER_GEN_SRC_DIR / uri
-    (additional_params_decl, additional_func_params, additional_params_setter) = (
-        generate_additional_params(...)
-    )
 
-    with open(jit_env.FLASHINFER_CSRC_DIR / "batch_prefill_customize_config.jinja") as f:
+    with open(... / "batch_prefill_customize_config.jinja") as f:
         config_templ = jinja2.Template(f.read())
-
-    with open(jit_env.FLASHINFER_CSRC_DIR / "batch_prefill_paged_kernel_inst.jinja") as f:
+    with open(... / "batch_prefill_paged_kernel_inst.jinja") as f:
         paged_kernel_inst_templ = jinja2.Template(f.read())
-
-    with open(jit_env.FLASHINFER_CSRC_DIR / "batch_prefill_ragged_kernel_inst.jinja") as f:
+    with open(... / "batch_prefill_ragged_kernel_inst.jinja") as f:
         ragged_kernel_inst_templ = jinja2.Template(f.read())
 
-    ...
+    generated_inc_str = config_templ.render(**kwargs)
+    os.makedirs(gen_directory, exist_ok=True)
 
     for mask_mode in [0, 1, 2, 3]:
-        dest_path = gen_directory / f"batch_prefill_paged_kernel_mask_{mask_mode}.cu"
-        source = paged_kernel_inst_templ.render(
-            mask_mode=mask_mode_literal[mask_mode],
-            **kwargs,
-        )
-        write_if_different(dest_path, source)
-
-        dest_path = gen_directory / f"batch_prefill_ragged_kernel_mask_{mask_mode}.cu"
-        source = ragged_kernel_inst_templ.render(
-            mask_mode=mask_mode_literal[mask_mode],
-            **kwargs,
-        )
-        write_if_different(dest_path, source)
+        ...
+        source = paged_kernel_inst_templ.render(mask_mode=mask_mode_literal[mask_mode], **kwargs)
+        ...
+        source = ragged_kernel_inst_templ.render(mask_mode=mask_mode_literal[mask_mode], **kwargs)
+        ...
 
     for filename in [
         "batch_prefill.cu",
         "batch_prefill_jit_binding.cu",
     ]:
-        src_path = jit_env.FLASHINFER_CSRC_DIR / filename
-        dest_path = gen_directory / filename
         ...
 
     generated_config_path = gen_directory / "batch_prefill_config.inc"
@@ -382,44 +334,25 @@ def gen_customize_batch_prefill_module(
     return gen_jit_spec(uri, source_paths)
 ```
 
-这段代码说明当前 JIT 策略不是“直接拿现成 `.so`”，而是：
+这里可以直接看出当前 JIT 输出物的形态：
 
-1. 根据 dtype/head_dim/mask_mode 等规格生成配置
-2. 用 Jinja 模板生成实例化 `.cu`
-3. 拷贝通用的 `batch_prefill.cu` 与 `batch_prefill_jit_binding.cu`
-4. 形成一组源码后再交给编译器构建扩展
+- 一个 `batch_prefill_config.inc`，把 dtype / head dim / variant / mask mode 等规格写成配置
+- 4 个 paged kernel 实例化单元
+- 4 个 ragged kernel 实例化单元
+- 两个公共 C++ 源文件：`batch_prefill.cu` 和 `batch_prefill_jit_binding.cu`
 
-所以这层 JIT 的真正含义是：
+也就是说，JIT 这一层做的事是：
 
-- Python 侧并不自己维护一堆静态编译产物
-- 它在运行时按需求拼出一份“刚好够用”的源码集合
-- 然后由 `jit/core.py`、`jit/cpp_ext.py` 等基础设施负责编译和加载
+1. 把规格展开进模板参数
+2. 生成当前规格需要的最小源码集合
+3. 交给 `jit/core.py`、`jit/cpp_ext.py`、`jit/env.py` 的通用机制完成编译与加载
 
-## 为什么说当前已经是 `fa2 only` 最小闭环
+如果你在理解“为什么要写 URI，为什么要有 config + inst 模板”时感觉熟悉，可以对照 [Flash Attention V2：调度与实例化](../flash_attention_v2/05_dispatch_and_instantiation.md) 一起看。这两者都属于“编译期模板实例化 + 运行期选择”的同一类工程问题。
 
-从代码组织上看，你仍能在 [`modules.py`](src/jit_attention_modules_py.md) 里看到 `fa3` 甚至更多更大的上游结构。但结合整个目录真实保留下来的东西看，当前这套闭环已经是明显收缩后的版本：
+## 这一层的结论
 
-- [`prefill_runtime.py`](src/prefill_runtime_py.md) 里显式拒绝 `fa3`
-- 当前目录的 `data/csrc/` 只保留了 `fa2` 相关 `batch_prefill*` 文件
-- 文档链路和调用链都只围绕 `paged prefill -> plan -> paged_run`
-- `VariableBlockSparseAttentionWrapper` 也只依赖这条路径
+runtime/JIT 层的设计可以概括成一句话：
 
-所以工程上最准确的理解不是“这还是完整的多后端 runtime”，而是：
+> 保留上游 batch prefill 的模块生成机制，但把 variable-block 真正会走到的执行面压缩到 `fa2`、`plan`、`paged_run` 这一条闭环上。
 
-> 接口层保留了上游兼容外壳，执行层已经收敛为 variable-block 所需的 `fa2` 最小子集。
-
-## 这一层应该怎么读
-
-读 runtime/JIT 时，建议不要把注意力放在“所有可能性”上，而要聚焦“当前 variable-block 主链路会实际命中的部分”：
-
-1. backend 解析结果如何落到 `fa2`
-2. `get_batch_prefill_module` 如何把 plan/run 句柄拿出来
-3. JIT 如何从规格生成 URI、配置、模板实例化源码
-4. 这些产物最终怎样组成可加载模块
-
-这一层的价值不在数学，而在工程边界：
-
-- 上层 wrapper 提供什么规格
-- 下层 C++/CUDA 需要什么实例
-- 中间如何以最薄的方式接起来
-
+于是这层没有新增多少“算法”，反而最有价值的地方是删得足够狠，边界收得足够清楚。

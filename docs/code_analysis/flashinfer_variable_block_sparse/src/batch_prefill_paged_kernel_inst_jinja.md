@@ -8,6 +8,8 @@ tags:
 
 **原始文件**: `refs/codes/flashinfer_variable_block_sparse/variable_block_attn/data/csrc/batch_prefill_paged_kernel_inst.jinja`
 
+**仓库**: `refs/codes/flashinfer_variable_block_sparse/variable_block_attn`
+
 **解读**: [代码分析](../00_overview.md)
 
 ```jinja linenums="1"
