@@ -1,0 +1,1316 @@
+[
+  {
+    "title": "HySparse",
+    "path": "paper_reading/hysparse.md",
+    "type": "论文阅读",
+    "tags": [
+      "Sparse Attention",
+      "LLM Inference",
+      "KV Cache"
+    ],
+    "summary": "混合稀疏注意力架构，full attention 作为 oracle 选择 token 并共享 KV cache 给 sparse 层，80B MoE 仅 5 层 full attn 实现 10x KV 减少",
+    "category": "Sparse Attention",
+    "date_arxiv": "2026-02",
+    "date_added": "2026-03-31",
+    "organizations": "Xiaomi"
+  },
+  {
+    "title": "IndexCache",
+    "path": "paper_reading/indexcache.md",
+    "type": "论文阅读",
+    "tags": [
+      "Sparse Attention",
+      "LLM Inference",
+      "KV Cache"
+    ],
+    "summary": "DSA indexer 跨层索引复用，贪心搜索或多层蒸馏去除 75% indexer 计算，prefill 1.82x 加速",
+    "category": "Sparse Attention",
+    "date_arxiv": "2026-03",
+    "date_added": "2026-03-31",
+    "organizations": "Tsinghua University, Zhipu AI"
+  },
+  {
+    "title": "Kascade",
+    "path": "paper_reading/kascade.md",
+    "type": "论文阅读",
+    "tags": [
+      "Sparse Attention",
+      "LLM Inference",
+      "KV Cache"
+    ],
+    "summary": "跨层 Top-k 复用的 training-free 稀疏注意力，anchor-reuse 架构 + head remapping + DP 自动选层",
+    "category": "Sparse Attention",
+    "date_arxiv": "2025-12",
+    "date_added": "2026-03-31",
+    "organizations": "Microsoft Research India"
+  },
+  {
+    "title": "SkyReels-V2",
+    "path": "paper_reading/skyreels_v2.md",
+    "type": "论文阅读",
+    "tags": [
+      "Video Generation",
+      "Diffusion Model",
+      "Reinforcement Learning",
+      "Diffusion Forcing",
+      "Flow Matching",
+      "DPO"
+    ],
+    "summary": "无限时长电影级视频生成，通过结构化标注 + Flow-DPO 运动优化 + Diffusion Forcing 后训练实现",
+    "category": "视频生成架构",
+    "date_arxiv": "2025-04",
+    "date_added": "2026-03-30",
+    "organizations": "Skywork AI"
+  },
+  {
+    "title": "VideoAlign",
+    "path": "paper_reading/videoalign.md",
+    "type": "论文阅读",
+    "tags": [
+      "Video Generation",
+      "Diffusion Model",
+      "Reinforcement Learning",
+      "Flow Matching",
+      "DPO"
+    ],
+    "summary": "完整视频生成偏好对齐流水线：182k 偏好数据集 + VideoReward (BTT) + Flow-DPO/RWR/NRG 三种对齐算法",
+    "category": "视频生成对齐（RL / Human Feedback）",
+    "date_arxiv": "2025-01",
+    "date_added": "2026-03-31",
+    "organizations": "MMLab CUHK, Tsinghua University, Kling Team (Kuaishou), Shanghai AI Lab"
+  },
+  {
+    "title": "VideoDPO",
+    "path": "paper_reading/videodpo.md",
+    "type": "论文阅读",
+    "tags": [
+      "Video Generation",
+      "Diffusion Model",
+      "Reinforcement Learning",
+      "DPO"
+    ],
+    "summary": "基于 OmniScore 多维度评分的视频 DPO，自动构造偏好对无需人工标注",
+    "category": "视频生成对齐（RL / Human Feedback）",
+    "date_arxiv": "2024-12",
+    "date_added": "2026-03-31",
+    "organizations": "HKUST, Renmin University of China, Johns Hopkins University"
+  },
+  {
+    "title": "DenseDPO",
+    "path": "paper_reading/densedpo.md",
+    "type": "论文阅读",
+    "tags": [
+      "Video Generation",
+      "Diffusion Model",
+      "Reinforcement Learning",
+      "DPO"
+    ],
+    "summary": "段级密集偏好标注 + 引导采样构造困难负例，细粒度 DPO 对齐",
+    "category": "视频生成对齐（RL / Human Feedback）",
+    "date_arxiv": "2025-06",
+    "date_added": "2026-03-31",
+    "organizations": "Snap Research, University of Toronto, Vector Institute"
+  },
+  {
+    "title": "DeDPO",
+    "path": "paper_reading/dedpo.md",
+    "type": "论文阅读",
+    "tags": [
+      "Video Generation",
+      "Diffusion Model",
+      "Reinforcement Learning",
+      "DPO"
+    ],
+    "summary": "半监督 DPO 用双重稳健估计器去偏，解决视频偏好标注中的运动偏差问题",
+    "category": "视频生成对齐（RL / Human Feedback）",
+    "date_arxiv": "2026-02",
+    "date_added": "2026-03-31",
+    "organizations": "Cornell University, Rutgers University, NYU"
+  },
+  {
+    "title": "SAGE-GRPO",
+    "path": "paper_reading/sage_grpo.md",
+    "type": "论文阅读",
+    "tags": [
+      "Video Generation",
+      "Diffusion Model",
+      "Reinforcement Learning",
+      "Flow Matching",
+      "GRPO"
+    ],
+    "summary": "精确流形感知 SDE + 梯度范数均衡器 + 双信赖域（周期移动锚 + 逐步 KL）GRPO",
+    "category": "视频生成对齐（RL / Human Feedback）",
+    "date_arxiv": "2026-03",
+    "date_added": "2026-03-31",
+    "organizations": "HKUST, Tencent Hunyuan"
+  },
+  {
+    "title": "VGGRPO",
+    "path": "paper_reading/vggrpo.md",
+    "type": "论文阅读",
+    "tags": [
+      "Video Generation",
+      "Diffusion Model",
+      "Reinforcement Learning",
+      "Flow Matching",
+      "GRPO"
+    ],
+    "summary": "Latent Geometry Model 拼接 VAE latent 到 Any4D，几何重投影一致性 reward + GRPO",
+    "category": "视频生成对齐（RL / Human Feedback）",
+    "date_arxiv": "2026-03",
+    "date_added": "2026-03-31",
+    "organizations": "Google, University of Copenhagen, University of Oxford, CREST-ENSAE"
+  },
+  {
+    "title": "Reward-Forcing",
+    "path": "paper_reading/reward_forcing.md",
+    "type": "论文阅读",
+    "tags": [
+      "Video Generation",
+      "Diffusion Model",
+      "Reinforcement Learning"
+    ],
+    "summary": "自回归视频生成：少量 ODE 轨迹学运动先验 + ImageReward 引导纹理，解耦运动和纹理训练",
+    "category": "视频生成对齐（RL / Human Feedback）",
+    "date_arxiv": "2026-01",
+    "date_added": "2026-03-31",
+    "organizations": "UCLA"
+  },
+  {
+    "title": "PRFL",
+    "path": "paper_reading/prfl.md",
+    "type": "论文阅读",
+    "tags": [
+      "Video Generation",
+      "Diffusion Model",
+      "Reinforcement Learning",
+      "Flow Matching",
+      "Reward Model"
+    ],
+    "summary": "视频生成模型自身作为 latent reward 模型（PAVRM），过程级监督无需 VAE 解码",
+    "category": "视频生成对齐（RL / Human Feedback）",
+    "date_arxiv": "2025-11",
+    "date_added": "2026-03-31",
+    "organizations": "UCAS, Tencent Hunyuan, PKU, SJTU, THU, NJU"
+  },
+  {
+    "title": "VR-Thinker",
+    "path": "paper_reading/vr_thinker.md",
+    "type": "论文阅读",
+    "tags": [
+      "Video Generation",
+      "Reinforcement Learning",
+      "Reward Model"
+    ],
+    "summary": "Thinking-with-Image 框架，推理时主动检索帧 + 窗口记忆的视频 reward 模型",
+    "category": "视频 Reward 模型",
+    "date_arxiv": "2025-10",
+    "date_added": "2026-03-31",
+    "organizations": "CUHK MMLab, Kling Team (Kuaishou), Nanjing University"
+  },
+  {
+    "title": "REACT",
+    "path": "paper_reading/react.md",
+    "type": "论文阅读",
+    "tags": [
+      "Video Generation",
+      "Reinforcement Learning",
+      "Reward Model"
+    ],
+    "summary": "帧级结构性失真评估 reward 模型，8 类失真分类 + masked SFT + GRPO with BTT pairwise reward",
+    "category": "视频 Reward 模型",
+    "date_arxiv": "2026-01",
+    "date_added": "2026-03-31",
+    "organizations": "USTC, Kling Team (Kuaishou), Institute of Software CAS"
+  },
+  {
+    "title": "PhysMaster",
+    "path": "paper_reading/physmaster.md",
+    "type": "论文阅读",
+    "tags": [
+      "Video Generation",
+      "Diffusion Model",
+      "Reinforcement Learning",
+      "Flow Matching",
+      "DPO"
+    ],
+    "summary": "PhysEncoder 物理表征学习 + 三阶段顺序 Flow-DPO（SFT → DPO-DiT → DPO-PhysEncoder）",
+    "category": "视频生成对齐（RL / Human Feedback）",
+    "date_arxiv": "2025-10",
+    "date_added": "2026-03-31",
+    "organizations": "Tsinghua University, Kuaishou Technology"
+  },
+  {
+    "title": "RLGF",
+    "path": "paper_reading/rlgf.md",
+    "type": "论文阅读",
+    "tags": [
+      "Video Generation",
+      "Diffusion Model",
+      "Reinforcement Learning"
+    ],
+    "summary": "自动驾驶视频生成的层级几何 reward（点-线-面-体素-特征）+ latent 空间滑动窗口 RL",
+    "category": "自动驾驶视频生成",
+    "date_arxiv": "2025-09",
+    "date_added": "2026-03-31",
+    "organizations": "University of Macau, Li Auto Inc."
+  },
+  {
+    "title": "VPO",
+    "path": "paper_reading/vpo.md",
+    "type": "论文阅读",
+    "tags": [
+      "Video Generation",
+      "Reinforcement Learning"
+    ],
+    "summary": "从 prompt 优化角度对齐视频生成模型，文本级+视频级多反馈 DPO",
+    "category": "视频生成对齐（RL / Human Feedback）",
+    "date_arxiv": "2025-03",
+    "date_added": "2026-03-31",
+    "organizations": "Tsinghua University (CoAI Group + KEG), Zhipu AI"
+  },
+  {
+    "title": "Qwen2.5-VL",
+    "path": "paper_reading/qwen25_vl.md",
+    "type": "论文阅读",
+    "tags": [
+      "VLM"
+    ],
+    "summary": "Qwen VLM 旗舰，ViT Window Attention + MRoPE 绝对时间对齐 + 4.1T token，72B 达 GPT-4o 水平",
+    "category": "Vision Language Model",
+    "date_arxiv": "2025-02",
+    "date_added": "2026-03-31",
+    "organizations": "Qwen Team, Alibaba Group"
+  },
+  {
+    "title": "Qwen3-VL",
+    "path": "paper_reading/qwen3_vl.md",
+    "type": "论文阅读",
+    "tags": [
+      "VLM"
+    ],
+    "summary": "Qwen VLM 最强版本，Interleaved MRoPE + DeepStack + 256K 长上下文，dense/MoE 六规模",
+    "category": "Vision Language Model",
+    "date_arxiv": "2025-11",
+    "date_added": "2026-03-31",
+    "organizations": "Qwen Team, Alibaba Group"
+  },
+  {
+    "title": "Qwen3-Omni",
+    "path": "paper_reading/qwen3_omni.md",
+    "type": "论文阅读",
+    "tags": [
+      "VLM"
+    ],
+    "summary": "首个四模态零退化单一模型，Thinker-Talker MoE + AuT + 多 Codebook 流式语音，234ms 首包延迟",
+    "category": "Vision Language Model",
+    "date_arxiv": "2025-09",
+    "date_added": "2026-03-31",
+    "organizations": "Qwen Team, Alibaba Group"
+  },
+  {
+    "title": "Native Sparse Attention - 总览",
+    "path": "code_analysis/native_sparse_attention/00_overview.md",
+    "type": "代码分析",
+    "tags": [
+      "Triton",
+      "Sparse Attention"
+    ],
+    "summary": "NSA 三路注意力融合（压缩 + 选择 + 滑动窗口）的整体架构与内核索引"
+  },
+  {
+    "title": "Native Sparse Attention - 数学公式",
+    "path": "code_analysis/native_sparse_attention/01_math_formulation.md",
+    "type": "代码分析",
+    "tags": [
+      "Online Softmax"
+    ],
+    "summary": "标准注意力、Online Softmax、NSA 三路融合的数学推导"
+  },
+  {
+    "title": "Native Sparse Attention - 压缩注意力",
+    "path": "code_analysis/native_sparse_attention/02_compression_attention.md",
+    "type": "代码分析",
+    "tags": [
+      "Triton",
+      "Sparse Attention"
+    ],
+    "summary": "Mean Pooling 压缩 + 前向/反向 Triton 内核实现"
+  },
+  {
+    "title": "Native Sparse Attention - Top-k 选择",
+    "path": "code_analysis/native_sparse_attention/03_topk_selection.md",
+    "type": "代码分析",
+    "tags": [
+      "Triton",
+      "Sparse Attention",
+      "Bitonic Sort"
+    ],
+    "summary": "Online Top-k 选择内核，Bitonic Sort 实现块级稀疏索引"
+  },
+  {
+    "title": "Native Sparse Attention - 选择注意力",
+    "path": "code_analysis/native_sparse_attention/04_selected_attention.md",
+    "type": "代码分析",
+    "tags": [
+      "Triton",
+      "Sparse Attention"
+    ],
+    "summary": "Block-wise 稀疏注意力前向/反向内核与 Block Mask 机制"
+  },
+  {
+    "title": "Native Sparse Attention - 滑动窗口",
+    "path": "code_analysis/native_sparse_attention/05_sliding_window.md",
+    "type": "代码分析",
+    "tags": [
+      "Flash Attention",
+      "Sliding Window"
+    ],
+    "summary": "FlashAttention 滑动窗口集成与三路门控融合"
+  },
+  {
+    "title": "xformers Memory Efficient Attention - 总览",
+    "path": "code_analysis/xformers_memory_efficient_attention/00_overview.md",
+    "type": "代码分析",
+    "tags": [
+      "Triton",
+      "Flash Attention",
+      "Online Softmax",
+      "KV Cache",
+      "LLM Inference"
+    ],
+    "summary": "xformers Triton Split-K 前向推理内核：Split-K 并行、mask 融合、INT4/FP8 量化、GQA head-swapping、归约合并"
+  },
+  {
+    "title": "CUTLASS Memory Efficient Attention - 总览",
+    "path": "code_analysis/cutlass_mem_eff_attention/00_overview.md",
+    "type": "代码分析",
+    "tags": [
+      "CUTLASS",
+      "Flash Attention",
+      "Online Softmax"
+    ],
+    "summary": "PyTorch ATen CUTLASS 前向 kernel：模板分发、两阶段 GEMM、iterative_softmax、Epilogue 归一化"
+  },
+  {
+    "title": "CUDA 基础：导读",
+    "path": "code_analysis/cuda_foundations/00_overview.md",
+    "type": "代码分析",
+    "tags": [
+      "CUDA",
+      "CUTLASS"
+    ],
+    "summary": "CUDA / CUTLASS / CuTe 公共基础目录导读：执行模型、内存访问、模板分发与编程抽象的阅读路径"
+  },
+  {
+    "title": "CUDA 基础：执行模型与内存访问",
+    "path": "code_analysis/cuda_foundations/01_cuda_execution_model_and_memory.md",
+    "type": "代码分析",
+    "tags": [
+      "CUDA"
+    ],
+    "summary": "CUDA kernel 执行模型与内存访问基础：thread/warp/block/grid、shared memory、__syncthreads、__shfl_sync、浮点原子技巧与 exp2f"
+  },
+  {
+    "title": "CUDA 基础：性能模型与 Occupancy",
+    "path": "code_analysis/cuda_foundations/03_cuda_performance_model_and_occupancy.md",
+    "type": "代码分析",
+    "tags": [
+      "CUDA"
+    ],
+    "summary": "从 CTA/warp/SM 调度到 occupancy：latency hiding、资源分配与 FA2 这类 tiled kernel 的 block shape 权衡"
+  },
+  {
+    "title": "CUDA 基础：分块、数据搬运与局部性",
+    "path": "code_analysis/cuda_foundations/04_cuda_tiling_data_movement_and_locality.md",
+    "type": "代码分析",
+    "tags": [
+      "CUDA"
+    ],
+    "summary": "从 arithmetic intensity 到 tiling/coalescing/predication：理解 attention 与 GEMM 的片上复用和数据流设计"
+  },
+  {
+    "title": "CUDA 基础：归约、Scan 与在线归一化",
+    "path": "code_analysis/cuda_foundations/05_cuda_reduction_scan_and_online_normalization.md",
+    "type": "代码分析",
+    "tags": [
+      "CUDA"
+    ],
+    "summary": "reduction tree、scan 的工作效率与 online softmax：把 FA2 的逐行 max/sum、warp allreduce 和 dO·O 放回通用并行模式"
+  },
+  {
+    "title": "CUDA 基础：计算、带宽与算存权衡",
+    "path": "code_analysis/cuda_foundations/06_cuda_compute_memory_tradeoffs.md",
+    "type": "代码分析",
+    "tags": [
+      "CUDA"
+    ],
+    "summary": "Roofline 直觉、memory-bound / compute-bound、recomputation 与 block shape 的算力-带宽-片上资源权衡"
+  },
+  {
+    "title": "VIGOR",
+    "path": "paper_reading/vigor.md",
+    "type": "论文阅读",
+    "tags": [
+      "Video Generation",
+      "Reinforcement Learning",
+      "GRPO",
+      "Reward Model",
+      "Flow Matching"
+    ],
+    "summary": "视频生成 GRPO 框架：多粒度 reward + 帧级/视频级双层 GRPO",
+    "category": "视频生成对齐（RL / Human Feedback）",
+    "date_arxiv": "2026-03",
+    "date_added": "2026-04-02",
+    "organizations": "Nankai University, BUPT, École Polytechnique"
+  },
+  {
+    "title": "TeleBoost",
+    "path": "paper_reading/teleboost.md",
+    "type": "论文阅读",
+    "tags": [
+      "Video Generation",
+      "Reinforcement Learning",
+      "Flow Matching"
+    ],
+    "summary": "Telescoping Boosting：多智能体迭代蒸馏，每轮 reward 提升后重新蒸馏少步模型",
+    "category": "视频生成对齐（RL / Human Feedback）",
+    "date_arxiv": "2026-02",
+    "date_added": "2026-04-02",
+    "organizations": "Northwestern Polytechnical University"
+  },
+  {
+    "title": "PISCES",
+    "path": "paper_reading/pisces.md",
+    "type": "论文阅读",
+    "tags": [
+      "Video Generation",
+      "Reinforcement Learning",
+      "GRPO",
+      "Flow Matching"
+    ],
+    "summary": "双鱼对抗系统：verifier + falsifier 对抗训练的视频生成对齐",
+    "category": "视频生成对齐（RL / Human Feedback）",
+    "date_arxiv": "2026-02",
+    "date_added": "2026-04-02",
+    "organizations": "Microsoft, Stony Brook University"
+  },
+  {
+    "title": "Seedance 1.5",
+    "path": "paper_reading/seedance15.md",
+    "type": "论文阅读",
+    "tags": [
+      "Video Generation",
+      "Diffusion Model",
+      "Reinforcement Learning",
+      "Flow Matching"
+    ],
+    "summary": "音视频联合生成：Native AV-DiT + 多维 RLHF + 10× 推理加速",
+    "category": "视频生成架构",
+    "date_arxiv": "2025-12",
+    "date_added": "2026-04-02",
+    "organizations": "ByteDance Seed"
+  },
+  {
+    "title": "DDRL",
+    "path": "paper_reading/ddrl.md",
+    "type": "论文阅读",
+    "tags": [
+      "Video Generation",
+      "Reinforcement Learning",
+      "Diffusion Model",
+      "Flow Matching"
+    ],
+    "summary": "数据正则化扩散 RL：前向 KL 锚定数据分布防止 reward hacking",
+    "category": "视频生成对齐（RL / Human Feedback）",
+    "date_arxiv": "2025-12",
+    "date_added": "2026-04-02",
+    "organizations": "Stanford University, NVIDIA"
+  },
+  {
+    "title": "CAMVERSE",
+    "path": "paper_reading/camverse.md",
+    "type": "论文阅读",
+    "tags": [
+      "Video Generation",
+      "Diffusion Model",
+      "Flow Matching"
+    ],
+    "summary": "高质量 I2V + 可控运动：MoRA 运动适配器 + 精细镜头运动控制",
+    "category": "视频生成架构",
+    "date_arxiv": "2025-12",
+    "date_added": "2026-04-02",
+    "organizations": "AIsphere, NUS, NTU"
+  },
+  {
+    "title": "Kandinsky 5.0",
+    "path": "paper_reading/kandinsky5.md",
+    "type": "论文阅读",
+    "tags": [
+      "Video Generation",
+      "Diffusion Model",
+      "Reinforcement Learning",
+      "Flow Matching"
+    ],
+    "summary": "统一图像/视频/音频生成基础模型族，多阶段课程训练 + RLHF",
+    "category": "视频生成架构",
+    "date_arxiv": "2025-11",
+    "date_added": "2026-04-02",
+    "organizations": "Kandinsky Lab"
+  },
+  {
+    "title": "DreaMontage",
+    "path": "paper_reading/dreamontage.md",
+    "type": "论文阅读",
+    "tags": [
+      "Video Generation",
+      "Reinforcement Learning",
+      "GRPO",
+      "Flow Matching"
+    ],
+    "summary": "多参考图对齐视频生成：CLIP-I2T reward 驱动 GRPO",
+    "category": "视频生成对齐（RL / Human Feedback）",
+    "date_arxiv": "2025-12",
+    "date_added": "2026-04-02",
+    "organizations": "ByteDance"
+  },
+  {
+    "title": "RealDPO",
+    "path": "paper_reading/realdpo.md",
+    "type": "论文阅读",
+    "tags": [
+      "Video Generation",
+      "DPO",
+      "Flow Matching"
+    ],
+    "summary": "真实视频锚定 DPO：用真实视频作为偏好锚点，避免合成数据偏差",
+    "category": "视频生成对齐（RL / Human Feedback）",
+    "date_arxiv": "2025-10",
+    "date_added": "2026-04-02",
+    "organizations": "Shanghai AI Lab, NTU"
+  },
+  {
+    "title": "Euphonium",
+    "path": "paper_reading/euphonium.md",
+    "type": "论文阅读",
+    "tags": [
+      "Video Generation",
+      "Reinforcement Learning",
+      "GRPO",
+      "Flow Matching",
+      "Reward Model"
+    ],
+    "summary": "过程 Reward 梯度注入 SDE 漂移项 + 双重 Reward GRPO，统一 Flow-GRPO 和 DanceGRPO",
+    "category": "视频生成对齐（RL / Human Feedback）",
+    "date_arxiv": "2026-02",
+    "date_added": "2026-04-02",
+    "organizations": "SJTU, Tencent Hunyuan"
+  },
+  {
+    "title": "TAGRPO",
+    "path": "paper_reading/tagrpo.md",
+    "type": "论文阅读",
+    "tags": [
+      "Video Generation",
+      "Reinforcement Learning",
+      "GRPO",
+      "Flow Matching"
+    ],
+    "summary": "记忆库对比 I2V 对齐：高质量记忆库渐进提升生成下界",
+    "category": "视频生成对齐（RL / Human Feedback）",
+    "date_arxiv": "2026-01",
+    "date_added": "2026-04-02",
+    "organizations": "HKU, Tencent Hunyuan"
+  },
+  {
+    "title": "What Happens Next",
+    "path": "paper_reading/whathappensnext.md",
+    "type": "论文阅读",
+    "tags": [
+      "Video Generation",
+      "Reinforcement Learning",
+      "GRPO",
+      "Flow Matching",
+      "VLM"
+    ],
+    "summary": "统一视频理解+生成的下一场景预测，因果一致性 reward + GRPO",
+    "category": "视频生成对齐（RL / Human Feedback）",
+    "date_arxiv": "2025-12",
+    "date_added": "2026-04-02",
+    "organizations": "Penn State University, Amazon"
+  },
+  {
+    "title": "DPP-GRPO",
+    "path": "paper_reading/dppgrpo.md",
+    "type": "论文阅读",
+    "tags": [
+      "Video Generation",
+      "Reinforcement Learning",
+      "GRPO",
+      "Flow Matching"
+    ],
+    "summary": "行列式点过程 GRPO：DPP 采样替代随机采样增加组内多样性",
+    "category": "视频生成对齐（RL / Human Feedback）",
+    "date_arxiv": "2025-11",
+    "date_added": "2026-04-02",
+    "organizations": "Virginia Tech"
+  },
+  {
+    "title": "AR-CoPO",
+    "path": "paper_reading/arcopo.md",
+    "type": "论文阅读",
+    "tags": [
+      "Video Generation",
+      "Reinforcement Learning",
+      "GRPO",
+      "Flow Matching"
+    ],
+    "summary": "流式 AR 模型 chunk-level forking + semi-on-policy 训练，解决 few-step CM 的 SDE 失效",
+    "category": "视频生成对齐（RL / Human Feedback）",
+    "date_arxiv": "2026-03",
+    "date_added": "2026-04-02",
+    "organizations": "CUHK MMLab, Vivix Group Limited, HKUST"
+  },
+  {
+    "title": "VideoScore2",
+    "path": "paper_reading/videoscore2.md",
+    "type": "论文阅读",
+    "tags": [
+      "Video Generation",
+      "Reward Model",
+      "Reinforcement Learning",
+      "GRPO",
+      "VLM"
+    ],
+    "summary": "CoT 推理式视频评估：三维度评分 + SFT → GRPO 两阶段训练",
+    "category": "视频 Reward 模型",
+    "date_arxiv": "2025-09",
+    "date_added": "2026-04-02",
+    "organizations": "UIUC, University of Waterloo, M-A-P, University of Toronto"
+  },
+  {
+    "title": "McSc",
+    "path": "paper_reading/mcsc.md",
+    "type": "论文阅读",
+    "tags": [
+      "Video Generation",
+      "Reinforcement Learning",
+      "DPO",
+      "GRPO",
+      "Reward Model"
+    ],
+    "summary": "多维 self-critic 推理式 RM + 运动校正 DPO，解决运动偏差 reward hacking",
+    "category": "视频生成对齐（RL / Human Feedback）",
+    "date_arxiv": "2025-11",
+    "date_added": "2026-04-02",
+    "organizations": "Tongyi Lab, Alibaba Group"
+  },
+  {
+    "title": "MapReduce LoRA",
+    "path": "paper_reading/mapreducelora.md",
+    "type": "论文阅读",
+    "tags": [
+      "Video Generation",
+      "Reinforcement Learning",
+      "GRPO",
+      "DPO",
+      "Diffusion Model"
+    ],
+    "summary": "迭代式 LoRA 专家合并的多偏好对齐，Pareto 前沿逐步推进",
+    "category": "视频生成对齐（RL / Human Feedback）",
+    "date_arxiv": "2025-11",
+    "date_added": "2026-04-02",
+    "organizations": "Georgia Tech, Adobe"
+  },
+  {
+    "title": "VANS",
+    "path": "paper_reading/vans.md",
+    "type": "论文阅读",
+    "tags": [
+      "Video Generation",
+      "Reinforcement Learning",
+      "GRPO",
+      "Flow Matching",
+      "VLM"
+    ],
+    "summary": "Joint-GRPO 对齐 VLM+VDM，视频作为答案的下一事件预测",
+    "category": "视频生成对齐（RL / Human Feedback）",
+    "date_arxiv": "2025-11",
+    "date_added": "2026-04-02",
+    "organizations": "City University of Hong Kong, Kling Team (Kuaishou)"
+  },
+  {
+    "title": "Identity-GRPO",
+    "path": "paper_reading/identitygrpo.md",
+    "type": "论文阅读",
+    "tags": [
+      "Video Generation",
+      "Reinforcement Learning",
+      "GRPO",
+      "Flow Matching",
+      "Reward Model"
+    ],
+    "summary": "多人身份保持 GRPO：专用身份 RM + BTT + 大组差异化噪声采样",
+    "category": "视频生成对齐（RL / Human Feedback）",
+    "date_arxiv": "2025-10",
+    "date_added": "2026-04-02",
+    "organizations": "Alibaba Group, Fudan University"
+  },
+  {
+    "title": "GRPO Survey",
+    "path": "paper_reading/grposurvey.md",
+    "type": "论文阅读",
+    "tags": [
+      "Video Generation",
+      "Reinforcement Learning",
+      "GRPO",
+      "Flow Matching",
+      "Diffusion Model",
+      "DPO",
+      "Reward Model"
+    ],
+    "summary": "Flow-GRPO 及后续 200+ 论文综述：reward 设计、credit assignment、采样效率、多样性保持",
+    "category": "视频生成对齐综述",
+    "date_arxiv": "2026-03",
+    "date_added": "2026-04-02",
+    "organizations": "SJTU, THU, CUHK"
+  },
+  {
+    "title": "AR-Drag",
+    "path": "paper_reading/ardrag.md",
+    "type": "论文阅读",
+    "tags": [
+      "Video Generation",
+      "Reinforcement Learning",
+      "GRPO",
+      "Flow Matching"
+    ],
+    "summary": "Self-Rollout + selective stochasticity 实现 few-step AR 视频实时运动控制",
+    "category": "视频生成对齐（RL / Human Feedback）",
+    "date_arxiv": "2025-10",
+    "date_added": "2026-04-02",
+    "organizations": "NTU, Xmax.AI, ZJU, SMU"
+  },
+  {
+    "title": "RewardDance",
+    "path": "paper_reading/rewarddance.md",
+    "type": "论文阅读",
+    "tags": [
+      "Video Generation",
+      "Reward Model",
+      "Reinforcement Learning",
+      "VLM"
+    ],
+    "summary": "生成式 reward 范式：VLM 预测 yes 概率做 reward，1B→26B 系统化扩展",
+    "category": "视频 Reward 模型",
+    "date_arxiv": "2025-09",
+    "date_added": "2026-04-02",
+    "organizations": "ByteDance Seed"
+  },
+  {
+    "title": "CPS",
+    "path": "paper_reading/cps.md",
+    "type": "论文阅读",
+    "tags": [
+      "Reinforcement Learning",
+      "GRPO",
+      "Flow Matching",
+      "Diffusion Model"
+    ],
+    "summary": "系数保持采样器消除 Flow-SDE 噪声伪影，更准确的 reward 建模",
+    "category": "视频生成对齐（RL / Human Feedback）",
+    "date_arxiv": "2025-09",
+    "date_added": "2026-04-02",
+    "organizations": "CreateAI"
+  },
+  {
+    "title": "LocalDPO",
+    "path": "paper_reading/localdpo.md",
+    "type": "论文阅读",
+    "tags": [
+      "Video Generation",
+      "DPO",
+      "Diffusion Model"
+    ],
+    "summary": "局部化偏好优化：真实视频 vs 局部腐蚀修复构建偏好对，region-aware DPO",
+    "category": "视频生成对齐（RL / Human Feedback）",
+    "date_arxiv": "2026-01",
+    "date_added": "2026-04-02",
+    "organizations": "Harbin Institute of Technology, Alibaba Group (Taobao & Tmall)"
+  },
+  {
+    "title": "PISA",
+    "path": "paper_reading/pisa.md",
+    "type": "论文阅读",
+    "tags": [
+      "Sparse Attention",
+      "Diffusion Model",
+      "Video Generation"
+    ],
+    "summary": "块级 Taylor 展开近似非关键 KV 块（exact-or-approximate），协方差感知路由 + 4 阶段 kernel，Wan2.1-14B 1.91× / Hunyuan 2.57×",
+    "category": "Sparse Attention",
+    "date_arxiv": "2026-02",
+    "date_added": "2026-04-04",
+    "organizations": "HKUST (Guangzhou)"
+  },
+  {
+    "title": "SnapGen++",
+    "path": "paper_reading/snapgenplusplus.md",
+    "type": "论文阅读",
+    "tags": [
+      "Sparse Attention",
+      "Diffusion Model"
+    ],
+    "summary": "移动端 DiT 三件套：ASSA 全局-局部稀疏注意力 + 弹性训练 supernetwork + K-DMD 步骤蒸馏，iPhone 1.8s 生成 1024×1024",
+    "category": "Sparse Attention",
+    "date_arxiv": "2026-01",
+    "date_added": "2026-04-04",
+    "organizations": "Snap Inc., University of Melbourne"
+  },
+  {
+    "title": "RainFusion2.0",
+    "path": "paper_reading/rainfusion2.md",
+    "type": "论文阅读",
+    "tags": [
+      "Sparse Attention",
+      "Video Generation",
+      "Diffusion Model"
+    ],
+    "summary": "NPU 兼容块稀疏注意力：块均值代表 token + 3D 窗口排列 + First Frame Sink，Wan2.2 720p 1.57× 加速",
+    "category": "Sparse Attention",
+    "date_arxiv": "2025-12",
+    "date_added": "2026-04-04",
+    "organizations": "Huawei Technologies, HKUST"
+  },
+  {
+    "title": "LLSA",
+    "path": "paper_reading/llsa.md",
+    "type": "论文阅读",
+    "tags": [
+      "Sparse Attention",
+      "Diffusion Model"
+    ],
+    "summary": "分层 Top-K 将选择阶段从 O(N²) 降至 O(N) + KV 增强保全全局上下文，pixel-space DiT FID 20.41 超越全量注意力",
+    "category": "Sparse Attention",
+    "date_arxiv": "2025-12",
+    "date_added": "2026-04-04",
+    "organizations": "Nanyang Technological University S-Lab, Peking University"
+  },
+  {
+    "title": "HilbertA",
+    "path": "paper_reading/hilberta.md",
+    "type": "论文阅读",
+    "tags": [
+      "Sparse Attention",
+      "Diffusion Model"
+    ],
+    "summary": "Hilbert 曲线重排保证 2D 局部性 + 内存连续访问 + Sliding+Shared Region 实现全局感受野，Flux 2048×2048 注意力 4.17×",
+    "category": "Sparse Attention",
+    "date_arxiv": "2025-09",
+    "date_added": "2026-04-04",
+    "organizations": "New York University"
+  },
+  {
+    "title": "HMAR",
+    "path": "paper_reading/hmar.md",
+    "type": "论文阅读",
+    "tags": [
+      "Sparse Attention",
+      "Diffusion Model"
+    ],
+    "summary": "VAR 的 Markovian 重表述使注意力模式从 block-causal → block-diagonal，MaskGIT 式掩码预测 + log-normal 尺度加权，FID 1.95 IS 334.5",
+    "category": "Sparse Attention",
+    "date_arxiv": "2025-06",
+    "date_added": "2026-04-04",
+    "organizations": "Stanford, NVIDIA, CUHK, HKU, NTU, UCSD"
+  },
+  {
+    "title": "Cobra",
+    "path": "paper_reading/cobra.md",
+    "type": "论文阅读",
+    "tags": [
+      "Sparse Attention",
+      "Diffusion Model"
+    ],
+    "summary": "漫画线稿上色 200+ 参考图：去除参考图间 pairwise 注意力 + 因果注意力 KV Cache 将参考图开销从 O(T) 降至 O(1)",
+    "category": "Sparse Attention",
+    "date_arxiv": "2025-04",
+    "date_added": "2026-04-04",
+    "organizations": "Tsinghua University, CUHK, Tencent ARC Lab"
+  },
+  {
+    "title": "MonarchRT",
+    "path": "paper_reading/monarchrt.md",
+    "type": "论文阅读",
+    "tags": [
+      "Sparse Attention",
+      "Video Generation",
+      "Diffusion Model"
+    ],
+    "summary": "Monarch 矩阵参数化 3D 视频注意力（rank-1 块表示位置结构），空时对齐块 + Tiled Monarch + 微调，95% 稀疏率 RTX5090 11.8× 加速实现 16FPS",
+    "category": "Sparse Attention",
+    "date_arxiv": "2026-02",
+    "date_added": "2026-04-04",
+    "organizations": "Carnegie Mellon University, University at Buffalo, Morpheus AI"
+  },
+  {
+    "title": "GRAT",
+    "path": "paper_reading/grat.md",
+    "type": "论文阅读",
+    "tags": [
+      "Sparse Attention",
+      "Diffusion Model",
+      "Video Generation"
+    ],
+    "summary": "分组共享 KV 的无训练稀疏注意力：GRAT-B 邻近块组 35.8× 加速，GRAT-X criss-cross 11.6× 加速且质量等于全量注意力",
+    "category": "Sparse Attention",
+    "date_arxiv": "2025-05",
+    "date_added": "2026-04-04",
+    "organizations": "Johns Hopkins University"
+  },
+  {
+    "title": "LLaDA-o",
+    "path": "paper_reading/llada_o.md",
+    "type": "论文阅读",
+    "tags": [
+      "Diffusion Model",
+      "VLM"
+    ],
+    "summary": "Mixture of Diffusion 统一多模态：离散掩码扩散理解 + 连续扩散生成 + 块内双向/跨块因果注意力 5.9× 加速 + 自适应长度增广，DPG-Bench 87.04",
+    "category": "Vision Language Model",
+    "date_arxiv": "2026-03",
+    "date_added": "2026-04-04",
+    "organizations": "Renmin University of China, Ant Group"
+  },
+  {
+    "title": "CUB Block 级原语 - BlockRadixSort 与 BlockScan",
+    "path": "code_analysis/cub_block_primitives/01_block_radix_sort_and_scan.md",
+    "type": "代码分析",
+    "tags": [
+      "CUDA"
+    ],
+    "summary": "CUB BlockRadixSort 多 pass rank-exchange 排序与 BlockScan 并行前缀扫描的内部实现，含 BlockRadixRank 计数器打包、BlockExchange 重排、PyTorch 使用范例"
+  },
+  {
+    "title": "CUDA 基础：CUTLASS/CuTe 编程模型",
+    "path": "code_analysis/cuda_foundations/02_cuda_cutlass_cute_programming_model.md",
+    "type": "代码分析",
+    "tags": [
+      "CUTLASS",
+      "CUDA"
+    ],
+    "summary": "CUTLASS 模板分发与 CuTe 核心抽象：GemmShape/OpClass、Tensor/Layout、MMA/Copy Atom、cp.async、Swizzle 与共享内存复用"
+  },
+  {
+    "title": "GEMM 优化之路：总览（翻译）",
+    "path": "code_analysis/cutlass_gemm_blog/00_overview.md",
+    "type": "代码分析",
+    "tags": [
+      "CUTLASS",
+      "CUDA"
+    ],
+    "summary": "从 Naive FP32 到 CUTLASS BF16 的完整 GEMM 优化之路导读与性能演进总览（翻译自 Kapil Sharma 博客，CC BY 4.0）"
+  },
+  {
+    "title": "GEMM 优化之路：GEMM 基础与朴素优化",
+    "path": "code_analysis/cutlass_gemm_blog/01_gemm_basics_and_naive.md",
+    "type": "代码分析",
+    "tags": [
+      "CUTLASS",
+      "CUDA"
+    ],
+    "summary": "GEMM 定义与计算复杂度、RTX 4090 硬件规格、Naive → Memory Coalescing → Shared Memory 缓存 → GPU Occupancy 分析"
+  },
+  {
+    "title": "GEMM 优化之路：SIMT 分块优化",
+    "path": "code_analysis/cutlass_gemm_blog/02_simt_tiling.md",
+    "type": "代码分析",
+    "tags": [
+      "CUTLASS",
+      "CUDA"
+    ],
+    "summary": "1D/2D Block Tiling → Vectorized Memory Access（float4/LDG.E.128）→ Warp Tiling → 16-bit GEMM 基线"
+  },
+  {
+    "title": "GEMM 优化之路：Tensor Core 与 CUTLASS",
+    "path": "code_analysis/cutlass_gemm_blog/03_tensorcore_and_cutlass.md",
+    "type": "代码分析",
+    "tags": [
+      "CUTLASS",
+      "CUDA"
+    ],
+    "summary": "WMMA/Tensor Core → Double Buffering → CUTLASS 2.x API → Swizzling → Persistent Kernel → Autotuning 逼近 PyTorch"
+  },
+  {
+    "title": "GEMM 优化之路：Hopper 架构与 CUTLASS 3.x",
+    "path": "code_analysis/cutlass_gemm_blog/04_hopper_cutlass3x.md",
+    "type": "代码分析",
+    "tags": [
+      "CUTLASS",
+      "CUDA"
+    ],
+    "summary": "Hopper TBC/TMA/WGMMA → CUTLASS 3.x Warp Specialized → Persistent Cooperative → Stream-K → Autotuning 达 PyTorch 90%"
+  },
+  {
+    "title": "CuTe 教程：快速入门",
+    "path": "code_analysis/cute/00_quickstart.md",
+    "type": "代码分析",
+    "tags": [
+      "CUTLASS",
+      "CUDA"
+    ],
+    "summary": "CuTe 概述、系统要求、库组织结构与调试打印工具（翻译自 NVIDIA/cutlass 官方教程）"
+  },
+  {
+    "title": "CuTe 教程：Layout",
+    "path": "code_analysis/cute/01_layout.md",
+    "type": "代码分析",
+    "tags": [
+      "CUTLASS",
+      "CUDA"
+    ],
+    "summary": "Layout 核心抽象：Shape/Stride、IntTuple、坐标映射（逆字典序）、索引映射（内积）、向量与矩阵 layout"
+  },
+  {
+    "title": "CuTe 教程：Layout 代数",
+    "path": "code_analysis/cute/02_layout_algebra.md",
+    "type": "代码分析",
+    "tags": [
+      "CUTLASS",
+      "CUDA"
+    ],
+    "summary": "Layout 代数运算：Coalesce 化简、Composition 函数组合、Complement 补、Division 分块、Product 乘积"
+  },
+  {
+    "title": "CuTe 教程：Tensor",
+    "path": "code_analysis/cute/03_tensor.md",
+    "type": "代码分析",
+    "tags": [
+      "CUTLASS",
+      "CUDA"
+    ],
+    "summary": "Tensor 容器：Engine 迭代器封装、持有型/非持有型创建、分块/切片/分区（inner/outer/TV-layout）"
+  },
+  {
+    "title": "CuTe 教程：算法",
+    "path": "code_analysis/cute/04_algorithms.md",
+    "type": "代码分析",
+    "tags": [
+      "CUTLASS",
+      "CUDA"
+    ],
+    "summary": "Tensor 算法接口：copy/copy_if、gemm 五种模式分发、axpby/fill/clear"
+  },
+  {
+    "title": "CuTe 教程：MMA Atom",
+    "path": "code_analysis/cute/05_mma_atom.md",
+    "type": "代码分析",
+    "tags": [
+      "CUTLASS",
+      "CUDA"
+    ],
+    "summary": "MMA 指令支持：Operation/Traits/Atom 三层封装、Volta quadpair/Hopper warpgroup 映射、TiledMMA 构建"
+  },
+  {
+    "title": "CuTe 教程：GEMM",
+    "path": "code_analysis/cute/06_gemm_tutorial.md",
+    "type": "代码分析",
+    "tags": [
+      "CUTLASS",
+      "CUDA"
+    ],
+    "summary": "使用 CuTe 从零构建 GEMM：CTA 分区、SMEM layout、Copy/Math 线程分区、TiledCopy/TiledMMA、GETT"
+  },
+  {
+    "title": "CuTe 教程：谓词",
+    "path": "code_analysis/cute/07_predication.md",
+    "type": "代码分析",
+    "tags": [
+      "CUTLASS",
+      "CUDA"
+    ],
+    "summary": "分块不整除时的谓词化处理：恒等 tensor 构造坐标谓词、copy_if 屏蔽越界访问"
+  },
+  {
+    "title": "CuTe 教程：TMA Tensor",
+    "path": "code_analysis/cute/08_tma_tensors.md",
+    "type": "代码分析",
+    "tags": [
+      "CUTLASS",
+      "CUDA"
+    ],
+    "summary": "Hopper TMA 指令支持：ArithTuple 坐标迭代器、基向量元素步长、隐式 TMA 坐标 Tensor"
+  },
+  {
+    "title": "sgemm_sm80 实战拆解",
+    "path": "code_analysis/cute/09_sgemm_sm80.md",
+    "type": "代码分析",
+    "tags": [
+      "CUTLASS",
+      "CUDA"
+    ],
+    "summary": "CUTLASS CuTe 教程 sgemm_sm80.cu 完整拆解：三版本对比、Swizzle SMEM、TiledCopy/TiledMMA、ldmatrix retiling、双层 cp.async+寄存器流水线"
+  },
+  {
+    "title": "Compact Attention",
+    "path": "paper_reading/compact_attention.md",
+    "type": "论文阅读",
+    "tags": [
+      "Sparse Attention",
+      "Video Generation",
+      "Diffusion Model",
+      "CUDA"
+    ],
+    "summary": "硬件感知稀疏注意力：逐 query token 分析五种时空模式 + Dual Window/Frame-Group + 离线自动搜索，ThunderKittens kernel，Hunyuan 2.51× 加速",
+    "category": "Sparse Attention",
+    "date_arxiv": "2025-08",
+    "date_added": "2026-04-14",
+    "organizations": "Zhejiang University, Huawei"
+  },
+  {
+    "title": "PAROAttention",
+    "path": "paper_reading/paroattention.md",
+    "type": "论文阅读",
+    "tags": [
+      "Sparse Attention",
+      "Video Generation",
+      "Diffusion Model",
+      "CUDA"
+    ],
+    "summary": "Token 重排统一注意力模式：6 种 [F,H,W] 排列将多样模式转为 block-wise，稀疏+量化协同设计，SageAttnV2 kernel，20% dense rate 3.81× 加速",
+    "category": "Sparse Attention",
+    "date_arxiv": "2025-06",
+    "date_added": "2026-04-14",
+    "organizations": "Tsinghua University, ByteDance Seed"
+  },
+  {
+    "title": "Sparse VideoGen2",
+    "path": "paper_reading/svg2.md",
+    "type": "论文阅读",
+    "tags": [
+      "Sparse Attention",
+      "Video Generation",
+      "Diffusion Model",
+      "CUDA",
+      "Triton"
+    ],
+    "summary": "语义感知排列：k-means 聚类+重排消除计算浪费，centroid cache 76× k-means 加速，动态块大小 FA3 wgmma kernel 达理论 85%+，HunyuanVideo 2.30× 加速。开源代码核心注意力依赖 FlashInfer/FlexAttention：SVG 走 FlexAttention，SVG2 走 VariableBlockSparseAttentionWrapper.plan/run，定制 FA3 kernel 未开源",
+    "category": "Sparse Attention",
+    "date_arxiv": "2025-05",
+    "date_added": "2026-04-14",
+    "organizations": "UC Berkeley, MIT, Stanford"
+  },
+  {
+    "title": "Sparse-vDiT",
+    "path": "paper_reading/sparse_vdit.md",
+    "type": "论文阅读",
+    "tags": [
+      "Sparse Attention",
+      "Video Generation",
+      "Diffusion Model",
+      "Triton",
+      "CUDA"
+    ],
+    "summary": "四种注意力模式分类+专用 Triton/CUDA kernel：离线搜索 per-head 最优模式 + head fusion，CogVideoX1.5 1.76× / HunyuanVideo 1.85× 加速",
+    "category": "Sparse Attention",
+    "date_arxiv": "2025-06",
+    "date_added": "2026-04-14",
+    "organizations": "Fudan University, StepFun, CUHK"
+  },
+  {
+    "title": "Radial Attention",
+    "path": "paper_reading/radial_attention.md",
+    "type": "论文阅读",
+    "tags": [
+      "Sparse Attention",
+      "Video Generation",
+      "Diffusion Model"
+    ],
+    "summary": "时空能量衰减驱动 O(n log n) 静态稀疏掩码：指数衰减计算密度 + LoRA 长视频适配，4× 长度训练成本降 4.4× / 推理加速 3.7×",
+    "category": "Sparse Attention",
+    "date_arxiv": "2025-06",
+    "date_added": "2026-04-14",
+    "organizations": "MIT, NVIDIA, Princeton, UC Berkeley, Stanford"
+  },
+  {
+    "title": "Flash Attention V2 - 总览",
+    "path": "code_analysis/flash_attention_v2/00_overview.md",
+    "type": "代码分析",
+    "tags": ["CUDA", "CUTLASS", "Flash Attention"],
+    "summary": "FA2 SM80 CUDA 实现的整体架构、文件依赖、框架使用与文档导航"
+  },
+  {
+    "title": "Flash Attention V2 - 参数与硬件配置",
+    "path": "code_analysis/flash_attention_v2/01_params_and_traits.md",
+    "type": "代码分析",
+    "tags": ["CUDA", "CUTLASS", "Flash Attention"],
+    "summary": "Flash_fwd_params 结构体拆解、kernel_traits 的 MMA Atom/Swizzle/Copy 选择"
+  },
+  {
+    "title": "Flash Attention V2 - 前向核心",
+    "path": "code_analysis/flash_attention_v2/02_forward_kernel.md",
+    "type": "代码分析",
+    "tags": ["CUDA", "CUTLASS", "Flash Attention"],
+    "summary": "compute_attn_1rowblock 逐段拆解：Q·K^T → online softmax → P·V 的 CuTe 实现"
+  },
+  {
+    "title": "Flash Attention V2 - 计算原语",
+    "path": "code_analysis/flash_attention_v2/03_softmax_mask_utils.md",
+    "type": "代码分析",
+    "tags": ["CUDA", "CUTLASS", "Flash Attention"],
+    "summary": "online softmax、causal/local mask、warp allreduce、Philox dropout 实现"
+  },
+  {
+    "title": "Flash Attention V2 - 反向传播",
+    "path": "code_analysis/flash_attention_v2/04_backward_kernel.md",
+    "type": "代码分析",
+    "tags": ["CUDA", "CUTLASS", "Flash Attention"],
+    "summary": "recomputation 策略、dQ/dK/dV 三组 MMA 计算、atomic add 累积"
+  },
+  {
+    "title": "Flash Attention V2 - 调度与实例化",
+    "path": "code_analysis/flash_attention_v2/05_dispatch_and_instantiation.md",
+    "type": "代码分析",
+    "tags": ["CUDA", "CUTLASS", "Flash Attention"],
+    "summary": "static_switch 编译期分发宏、launch template grid 配置、74 个模板实例化文件生成"
+  },
+  {
+    "title": "FlashInfer Variable Block Sparse Attention - 总览",
+    "path": "code_analysis/flashinfer_variable_block_sparse/00_overview.md",
+    "type": "代码分析",
+    "tags": ["CUDA", "Sparse Attention", "Flash Attention"],
+    "summary": "本地剥离版 variable_block_attn：variable block 元数据翻译层如何接到 FA2 paged prefill runtime、JIT 与 C++ binding"
+  },
+  {
+    "title": "FlashInfer Variable Block Sparse Attention - 初始化与 plan 前准备",
+    "path": "code_analysis/flashinfer_variable_block_sparse/01_python_wrapper_and_metadata.md",
+    "type": "代码分析",
+    "tags": ["CUDA", "Sparse Attention", "Flash Attention"],
+    "summary": "按执行顺序分析 wrapper 初始化、metadata 翻译、page_size=1 设计与 backend 解析，说明 plan 前状态如何建立"
+  },
+  {
+    "title": "FlashInfer Variable Block Sparse Attention - plan 阶段：模块准备与调度生成",
+    "path": "code_analysis/flashinfer_variable_block_sparse/02_runtime_and_jit.md",
+    "type": "代码分析",
+    "tags": ["CUDA", "Sparse Attention", "Flash Attention"],
+    "summary": "按 plan 阶段顺序分析 runtime 模块获取、JIT 生成和 C++ 调度计划生成，说明 self._plan_info 如何建立"
+  },
+  {
+    "title": "FlashInfer Variable Block Sparse Attention - run 阶段：进入 C++ 与 CUDA",
+    "path": "code_analysis/flashinfer_variable_block_sparse/03_cpp_binding_and_kernel.md",
+    "type": "代码分析",
+    "tags": ["CUDA", "Sparse Attention", "Flash Attention"],
+    "summary": "按 run 阶段顺序分析张量重排、paged_run、plan_info 恢复与 kernel dispatch，说明执行阶段怎样真正落到底层"
+  },
+  {
+    "title": "DeepSeek-V4",
+    "path": "paper_reading/deepseek_v4.md",
+    "type": "论文阅读",
+    "tags": ["Sparse Attention", "LLM Inference", "KV Cache"],
+    "summary": "混合 CSA/HCA + mHC + Muon 的百万上下文 MoE，1M token 下 V4-Pro 仅需 V3.2 的 27% 单 token FLOPs 和 10% KV cache",
+    "category": "Sparse Attention",
+    "date_arxiv": "2026-04",
+    "date_added": "2026-04-29",
+    "organizations": "DeepSeek-AI"
+  }
+]
