@@ -34,6 +34,26 @@ tags:
 - [data/csrc/batch_prefill_jit_binding.cu:L22-L50](src/batch_prefill_jit_binding_cu.md#__codelineno-0-22)：TVM FFI 导出 `plan/ragged_run/paged_run`
 - [data/csrc/batch_prefill.cu:L47-L334](src/batch_prefill_cu.md#__codelineno-0-47)：`PrefillPlanInfo`、`PagedParams`、workspace 偏移恢复与最终 dispatch
 
+## 统一符号与 shape 约定
+
+为了避免后面三篇反复解释，这里先把最常用的符号统一下来：
+
+- `H_kv = num_kv_heads`
+- `H_qo = num_qo_heads`
+- `G = H_qo / H_kv`：每个 KV head 对应的 GQA group size
+- `R = num_blocks_row`
+- `C = num_blocks_col`
+- `D = head_dim`
+- `qo_len`：外部输入 `q` 的 token 长度
+- `kv_len`：外部输入 `k/v` 的 token 长度
+
+还要记住一个本地实现里的“逻辑 request”概念：
+
+- 一个 **逻辑 request** = 一个 `(kv_head, row_block)` 对
+- 因此逻辑 request 数量 = `H_kv * R`
+
+后面很多 `indptr`、planner 参数和 runtime shape，都围绕这个逻辑 request 数量展开，而不是围绕原始 batch size 展开。
+
 ## 执行链路
 
 ```text
