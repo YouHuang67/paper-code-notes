@@ -5,7 +5,7 @@ tags:
   - Sparse Attention
 ---
 
-# Python Wrapper 与 Metadata
+# Python 入口与元数据展开
 
 **源码**:
 

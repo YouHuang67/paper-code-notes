@@ -87,9 +87,9 @@ variable_block_attn/
 
 | 文档 | 内容 |
 |------|------|
-| [01 Python Wrapper 与 Metadata](01_python_wrapper_and_metadata.md) | `wrapper.py` / `metadata.py`：`plan()`、`run()`、`page_size=1` 与 token 级 CSR 展开 |
-| [02 Runtime 与 JIT](02_runtime_and_jit.md) | `prefill_runtime.py`、backend 选择、URI、batch prefill 模块生成 |
-| [03 C++ Binding 与 Kernel](03_cpp_binding_and_kernel.md) | `plan_info` 序列化/恢复、`PagedParams` 装配、workspace 偏移与最终 dispatch |
+| [01 Python 入口与元数据展开](01_python_wrapper_and_metadata.md) | 从 wrapper 输入出发，说明 variable block 稀疏描述如何被展开成底层可执行的索引结构 |
+| [02 运行时与模块生成](02_runtime_and_jit.md) | 说明 backend 选择、JIT 编译和 batch prefill 模块是怎样准备出来的 |
+| [03 C++ 执行链路](03_cpp_binding_and_kernel.md) | 说明 Python 侧 plan 信息如何传到 C++/CUDA，并最终进入底层 kernel |
 | [源码浏览](src/index.md) | `variable_block_attn` 核心源码页索引 |
 
 ## 源码浏览

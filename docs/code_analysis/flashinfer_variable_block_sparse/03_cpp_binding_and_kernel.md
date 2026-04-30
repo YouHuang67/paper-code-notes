@@ -5,7 +5,7 @@ tags:
   - Sparse Attention
 ---
 
-# C++ Binding 与 Kernel
+# C++ 执行链路
 
 **源码**:
 
