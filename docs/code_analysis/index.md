@@ -47,4 +47,8 @@
 - [CUTLASS Memory Efficient Attention](cutlass_mem_eff_attention/00_overview.md) - PyTorch ATen CUTLASS 前向 kernel（Online Softmax + 模板分发）
 - [CUB Block 级原语](cub_block_primitives/01_block_radix_sort_and_scan.md) - BlockRadixSort 与 BlockScan 内部实现详解
 - [FlashInfer Variable Block Sparse Attention](flashinfer_variable_block_sparse/00_overview.md) - 本地剥离版 `variable_block_attn`：metadata 翻译层 → FA2 paged prefill runtime → JIT → C++ binding
+  - [Python Wrapper 与 Metadata](flashinfer_variable_block_sparse/01_python_wrapper_and_metadata.md) - `wrapper.py` / `metadata.py`：`plan()`、`run()`、`page_size=1` 与 token 级 CSR 展开
+  - [Runtime 与 JIT](flashinfer_variable_block_sparse/02_runtime_and_jit.md) - `prefill_runtime.py`、backend 选择、batch prefill 模块生成与 `fa2` 最小闭环
+  - [C++ Binding 与 Kernel](flashinfer_variable_block_sparse/03_cpp_binding_and_kernel.md) - `batch_prefill_jit_binding.cu`、`batch_prefill.cu`、`PagedParams` 与 kernel dispatch
+  - [源码索引](flashinfer_variable_block_sparse/src/index.md) - 同步进知识库的 `variable_block_attn` 核心源码浏览入口
 - [DeepSeek V4](deepseek_v4/00_overview.md) - mHC + Hybrid Attention + MoE + TileLang 低精度推理实现
