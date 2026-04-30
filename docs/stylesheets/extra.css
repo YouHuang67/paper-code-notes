@@ -86,6 +86,15 @@
 .md-header {
   background-color: #0f1923;
   box-shadow: 0 1px 0 rgba(92, 224, 210, 0.06);
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  transform: none !important;
+}
+
+.md-header[data-md-state="shadow"],
+.md-header[data-md-state="hidden"] {
+  transform: none !important;
 }
 
 /* === Sidebar === */
@@ -131,6 +140,14 @@
 /* === Nav tabs === */
 .md-tabs {
   background-color: #0f1923;
+  position: sticky;
+  top: 2.4rem;
+  z-index: 4;
+  transform: none !important;
+}
+
+.md-tabs[data-md-state="hidden"] {
+  transform: none !important;
 }
 
 /* === Search === */
