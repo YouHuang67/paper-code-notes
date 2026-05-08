@@ -212,62 +212,97 @@ R    = 3
 [`wrapper.py:L131-L252`](src/wrapper_py.md#__codelineno-0-131) 是整个 Python 层的主线，但这一章只看它的前半段：
 
 ```python
-q_data_type = canonicalize_torch_dtype(q_data_type)               # 统一 q dtype 表达
-if kv_data_type is None:                                          # 默认 Q/KV 同 dtype
+q_data_type = canonicalize_torch_dtype(q_data_type)               # 统一成 torch.dtype
+if kv_data_type is None:                                          # 默认 KV dtype 跟 Q 一样
     kv_data_type = q_data_type
-kv_data_type = canonicalize_torch_dtype(kv_data_type)
-self._o_dtype = q_data_type                                       # 输出 dtype 跟 q 一致
+kv_data_type = canonicalize_torch_dtype(kv_data_type)             # 再统一 KV dtype
+self._o_dtype = q_data_type                                       # 当前输出 dtype 直接跟 q 一致
 
-if logits_soft_cap is None:                                       # None -> 0.0，表示不启用 soft cap
+if logits_soft_cap is None:                                       # None 表示不启用 soft cap
     logits_soft_cap = 0.0
 
 num_blocks_row = block_row_sz.shape[-1]                           # R
 num_blocks_col = block_col_sz.shape[-1]                           # C
 
 '''
-第一阶段：把 block 级描述翻译成 paged prefill 需要的 token 级 metadata
+第一阶段：把 block 级描述翻译成 token 级 metadata
 '''
-qo_indptr = build_qo_indptr(block_row_sz)                         # [H_kv * R + 1]，第 i 个逻辑 request 的 query token 范围是 [qo_indptr[i], qo_indptr[i+1])
-qo_indptr_host = qo_indptr.to("cpu", non_blocking=non_blocking)   # host mirror，C++ plan 会按这个边界数组理解 query 分段
+qo_indptr = build_qo_indptr(block_row_sz)                         # [H_kv * R + 1]
+                                                                  # query 行边界数组
+                                                                  # 第 i 行 query 范围
+                                                                  # = [qo_indptr[i], qo_indptr[i+1])
+qo_indptr_host = qo_indptr.to(
+    "cpu",
+    non_blocking=non_blocking,
+)                                                                 # CPU 镜像
+                                                                  # C++ plan 在 host 侧读它
 last_block_len = build_last_page_len(
     block_mask_map,
     num_blocks_row,
     num_kv_heads,
-)                                                                 # [H_kv * R]，这里恒为 1
+)                                                                 # [H_kv * R]
+                                                                  # 每行最后一页长度
+                                                                  # 当前实现固定恒为 1
 
 kv_indptr, kv_indices = block_mask_map_to_expanded_indices(
     block_mask_map,
     block_col_sz,
-)                                                                 # kv_indptr:[H_kv * R + 1] 行边界；kv_indices:[nnz_tokens] 每行真正要访问的 KV token 编号
-kv_indptr_host = kv_indptr.to("cpu", non_blocking=non_blocking)   # host mirror，C++ plan 会按这个边界数组理解每行 KV 段
-kv_indices_host = kv_indices.to("cpu", non_blocking=non_blocking) # host mirror，纯粹给断言和后续运行时使用
+)                                                                 # kv_indptr:
+                                                                  #   [H_kv * R + 1]
+                                                                  #   KV 行边界数组
+                                                                  # kv_indices:
+                                                                  #   [nnz_tokens]
+                                                                  #   每行真正要看的 KV token 编号
+kv_indptr_host = kv_indptr.to(
+    "cpu",
+    non_blocking=non_blocking,
+)                                                                 # CPU 镜像
+                                                                  # C++ plan 在 host 侧读它
+kv_indices_host = kv_indices.to(
+    "cpu",
+    non_blocking=non_blocking,
+)                                                                 # CPU 镜像
+                                                                  # 这里主要给断言
+                                                                  # 和后续运行时使用
 
-self._qo_indptr = qo_indptr.to(self.device, non_blocking=non_blocking)
-self._paged_kv_indptr_buf = kv_indptr.to(self.device, non_blocking=non_blocking)
-self._paged_kv_indices_buf = kv_indices.to(                       # [nnz_tokens]
+self._qo_indptr = qo_indptr.to(
     self.device,
     non_blocking=non_blocking,
-)
-self._paged_kv_last_page_len = last_block_len.to(                 # [H_kv * R]
+)                                                                 # [H_kv * R + 1]
+self._paged_kv_indptr_buf = kv_indptr.to(
     self.device,
     non_blocking=non_blocking,
-)
-torch.cuda.synchronize()                                          # 后面马上会读 host mirror，先同步
+)                                                                 # [H_kv * R + 1]
+self._paged_kv_indices_buf = kv_indices.to(
+    self.device,
+    non_blocking=non_blocking,
+)                                                                 # [nnz_tokens]
+self._paged_kv_last_page_len = last_block_len.to(
+    self.device,
+    non_blocking=non_blocking,
+)                                                                 # [H_kv * R]
+torch.cuda.synchronize()                                          # 后面马上会读 CPU 镜像
+                                                                  # 这里先同步一次
 
 '''
-第二阶段：先把执行分支收敛清楚
-模块获取与真正的 plan 生成放到下一章
+第二阶段：先把 backend 收敛清楚
+真正的模块获取和 plan 生成放到下一章
 '''
-self._mask_mode = MaskMode.CAUSAL.value if causal else MaskMode.NON_CAUSAL.value
+self._mask_mode = (
+    MaskMode.CAUSAL.value
+    if causal
+    else MaskMode.NON_CAUSAL.value
+)                                                                 # 当前这里只区分
+                                                                  # causal / non-causal
 self._backend = resolve_attention_backend(
-    self._backend,
-    self.device,
-    PosEncodingMode[pos_encoding_mode].value,
-    use_fp16_qk_reduction,
-    self._mask_mode == MaskMode.CUSTOM.value,
-    q_data_type,
-    kv_data_type,
-)
+    self._backend,                                                # 用户传入的 "auto"/"fa2"/"fa3"
+    self.device,                                                  # 当前 CUDA 设备
+    PosEncodingMode[pos_encoding_mode].value,                     # pos encoding mode
+    use_fp16_qk_reduction,                                        # 是否允许 fp16 qk reduction
+    self._mask_mode == MaskMode.CUSTOM.value,                     # 这里其实恒为 False
+    q_data_type,                                                  # q dtype
+    kv_data_type,                                                 # kv dtype
+)                                                                 # 最终收敛成可执行 backend
 ```
 
 这一段代码从执行顺序上可以拆成两步：
