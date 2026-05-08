@@ -80,35 +80,56 @@ def __init__(
     - int workspace:   后面给 request/tile/merge 等整型调度数组使用
     - pinned CPU buf:  后面给 plan 阶段的 host <-> device 协作用
     '''
-    self._float_workspace_buffer = float_workspace_buffer          # [workspace_bytes] 1D raw buffer, CUDA
+    self._float_workspace_buffer = float_workspace_buffer          # [workspace_bytes]
+                                                                  # 外部传进来的主 workspace
+                                                                  # 后面 split-k / merge 会用它
     self.device = float_workspace_buffer.device                    # cuda:x
+                                                                  # 后面新分配的 buffer
+                                                                  # 都跟这个 device 保持一致
     self._workspace_size = (
         float_workspace_buffer.numel() * float_workspace_buffer.element_size()
-    )                                                              # int，总 workspace 字节数
+    )                                                              # int
+                                                                  # 这里明确保存“总字节数”
+                                                                  # run() 时会原样传给 runtime
     self._int_workspace_buffer = torch.empty(
         (8 * 1024 * 1024,), dtype=torch.uint8, device=self.device
-    )                                                              # [8MiB] uint8 raw buffer, CUDA
+    )                                                              # [8MiB]
+                                                                  # uint8 原始内存池
+                                                                  # 运行期的整型调度数组会切在这里
     self._pin_memory_int_workspace_buffer = torch.empty(
         self._int_workspace_buffer.shape,
         dtype=torch.uint8,
         pin_memory=True,
         device="cpu",
-    )                                                              # [8MiB] uint8 raw buffer, pinned CPU
+    )                                                              # [8MiB]
+                                                                  # pinned CPU 内存池
+                                                                  # 主要给 C++ plan 的 host 协作用
 
     '''
     第二组状态：plan() 完成后常驻的 paged prefill metadata
     这些成员在 __init__ 时都还是 None，只是先占位
     '''
-    self._kv_layout = "NHD"                                        # paged KV layout，后面 run() 直接透传
-    self._qo_indptr: Optional[torch.Tensor] = None                 # [H_kv * R + 1]，query 侧 CSR 行边界；第 i 行范围是 [indptr[i], indptr[i+1])
-    self._paged_kv_indptr_buf: Optional[torch.Tensor] = None       # [H_kv * R + 1]，KV 侧 CSR 行边界；同样用相邻两项夹出第 i 行 token 段
-    self._paged_kv_indices_buf: Optional[torch.Tensor] = None      # [nnz_tokens]，把所有被选中的 KV token 编号顺序拼平后的结果
-    self._paged_kv_last_page_len: Optional[torch.Tensor] = None    # [H_kv * R]，每个逻辑 request 最后一页长度；当前固定都是 1
+    self._kv_layout = "NHD"                                        # paged KV 物理布局名字
+                                                                  # 后面 run() 会直接透传给 runtime
+    self._qo_indptr: Optional[torch.Tensor] = None                 # [H_kv * R + 1]
+                                                                  # query 侧行边界数组
+                                                                  # 第 i 行 query 范围 = [p[i], p[i+1])
+    self._paged_kv_indptr_buf: Optional[torch.Tensor] = None       # [H_kv * R + 1]
+                                                                  # KV 侧行边界数组
+                                                                  # 第 i 行 KV 范围 = [p[i], p[i+1])
+    self._paged_kv_indices_buf: Optional[torch.Tensor] = None      # [nnz_tokens]
+                                                                  # 所有被选中的 KV token 编号
+                                                                  # 按行顺序拼平后的结果
+    self._paged_kv_last_page_len: Optional[torch.Tensor] = None    # [H_kv * R]
+                                                                  # 每行最后一页长度
+                                                                  # 当前实现固定全为 1
 
     '''
     第三组状态：执行路径选择
     '''
     self._backend = backend                                        # "auto" / "fa2" / "fa3"
+                                                                  # 这里只是先缓存用户选择
+                                                                  # 真正解析发生在 plan() 里
 ```
 
 这里有三个很容易误解的点：
