@@ -52,6 +52,40 @@ num_kv_heads_per_logical_request = 1
 
 所以底层 C++/CUDA 看到的是非常标准的 paged prefill 输入形态。
 
+这里如果只看 shape 很容易懵，最好直接代一个最小例子：
+
+```text
+H_kv = 2
+H_qo = 8
+G    = H_qo / H_kv = 4
+qo_len = 16
+kv_len = 32
+```
+
+那么外部输入还是常规多头视角：
+
+- `q`: `[8, 16, D]`
+- `k/v`: `[2, 32, D]`
+
+但 `run()` 为了适配底层“按 KV head 拆开的逻辑 request 视角”，会把它们改写成：
+
+- `q`: `[2 * 16, 4, D] = [32, 4, D]`
+- `k/v`: `[2 * 32, 1, 1, D] = [64, 1, 1, D]`
+
+这背后的直觉是：
+
+- 对 `q` 来说：
+  - 先按 `kv_head` 把 8 个 Q 头分成 2 组
+  - 每组里有 `G = 4` 个 Q 头
+  - 再把每组的 `qo_len = 16` 个 token 拍平到最前面
+
+- 对 `k/v` 来说：
+  - 当前实现已经把“每个逻辑 request 只面对 1 个 KV head”这件事固定下来了
+  - 同时又把 `page_size = 1` 固定下来
+  - 所以 `k/v` 最后自然就会变成 `[num_pages, 1, 1, D]`
+
+也就是说，这里不是在做一般意义上的“reshape 技巧”，而是在把外部多头张量改写成底层 paged prefill 真正理解的执行视角。
+
 ## 2. `run()`：先把 q/k/v 改成底层期望布局
 
 Python 侧真正的执行入口在 [`wrapper.py:L284-L395`](src/wrapper_py.md#__codelineno-0-284)：
@@ -178,6 +212,10 @@ if return_lse:
 - `run()` 本身不重新做 metadata 翻译
 - 它只负责最后一层“布局适配 + 参数透传”
 - 真正的执行已经完全交给 `paged_run`
+
+如果把这一段再压缩成一句话：
+
+> `run()` 做的不是“算 attention”，而是“把外部 Q/K/V 重新排成底层 FA2 paged prefill 约定的内存视角”。
 
 也就是说，到了这一章，variable block 语义在 Python 侧基本已经结束了。
 
