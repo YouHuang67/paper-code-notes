@@ -128,6 +128,9 @@ nav:
     - PAROAttention: paper_reading/paroattention.md
     - Sparse VideoGen2: paper_reading/svg2.md
     - Sparse-vDiT: paper_reading/sparse_vdit.md
+    - Sparse Forcing: paper_reading/sparse_forcing.md
+    - AdaCluster: paper_reading/adacluster.md
+    - PASA: paper_reading/pasa.md
     - Radial Attention: paper_reading/radial_attention.md
   - 代码分析:
     - 导读: code_analysis/index.md

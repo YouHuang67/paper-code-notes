@@ -1,5 +1,51 @@
 [
   {
+    "title": "Sparse Forcing",
+    "path": "paper_reading/sparse_forcing.md",
+    "type": "论文阅读",
+    "tags": [
+      "Sparse Attention",
+      "Video Generation",
+      "Diffusion Model",
+      "Diffusion Forcing"
+    ],
+    "summary": "可训练持久块稀疏注意力PBSA，自回归扩散视频生成中维护有界持久时空记忆+局部块稀疏窗口，同时改善长视频质量和解码速度",
+    "category": "Sparse Attention",
+    "date_arxiv": "2026-04",
+    "date_added": "2026-05-12",
+    "organizations": "Meta Superintelligence Labs, UCSB"
+  },
+  {
+    "title": "AdaCluster",
+    "path": "paper_reading/adacluster.md",
+    "type": "论文阅读",
+    "tags": [
+      "Sparse Attention",
+      "Video Generation",
+      "Diffusion Model"
+    ],
+    "summary": "角色感知自适应查询-键聚类框架，query 归一化+角度聚类，key 多阶段自适应 K-means+TensorQuest 簇选择，1.67×–4.31×加速",
+    "category": "Sparse Attention",
+    "date_arxiv": "2026-04",
+    "date_added": "2026-05-12",
+    "organizations": "USTC, Hefei Comprehensive National Science Center, University of Macau, CUHK"
+  },
+  {
+    "title": "PASA",
+    "path": "paper_reading/pasa.md",
+    "type": "论文阅读",
+    "tags": [
+      "Sparse Attention",
+      "Video Generation",
+      "Diffusion Model"
+    ],
+    "summary": "曲率感知动态预算+分组一阶近似+随机路由，training-free 扩展 PISA，消除时序闪烁并保持 85% 稀疏率下 1.70×–2.36×加速",
+    "category": "Sparse Attention",
+    "date_arxiv": "2026-04",
+    "date_added": "2026-05-12",
+    "organizations": "Beijing University of Posts and Telecommunications, Nanyang Technological University"
+  },
+  {
     "title": "HySparse",
     "path": "paper_reading/hysparse.md",
     "type": "论文阅读",
@@ -1236,77 +1282,121 @@
     "title": "Flash Attention V2 - 总览",
     "path": "code_analysis/flash_attention_v2/00_overview.md",
     "type": "代码分析",
-    "tags": ["CUDA", "CUTLASS", "Flash Attention"],
+    "tags": [
+      "CUDA",
+      "CUTLASS",
+      "Flash Attention"
+    ],
     "summary": "FA2 SM80 CUDA 实现的整体架构、文件依赖、框架使用与文档导航"
   },
   {
     "title": "Flash Attention V2 - 参数与硬件配置",
     "path": "code_analysis/flash_attention_v2/01_params_and_traits.md",
     "type": "代码分析",
-    "tags": ["CUDA", "CUTLASS", "Flash Attention"],
+    "tags": [
+      "CUDA",
+      "CUTLASS",
+      "Flash Attention"
+    ],
     "summary": "Flash_fwd_params 结构体拆解、kernel_traits 的 MMA Atom/Swizzle/Copy 选择"
   },
   {
     "title": "Flash Attention V2 - 前向核心",
     "path": "code_analysis/flash_attention_v2/02_forward_kernel.md",
     "type": "代码分析",
-    "tags": ["CUDA", "CUTLASS", "Flash Attention"],
+    "tags": [
+      "CUDA",
+      "CUTLASS",
+      "Flash Attention"
+    ],
     "summary": "compute_attn_1rowblock 逐段拆解：Q·K^T → online softmax → P·V 的 CuTe 实现"
   },
   {
     "title": "Flash Attention V2 - 计算原语",
     "path": "code_analysis/flash_attention_v2/03_softmax_mask_utils.md",
     "type": "代码分析",
-    "tags": ["CUDA", "CUTLASS", "Flash Attention"],
+    "tags": [
+      "CUDA",
+      "CUTLASS",
+      "Flash Attention"
+    ],
     "summary": "online softmax、causal/local mask、warp allreduce、Philox dropout 实现"
   },
   {
     "title": "Flash Attention V2 - 反向传播",
     "path": "code_analysis/flash_attention_v2/04_backward_kernel.md",
     "type": "代码分析",
-    "tags": ["CUDA", "CUTLASS", "Flash Attention"],
+    "tags": [
+      "CUDA",
+      "CUTLASS",
+      "Flash Attention"
+    ],
     "summary": "recomputation 策略、dQ/dK/dV 三组 MMA 计算、atomic add 累积"
   },
   {
     "title": "Flash Attention V2 - 调度与实例化",
     "path": "code_analysis/flash_attention_v2/05_dispatch_and_instantiation.md",
     "type": "代码分析",
-    "tags": ["CUDA", "CUTLASS", "Flash Attention"],
+    "tags": [
+      "CUDA",
+      "CUTLASS",
+      "Flash Attention"
+    ],
     "summary": "static_switch 编译期分发宏、launch template grid 配置、74 个模板实例化文件生成"
   },
   {
     "title": "FlashInfer Variable Block Sparse Attention - 总览",
     "path": "code_analysis/flashinfer_variable_block_sparse/00_overview.md",
     "type": "代码分析",
-    "tags": ["CUDA", "Sparse Attention", "Flash Attention"],
+    "tags": [
+      "CUDA",
+      "Sparse Attention",
+      "Flash Attention"
+    ],
     "summary": "本地剥离版 variable_block_attn：variable block 元数据翻译层如何接到 FA2 paged prefill runtime、JIT 与 C++ binding"
   },
   {
     "title": "FlashInfer Variable Block Sparse Attention - 初始化与 plan 前准备",
     "path": "code_analysis/flashinfer_variable_block_sparse/01_python_wrapper_and_metadata.md",
     "type": "代码分析",
-    "tags": ["CUDA", "Sparse Attention", "Flash Attention"],
+    "tags": [
+      "CUDA",
+      "Sparse Attention",
+      "Flash Attention"
+    ],
     "summary": "按执行顺序分析 wrapper 初始化、metadata 翻译、page_size=1 设计与 backend 解析，说明 plan 前状态如何建立"
   },
   {
     "title": "FlashInfer Variable Block Sparse Attention - plan 阶段：模块准备与调度生成",
     "path": "code_analysis/flashinfer_variable_block_sparse/02_runtime_and_jit.md",
     "type": "代码分析",
-    "tags": ["CUDA", "Sparse Attention", "Flash Attention"],
+    "tags": [
+      "CUDA",
+      "Sparse Attention",
+      "Flash Attention"
+    ],
     "summary": "按 plan 阶段顺序分析 runtime 模块获取、JIT 生成和 C++ 调度计划生成，说明 self._plan_info 如何建立"
   },
   {
     "title": "FlashInfer Variable Block Sparse Attention - run 阶段：进入 C++ 与 CUDA",
     "path": "code_analysis/flashinfer_variable_block_sparse/03_cpp_binding_and_kernel.md",
     "type": "代码分析",
-    "tags": ["CUDA", "Sparse Attention", "Flash Attention"],
+    "tags": [
+      "CUDA",
+      "Sparse Attention",
+      "Flash Attention"
+    ],
     "summary": "按 run 阶段顺序分析张量重排、paged_run、plan_info 恢复与 kernel dispatch，说明执行阶段怎样真正落到底层"
   },
   {
     "title": "DeepSeek-V4",
     "path": "paper_reading/deepseek_v4.md",
     "type": "论文阅读",
-    "tags": ["Sparse Attention", "LLM Inference", "KV Cache"],
+    "tags": [
+      "Sparse Attention",
+      "LLM Inference",
+      "KV Cache"
+    ],
     "summary": "混合 CSA/HCA + mHC + Muon 的百万上下文 MoE，1M token 下 V4-Pro 仅需 V3.2 的 27% 单 token FLOPs 和 10% KV cache",
     "category": "Sparse Attention",
     "date_arxiv": "2026-04",
