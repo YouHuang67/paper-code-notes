@@ -54,9 +54,9 @@ markdown_extensions:
 
 extra_javascript:
   - javascripts/mathjax.js
-  - javascripts/tag_search.js?v=6
-  - javascripts/home.js?v=5
-  - javascripts/paper_index.js?v=7
+  - javascripts/tag_search.js?v=7
+  - javascripts/home.js?v=6
+  - javascripts/paper_index.js?v=8
   - https://polyfill.io/v3/polyfill.min.js?features=es6
   - https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js
 
@@ -124,6 +124,7 @@ nav:
     - MonarchRT: paper_reading/monarchrt.md
     - GRAT: paper_reading/grat.md
     - LLaDA-o: paper_reading/llada_o.md
+    - ELF: paper_reading/elf.md
     - Compact Attention: paper_reading/compact_attention.md
     - PAROAttention: paper_reading/paroattention.md
     - Sparse VideoGen2: paper_reading/svg2.md
@@ -224,3 +225,8 @@ nav:
       - kernel.py: code_analysis/deepseek_v4/src/kernel_py.md
     - FlashInfer Variable Block Sparse:
       - code_analysis/flashinfer_variable_block_sparse/src/index.md
+    - ELF:
+      - 总览: code_analysis/elf/00_overview.md
+      - 模型结构: code_analysis/elf/01_model.md
+      - 训练流程: code_analysis/elf/02_training.md
+      - 采样与生成: code_analysis/elf/03_sampling.md

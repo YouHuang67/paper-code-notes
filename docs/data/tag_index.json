@@ -1402,5 +1402,58 @@
     "date_arxiv": "2026-04",
     "date_added": "2026-04-29",
     "organizations": "DeepSeek-AI"
+  },
+  {
+    "title": "ELF: Embedded Language Flows",
+    "path": "paper_reading/elf.md",
+    "type": "论文阅读",
+    "tags": [
+      "Diffusion Model",
+      "Flow Matching"
+    ],
+    "category": "扩散语言模型",
+    "date_added": "2026-05-14",
+    "date_arxiv": "2026-05",
+    "summary": "连续扩散语言模型，在嵌入空间中做 Flow Matching，仅最终步离散化，共享权重 denoiser-decoder，自然支持 CFG，以极少训练 token 和采样步数超越现有方法"
+  },
+  {
+    "title": "ELF 代码分析：总览",
+    "path": "code_analysis/elf/00_overview.md",
+    "type": "代码分析",
+    "tags": [
+      "Diffusion Model",
+      "Flow Matching"
+    ],
+    "summary": "ELF JAX/Flax 实现总览：16 文件代码架构、数据流、设计决策对照"
+  },
+  {
+    "title": "ELF 模型结构",
+    "path": "code_analysis/elf/01_model.md",
+    "type": "代码分析",
+    "tags": [
+      "Diffusion Model",
+      "Flow Matching"
+    ],
+    "summary": "ELF DiT 模型详解：in-context conditioning、bottleneck、shared-weight decoder、RoPE、SwiGLU"
+  },
+  {
+    "title": "ELF 训练流程",
+    "path": "code_analysis/elf/02_training.md",
+    "type": "代码分析",
+    "tags": [
+      "Diffusion Model",
+      "Flow Matching"
+    ],
+    "summary": "双分支混合训练（MSE/CE）、self-conditioning、training-time CFG 的完整实现分析"
+  },
+  {
+    "title": "ELF 采样与生成",
+    "path": "code_analysis/elf/03_sampling.md",
+    "type": "代码分析",
+    "tags": [
+      "Diffusion Model",
+      "Flow Matching"
+    ],
+    "summary": "ODE/SDE 采样器、logit-normal schedule、self-condition CFG、最终步解码的完整流程"
   }
 ]

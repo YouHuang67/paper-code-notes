@@ -48,3 +48,4 @@
 - [CUB Block 级原语](cub_block_primitives/01_block_radix_sort_and_scan.md) - BlockRadixSort 与 BlockScan 内部实现详解
 - [FlashInfer Variable Block Sparse Attention](flashinfer_variable_block_sparse/00_overview.md) - 本地剥离版 `variable_block_attn`：从 variable block 稀疏描述到 FA2 paged prefill 执行路径的完整代码拆解
 - [DeepSeek V4](deepseek_v4/00_overview.md) - mHC + Hybrid Attention + MoE + TileLang 低精度推理实现
+- [ELF](elf/00_overview.md) - Embedded Language Flows: JAX/Flax DiT + Flow Matching + 共享权重 denoiser-decoder
