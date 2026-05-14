@@ -1414,7 +1414,8 @@
     "category": "扩散语言模型",
     "date_added": "2026-05-14",
     "date_arxiv": "2026-05",
-    "summary": "连续扩散语言模型，在嵌入空间中做 Flow Matching，仅最终步离散化，共享权重 denoiser-decoder，自然支持 CFG，以极少训练 token 和采样步数超越现有方法"
+    "summary": "连续扩散语言模型，在嵌入空间中做 Flow Matching，仅最终步离散化，共享权重 denoiser-decoder，自然支持 CFG，以极少训练 token 和采样步数超越现有方法",
+    "organizations": "MIT"
   },
   {
     "title": "ELF 代码分析：总览",
