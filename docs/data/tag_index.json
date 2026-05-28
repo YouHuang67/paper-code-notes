@@ -1456,5 +1456,21 @@
       "Flow Matching"
     ],
     "summary": "ODE/SDE 采样器、logit-normal schedule、self-condition CFG、最终步解码的完整流程"
+  },
+  {
+    "title": "PromptEnhancer",
+    "path": "paper_reading/promptenhancer.md",
+    "type": "论文阅读",
+    "tags": [
+      "Reinforcement Learning",
+      "Diffusion Model",
+      "GRPO",
+      "Post Training"
+    ],
+    "summary": "CoT改写器+AlignEvaluator 24维细粒度reward驱动GRPO，通用T2I prompt改写框架，不改模型权重即插即用，24维度平均+5.1%",
+    "category": "文生图生成",
+    "date_arxiv": "2025-09",
+    "date_added": "2026-05-28",
+    "organizations": "Tencent Hunyuan"
   }
 ]

@@ -103,6 +103,7 @@ for i_c in range(0, NC, BC):
 - `LLM Inference` / `KV Cache`
 - `VLM`
 - `CUTLASS` / `CUDA`
+- `Post Training`
 
 ### Tag 补充规则
 - 粗粒度 tag（如 `Reinforcement Learning`）标识大方向，细粒度 tag（如 `DPO` / `GRPO`）标识具体方法
@@ -154,6 +155,7 @@ for i_c in range(0, NC, BC):
 - `自动驾驶视频生成`
 - `视频生成架构`
 - `扩散语言模型`
+- `文生图生成`
 
 新增 category 需与用户确认。
 
