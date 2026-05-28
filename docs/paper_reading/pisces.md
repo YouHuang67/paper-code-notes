@@ -4,6 +4,7 @@ tags:
   - Diffusion Model
   - Reinforcement Learning
   - GRPO
+  - Post Training
 ---
 
 # PISCES: Annotation-free Text-to-Video Post-Training via Optimal Transport-Aligned Rewards

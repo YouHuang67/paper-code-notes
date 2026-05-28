@@ -5,6 +5,7 @@ tags:
   - Reinforcement Learning
   - GRPO
   - DPO
+  - Post Training
 ---
 
 # TeleBoost: A Systematic Alignment Framework for High-Fidelity, Controllable, and Robust Video Generation

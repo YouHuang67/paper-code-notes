@@ -4,6 +4,7 @@ tags:
   - GRPO
   - Flow Matching
   - Diffusion Model
+  - Post Training
 ---
 
 # CPS: Coefficients-Preserving Sampling for Flow Matching RL

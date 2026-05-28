@@ -5,6 +5,7 @@ tags:
   - Reinforcement Learning
   - DPO
   - Flow Matching
+  - Post Training
 ---
 
 # RealDPO: Aligning Video Diffusion Models with Real-World Preference

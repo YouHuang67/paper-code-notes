@@ -5,6 +5,7 @@ tags:
   - Reinforcement Learning
   - Flow Matching
   - GRPO
+  - Post Training
 ---
 
 # DDRL: Data-regularized Reinforcement Learning for Diffusion Models at Scale

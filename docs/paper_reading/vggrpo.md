@@ -5,6 +5,7 @@ tags:
   - Reinforcement Learning
   - Flow Matching
   - GRPO
+  - Post Training
 ---
 
 # VGGRPO: Towards World-Consistent Video Generation with 4D Latent Reward

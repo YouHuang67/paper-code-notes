@@ -5,6 +5,7 @@ tags:
   - GRPO
   - DPO
   - Diffusion Model
+  - Post Training
 ---
 
 # MapReduce LoRA: Multi-Preference Alignment via Iterative Expert Merging

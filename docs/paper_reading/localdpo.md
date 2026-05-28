@@ -3,6 +3,7 @@ tags:
   - Video Generation
   - DPO
   - Diffusion Model
+  - Post Training
 ---
 
 # LocalDPO: Direct Localized Detail Preference Optimization for Video Diffusion

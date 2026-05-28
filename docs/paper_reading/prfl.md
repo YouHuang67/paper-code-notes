@@ -5,6 +5,7 @@ tags:
   - Reinforcement Learning
   - Flow Matching
   - Reward Model
+  - Post Training
 ---
 
 # PRFL: Video Generation Models Are Good Latent Reward Models

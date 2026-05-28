@@ -2,6 +2,7 @@
 tags:
   - Video Generation
   - Reinforcement Learning
+  - Post Training
 ---
 
 # VPO: Aligning Text-to-Video Generation Models with Prompt Optimization

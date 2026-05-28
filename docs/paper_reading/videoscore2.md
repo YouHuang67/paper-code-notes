@@ -5,6 +5,7 @@ tags:
   - Reinforcement Learning
   - GRPO
   - VLM
+  - Post Training
 ---
 
 # VideoScore2: Think Before You Score in Generative Video Evaluation

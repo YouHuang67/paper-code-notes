@@ -4,6 +4,7 @@ tags:
   - Diffusion Model
   - Reinforcement Learning
   - Reward Model
+  - Post Training
 ---
 
 # Kandinsky 5.0: A Family of Foundation Models for Image and Video Generation

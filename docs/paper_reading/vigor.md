@@ -5,6 +5,7 @@ tags:
   - Reinforcement Learning
   - Flow Matching
   - DPO
+  - Post Training
 ---
 
 # VIGOR: VIdeo Geometry-Oriented Reward for Temporal Generative Alignment

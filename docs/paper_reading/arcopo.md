@@ -4,6 +4,7 @@ tags:
   - Reinforcement Learning
   - GRPO
   - Flow Matching
+  - Post Training
 ---
 
 # AR-CoPO: Align Autoregressive Video Generation with Contrastive Policy Optimization

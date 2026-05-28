@@ -3,6 +3,7 @@ tags:
   - Video Generation
   - Diffusion Model
   - Reinforcement Learning
+  - Post Training
 ---
 
 # RLGF: Reinforcement Learning with Geometric Feedback for Autonomous Driving Video Generation

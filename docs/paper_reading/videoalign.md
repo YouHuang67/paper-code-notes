@@ -5,6 +5,7 @@ tags:
   - Reinforcement Learning
   - Flow Matching
   - DPO
+  - Post Training
 ---
 
 # VideoAlign: Improving Video Generation with Human Feedback

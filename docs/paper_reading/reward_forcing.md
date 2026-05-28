@@ -3,6 +3,7 @@ tags:
   - Video Generation
   - Diffusion Model
   - Reinforcement Learning
+  - Post Training
 ---
 
 # Reward-Forcing: Autoregressive Video Generation with Reward Feedback

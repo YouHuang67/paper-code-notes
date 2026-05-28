@@ -6,6 +6,7 @@ tags:
   - Diffusion Forcing
   - Flow Matching
   - DPO
+  - Post Training
 ---
 # SkyReels-V2: Infinite-Length Film Generative Model
 

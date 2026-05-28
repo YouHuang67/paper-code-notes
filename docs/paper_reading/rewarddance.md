@@ -4,6 +4,7 @@ tags:
   - Reward Model
   - Reinforcement Learning
   - VLM
+  - Post Training
 ---
 
 # RewardDance: Reward Scaling in Visual Generation

@@ -4,6 +4,7 @@ tags:
   - Reinforcement Learning
   - GRPO
   - Flow Matching
+  - Post Training
 ---
 
 # AR-Drag: Real-Time Motion-Controllable Autoregressive Video Diffusion

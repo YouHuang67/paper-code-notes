@@ -3,6 +3,7 @@ tags:
   - Video Generation
   - Reinforcement Learning
   - GRPO
+  - Post Training
 ---
 
 # DPP-GRPO: Diverse Video Generation with Determinantal Point Process-Guided Policy Optimization

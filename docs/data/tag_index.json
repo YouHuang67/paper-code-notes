@@ -100,7 +100,8 @@
       "Reinforcement Learning",
       "Diffusion Forcing",
       "Flow Matching",
-      "DPO"
+      "DPO",
+      "Post Training"
     ],
     "summary": "无限时长电影级视频生成，通过结构化标注 + Flow-DPO 运动优化 + Diffusion Forcing 后训练实现",
     "category": "视频生成架构",
@@ -117,7 +118,8 @@
       "Diffusion Model",
       "Reinforcement Learning",
       "Flow Matching",
-      "DPO"
+      "DPO",
+      "Post Training"
     ],
     "summary": "完整视频生成偏好对齐流水线：182k 偏好数据集 + VideoReward (BTT) + Flow-DPO/RWR/NRG 三种对齐算法",
     "category": "视频生成对齐（RL / Human Feedback）",
@@ -133,7 +135,8 @@
       "Video Generation",
       "Diffusion Model",
       "Reinforcement Learning",
-      "DPO"
+      "DPO",
+      "Post Training"
     ],
     "summary": "基于 OmniScore 多维度评分的视频 DPO，自动构造偏好对无需人工标注",
     "category": "视频生成对齐（RL / Human Feedback）",
@@ -149,7 +152,8 @@
       "Video Generation",
       "Diffusion Model",
       "Reinforcement Learning",
-      "DPO"
+      "DPO",
+      "Post Training"
     ],
     "summary": "段级密集偏好标注 + 引导采样构造困难负例，细粒度 DPO 对齐",
     "category": "视频生成对齐（RL / Human Feedback）",
@@ -165,7 +169,8 @@
       "Video Generation",
       "Diffusion Model",
       "Reinforcement Learning",
-      "DPO"
+      "DPO",
+      "Post Training"
     ],
     "summary": "半监督 DPO 用双重稳健估计器去偏，解决视频偏好标注中的运动偏差问题",
     "category": "视频生成对齐（RL / Human Feedback）",
@@ -182,7 +187,8 @@
       "Diffusion Model",
       "Reinforcement Learning",
       "Flow Matching",
-      "GRPO"
+      "GRPO",
+      "Post Training"
     ],
     "summary": "精确流形感知 SDE + 梯度范数均衡器 + 双信赖域（周期移动锚 + 逐步 KL）GRPO",
     "category": "视频生成对齐（RL / Human Feedback）",
@@ -199,7 +205,8 @@
       "Diffusion Model",
       "Reinforcement Learning",
       "Flow Matching",
-      "GRPO"
+      "GRPO",
+      "Post Training"
     ],
     "summary": "Latent Geometry Model 拼接 VAE latent 到 Any4D，几何重投影一致性 reward + GRPO",
     "category": "视频生成对齐（RL / Human Feedback）",
@@ -214,7 +221,8 @@
     "tags": [
       "Video Generation",
       "Diffusion Model",
-      "Reinforcement Learning"
+      "Reinforcement Learning",
+      "Post Training"
     ],
     "summary": "自回归视频生成：少量 ODE 轨迹学运动先验 + ImageReward 引导纹理，解耦运动和纹理训练",
     "category": "视频生成对齐（RL / Human Feedback）",
@@ -231,7 +239,8 @@
       "Diffusion Model",
       "Reinforcement Learning",
       "Flow Matching",
-      "Reward Model"
+      "Reward Model",
+      "Post Training"
     ],
     "summary": "视频生成模型自身作为 latent reward 模型（PAVRM），过程级监督无需 VAE 解码",
     "category": "视频生成对齐（RL / Human Feedback）",
@@ -246,7 +255,8 @@
     "tags": [
       "Video Generation",
       "Reinforcement Learning",
-      "Reward Model"
+      "Reward Model",
+      "Post Training"
     ],
     "summary": "Thinking-with-Image 框架，推理时主动检索帧 + 窗口记忆的视频 reward 模型",
     "category": "视频 Reward 模型",
@@ -261,7 +271,8 @@
     "tags": [
       "Video Generation",
       "Reinforcement Learning",
-      "Reward Model"
+      "Reward Model",
+      "Post Training"
     ],
     "summary": "帧级结构性失真评估 reward 模型，8 类失真分类 + masked SFT + GRPO with BTT pairwise reward",
     "category": "视频 Reward 模型",
@@ -278,7 +289,8 @@
       "Diffusion Model",
       "Reinforcement Learning",
       "Flow Matching",
-      "DPO"
+      "DPO",
+      "Post Training"
     ],
     "summary": "PhysEncoder 物理表征学习 + 三阶段顺序 Flow-DPO（SFT → DPO-DiT → DPO-PhysEncoder）",
     "category": "视频生成对齐（RL / Human Feedback）",
@@ -293,7 +305,8 @@
     "tags": [
       "Video Generation",
       "Diffusion Model",
-      "Reinforcement Learning"
+      "Reinforcement Learning",
+      "Post Training"
     ],
     "summary": "自动驾驶视频生成的层级几何 reward（点-线-面-体素-特征）+ latent 空间滑动窗口 RL",
     "category": "自动驾驶视频生成",
@@ -307,7 +320,8 @@
     "type": "论文阅读",
     "tags": [
       "Video Generation",
-      "Reinforcement Learning"
+      "Reinforcement Learning",
+      "Post Training"
     ],
     "summary": "从 prompt 优化角度对齐视频生成模型，文本级+视频级多反馈 DPO",
     "category": "视频生成对齐（RL / Human Feedback）",
@@ -502,7 +516,8 @@
       "Reinforcement Learning",
       "GRPO",
       "Reward Model",
-      "Flow Matching"
+      "Flow Matching",
+      "Post Training"
     ],
     "summary": "视频生成 GRPO 框架：多粒度 reward + 帧级/视频级双层 GRPO",
     "category": "视频生成对齐（RL / Human Feedback）",
@@ -517,7 +532,8 @@
     "tags": [
       "Video Generation",
       "Reinforcement Learning",
-      "Flow Matching"
+      "Flow Matching",
+      "Post Training"
     ],
     "summary": "Telescoping Boosting：多智能体迭代蒸馏，每轮 reward 提升后重新蒸馏少步模型",
     "category": "视频生成对齐（RL / Human Feedback）",
@@ -533,7 +549,8 @@
       "Video Generation",
       "Reinforcement Learning",
       "GRPO",
-      "Flow Matching"
+      "Flow Matching",
+      "Post Training"
     ],
     "summary": "双鱼对抗系统：verifier + falsifier 对抗训练的视频生成对齐",
     "category": "视频生成对齐（RL / Human Feedback）",
@@ -549,7 +566,8 @@
       "Video Generation",
       "Diffusion Model",
       "Reinforcement Learning",
-      "Flow Matching"
+      "Flow Matching",
+      "Post Training"
     ],
     "summary": "音视频联合生成：Native AV-DiT + 多维 RLHF + 10× 推理加速",
     "category": "视频生成架构",
@@ -565,7 +583,8 @@
       "Video Generation",
       "Reinforcement Learning",
       "Diffusion Model",
-      "Flow Matching"
+      "Flow Matching",
+      "Post Training"
     ],
     "summary": "数据正则化扩散 RL：前向 KL 锚定数据分布防止 reward hacking",
     "category": "视频生成对齐（RL / Human Feedback）",
@@ -596,7 +615,8 @@
       "Video Generation",
       "Diffusion Model",
       "Reinforcement Learning",
-      "Flow Matching"
+      "Flow Matching",
+      "Post Training"
     ],
     "summary": "统一图像/视频/音频生成基础模型族，多阶段课程训练 + RLHF",
     "category": "视频生成架构",
@@ -612,7 +632,8 @@
       "Video Generation",
       "Reinforcement Learning",
       "GRPO",
-      "Flow Matching"
+      "Flow Matching",
+      "Post Training"
     ],
     "summary": "多参考图对齐视频生成：CLIP-I2T reward 驱动 GRPO",
     "category": "视频生成对齐（RL / Human Feedback）",
@@ -627,7 +648,8 @@
     "tags": [
       "Video Generation",
       "DPO",
-      "Flow Matching"
+      "Flow Matching",
+      "Post Training"
     ],
     "summary": "真实视频锚定 DPO：用真实视频作为偏好锚点，避免合成数据偏差",
     "category": "视频生成对齐（RL / Human Feedback）",
@@ -644,7 +666,8 @@
       "Reinforcement Learning",
       "GRPO",
       "Flow Matching",
-      "Reward Model"
+      "Reward Model",
+      "Post Training"
     ],
     "summary": "过程 Reward 梯度注入 SDE 漂移项 + 双重 Reward GRPO，统一 Flow-GRPO 和 DanceGRPO",
     "category": "视频生成对齐（RL / Human Feedback）",
@@ -660,7 +683,8 @@
       "Video Generation",
       "Reinforcement Learning",
       "GRPO",
-      "Flow Matching"
+      "Flow Matching",
+      "Post Training"
     ],
     "summary": "记忆库对比 I2V 对齐：高质量记忆库渐进提升生成下界",
     "category": "视频生成对齐（RL / Human Feedback）",
@@ -677,7 +701,8 @@
       "Reinforcement Learning",
       "GRPO",
       "Flow Matching",
-      "VLM"
+      "VLM",
+      "Post Training"
     ],
     "summary": "统一视频理解+生成的下一场景预测，因果一致性 reward + GRPO",
     "category": "视频生成对齐（RL / Human Feedback）",
@@ -693,7 +718,8 @@
       "Video Generation",
       "Reinforcement Learning",
       "GRPO",
-      "Flow Matching"
+      "Flow Matching",
+      "Post Training"
     ],
     "summary": "行列式点过程 GRPO：DPP 采样替代随机采样增加组内多样性",
     "category": "视频生成对齐（RL / Human Feedback）",
@@ -709,7 +735,8 @@
       "Video Generation",
       "Reinforcement Learning",
       "GRPO",
-      "Flow Matching"
+      "Flow Matching",
+      "Post Training"
     ],
     "summary": "流式 AR 模型 chunk-level forking + semi-on-policy 训练，解决 few-step CM 的 SDE 失效",
     "category": "视频生成对齐（RL / Human Feedback）",
@@ -726,7 +753,8 @@
       "Reward Model",
       "Reinforcement Learning",
       "GRPO",
-      "VLM"
+      "VLM",
+      "Post Training"
     ],
     "summary": "CoT 推理式视频评估：三维度评分 + SFT → GRPO 两阶段训练",
     "category": "视频 Reward 模型",
@@ -743,7 +771,8 @@
       "Reinforcement Learning",
       "DPO",
       "GRPO",
-      "Reward Model"
+      "Reward Model",
+      "Post Training"
     ],
     "summary": "多维 self-critic 推理式 RM + 运动校正 DPO，解决运动偏差 reward hacking",
     "category": "视频生成对齐（RL / Human Feedback）",
@@ -760,7 +789,8 @@
       "Reinforcement Learning",
       "GRPO",
       "DPO",
-      "Diffusion Model"
+      "Diffusion Model",
+      "Post Training"
     ],
     "summary": "迭代式 LoRA 专家合并的多偏好对齐，Pareto 前沿逐步推进",
     "category": "视频生成对齐（RL / Human Feedback）",
@@ -777,7 +807,8 @@
       "Reinforcement Learning",
       "GRPO",
       "Flow Matching",
-      "VLM"
+      "VLM",
+      "Post Training"
     ],
     "summary": "Joint-GRPO 对齐 VLM+VDM，视频作为答案的下一事件预测",
     "category": "视频生成对齐（RL / Human Feedback）",
@@ -794,7 +825,8 @@
       "Reinforcement Learning",
       "GRPO",
       "Flow Matching",
-      "Reward Model"
+      "Reward Model",
+      "Post Training"
     ],
     "summary": "多人身份保持 GRPO：专用身份 RM + BTT + 大组差异化噪声采样",
     "category": "视频生成对齐（RL / Human Feedback）",
@@ -813,7 +845,8 @@
       "Flow Matching",
       "Diffusion Model",
       "DPO",
-      "Reward Model"
+      "Reward Model",
+      "Post Training"
     ],
     "summary": "Flow-GRPO 及后续 200+ 论文综述：reward 设计、credit assignment、采样效率、多样性保持",
     "category": "视频生成对齐综述",
@@ -829,7 +862,8 @@
       "Video Generation",
       "Reinforcement Learning",
       "GRPO",
-      "Flow Matching"
+      "Flow Matching",
+      "Post Training"
     ],
     "summary": "Self-Rollout + selective stochasticity 实现 few-step AR 视频实时运动控制",
     "category": "视频生成对齐（RL / Human Feedback）",
@@ -845,7 +879,8 @@
       "Video Generation",
       "Reward Model",
       "Reinforcement Learning",
-      "VLM"
+      "VLM",
+      "Post Training"
     ],
     "summary": "生成式 reward 范式：VLM 预测 yes 概率做 reward，1B→26B 系统化扩展",
     "category": "视频 Reward 模型",
@@ -861,7 +896,8 @@
       "Reinforcement Learning",
       "GRPO",
       "Flow Matching",
-      "Diffusion Model"
+      "Diffusion Model",
+      "Post Training"
     ],
     "summary": "系数保持采样器消除 Flow-SDE 噪声伪影，更准确的 reward 建模",
     "category": "视频生成对齐（RL / Human Feedback）",
@@ -876,7 +912,8 @@
     "tags": [
       "Video Generation",
       "DPO",
-      "Diffusion Model"
+      "Diffusion Model",
+      "Post Training"
     ],
     "summary": "局部化偏好优化：真实视频 vs 局部腐蚀修复构建偏好对，region-aware DPO",
     "category": "视频生成对齐（RL / Human Feedback）",

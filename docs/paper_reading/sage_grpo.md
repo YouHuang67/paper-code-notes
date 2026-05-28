@@ -5,6 +5,7 @@ tags:
   - Reinforcement Learning
   - Flow Matching
   - GRPO
+  - Post Training
 ---
 
 # SAGE-GRPO: Manifold-Aware Exploration for Reinforcement Learning in Video Generation

@@ -4,6 +4,7 @@ tags:
   - Diffusion Model
   - Reinforcement Learning
   - DPO
+  - Post Training
 ---
 
 # DenseDPO: Fine-Grained Temporal Preference Optimization for Video Diffusion Models

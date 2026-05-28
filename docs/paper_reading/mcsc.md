@@ -5,6 +5,7 @@ tags:
   - DPO
   - GRPO
   - Reward Model
+  - Post Training
 ---
 
 # McSc: Motion-Corrective Preference Alignment for Video Generation

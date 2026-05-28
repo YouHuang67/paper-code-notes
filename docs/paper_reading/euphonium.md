@@ -6,6 +6,7 @@ tags:
   - GRPO
   - Flow Matching
   - Reward Model
+  - Post Training
 ---
 
 # Euphonium: Process Reward Guided Flow Matching for Video Generation

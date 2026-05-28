@@ -5,6 +5,7 @@ tags:
   - Reinforcement Learning
   - GRPO
   - Flow Matching
+  - Post Training
 ---
 
 # TAGRPO: Trajectory-Aligned GRPO for Diffusion Model Post-Training

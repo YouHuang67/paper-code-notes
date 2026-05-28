@@ -4,6 +4,7 @@ tags:
   - Diffusion Model
   - Reinforcement Learning
   - DPO
+  - Post Training
 ---
 
 # DreaMontage: Montage Video Generation via Multi-Shot Diffusion Model Alignment

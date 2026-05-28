@@ -5,6 +5,7 @@ tags:
   - GRPO
   - Flow Matching
   - Reward Model
+  - Post Training
 ---
 
 # Identity-GRPO: Multi-Human Identity-Preserving Video Generation via RL

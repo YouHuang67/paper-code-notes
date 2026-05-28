@@ -5,6 +5,7 @@ tags:
   - GRPO
   - Flow Matching
   - VLM
+  - Post Training
 ---
 
 # VANS: Video-as-Answer with Joint-GRPO for Next Event Prediction

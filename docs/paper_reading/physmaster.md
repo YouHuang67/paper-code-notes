@@ -5,6 +5,7 @@ tags:
   - Reinforcement Learning
   - Flow Matching
   - DPO
+  - Post Training
 ---
 
 # PhysMaster: Physics Representation Learning for Video Generation

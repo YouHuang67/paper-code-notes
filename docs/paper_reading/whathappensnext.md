@@ -6,6 +6,7 @@ tags:
   - GRPO
   - Flow Matching
   - VLM
+  - Post Training
 ---
 
 # What Happens Next: Next Scene Prediction with a Unified Video Model

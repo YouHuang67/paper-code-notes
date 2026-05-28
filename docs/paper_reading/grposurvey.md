@@ -7,6 +7,7 @@ tags:
   - Diffusion Model
   - DPO
   - Reward Model
+  - Post Training
 ---
 
 # Advances in GRPO for Generation Models: A Survey

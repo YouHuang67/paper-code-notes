@@ -3,6 +3,7 @@ tags:
   - Video Generation
   - Diffusion Model
   - Reinforcement Learning
+  - Post Training
 ---
 
 # Seedance 1.5 pro: A Native Audio-Visual Joint Generation Foundation Model
