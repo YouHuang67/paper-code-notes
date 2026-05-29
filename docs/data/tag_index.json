@@ -1509,5 +1509,20 @@
     "date_arxiv": "2025-09",
     "date_added": "2026-05-28",
     "organizations": "Tencent Hunyuan"
+  },
+  {
+    "title": "Video-Bench",
+    "path": "paper_reading/videobench.md",
+    "type": "论文阅读",
+    "tags": [
+      "Video Generation",
+      "VLM",
+      "Reward Model"
+    ],
+    "summary": "首个系统性MLLM全维度视频生成评估benchmark，Chain-of-Query+ Few-shot Scoring，9维评估体系，与人类Spearman 0.73达标注者间一致性水平",
+    "category": "视频 Reward 模型",
+    "date_arxiv": "2025-04",
+    "date_added": "2026-05-29",
+    "organizations": "SJTU, Stanford, CMU, PKU, Fudan, PolyU, NUS"
   }
 ]
