@@ -7,6 +7,7 @@ tags:
   - Flow Matching
   - VLM
   - Post Training
+  - Unified Understanding
 ---
 
 # What Happens Next: Next Scene Prediction with a Unified Video Model

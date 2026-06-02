@@ -2,6 +2,7 @@
 tags:
   - Diffusion Model
   - VLM
+  - Unified Understanding
 ---
 
 # LLaDA-o: An Effective and Length-Adaptive Omni Diffusion Model

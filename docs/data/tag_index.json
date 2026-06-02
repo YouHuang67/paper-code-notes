@@ -698,11 +698,13 @@
     "type": "论文阅读",
     "tags": [
       "Video Generation",
+      "Diffusion Model",
       "Reinforcement Learning",
       "GRPO",
       "Flow Matching",
       "VLM",
-      "Post Training"
+      "Post Training",
+      "Unified Understanding"
     ],
     "summary": "统一视频理解+生成的下一场景预测，因果一致性 reward + GRPO",
     "category": "视频生成对齐（RL / Human Feedback）",
@@ -1057,7 +1059,8 @@
     "type": "论文阅读",
     "tags": [
       "Diffusion Model",
-      "VLM"
+      "VLM",
+      "Unified Understanding"
     ],
     "summary": "Mixture of Diffusion 统一多模态：离散掩码扩散理解 + 连续扩散生成 + 块内双向/跨块因果注意力 5.9× 加速 + 自适应长度增广，DPG-Bench 87.04",
     "category": "Vision Language Model",
