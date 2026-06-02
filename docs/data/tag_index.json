@@ -1546,5 +1546,45 @@
     "date_arxiv": "2026-05",
     "date_added": "2026-06-02",
     "organizations": "Intelligent Creation Lab, ByteDance"
+  },
+  {
+    "title": "DeepEP - 总览",
+    "path": "code_analysis/deepep/00_overview.md",
+    "type": "代码分析",
+    "tags": [
+      "CUDA",
+      "CUTLASS"
+    ],
+    "summary": "DeepEP MoE expert-parallel 通信库架构总览：TMA + NCCL Gin + Hybrid 两级通信"
+  },
+  {
+    "title": "DeepEP - 通信拓扑与 NCCL Gin 后端",
+    "path": "code_analysis/deepep/01_topology_and_backend.md",
+    "type": "代码分析",
+    "tags": [
+      "CUDA",
+      "CUTLASS"
+    ],
+    "summary": "Scaleup/Scaleout 通信域、对称内存分配、QP 管理策略与 GPU Barrier 实现"
+  },
+  {
+    "title": "DeepEP - Dispatch 内核",
+    "path": "code_analysis/deepep/02_dispatch.md",
+    "type": "代码分析",
+    "tags": [
+      "CUDA",
+      "CUTLASS"
+    ],
+    "summary": "MoE dispatch all-to-all：Notify Warps 统计、TMA store 跨 GPU 拷贝、RDMA put 双路径、Hybrid 两级转发"
+  },
+  {
+    "title": "DeepEP - Combine 内核",
+    "path": "code_analysis/deepep/03_combine.md",
+    "type": "代码分析",
+    "tags": [
+      "CUDA",
+      "CUTLASS"
+    ],
+    "summary": "MoE combine all-to-all：TMA 写入远程 buffer、三种 reduce 模式、Hybrid 流水线 scaleup+scaleout 解耦"
   }
 ]

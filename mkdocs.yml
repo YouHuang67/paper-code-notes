@@ -196,6 +196,11 @@ nav:
         - 模型架构: code_analysis/deepseek_v4/01_model_architecture.md
         - 推理链路: code_analysis/deepseek_v4/02_inference_pipeline.md
         - Kernels 与量化: code_analysis/deepseek_v4/03_kernels_and_quantization.md
+      - DeepEP:
+        - 总览: code_analysis/deepep/00_overview.md
+        - 通信拓扑与 NCCL Gin 后端: code_analysis/deepep/01_topology_and_backend.md
+        - Dispatch 内核: code_analysis/deepep/02_dispatch.md
+        - Combine 内核: code_analysis/deepep/03_combine.md
   - 源码浏览:
     - source_browsing_index.md
     - Flash Attention V2:
