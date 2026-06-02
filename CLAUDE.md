@@ -102,7 +102,7 @@ for i_c in range(0, NC, BC):
 - `Reinforcement Learning` / `DPO` / `GRPO` / `Reward Model`
 - `LLM Inference` / `KV Cache`
 - `VLM`
-- `CUTLASS` / `CUDA`
+- `CUTLASS` / `CUDA` / `Unified Understanding`
 - `Post Training`
 
 ### Tag 补充规则
@@ -158,6 +158,7 @@ for i_c in range(0, NC, BC):
 - `文生图生成`
 
 新增 category 需与用户确认。
+- `统一多模态模型`
 
 **检查项**：tag 列表三处一致，nav 包含所有文档，论文记录必须有 category / date_added / date_arxiv
 

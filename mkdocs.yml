@@ -135,6 +135,7 @@ nav:
     - PASA: paper_reading/pasa.md
     - Radial Attention: paper_reading/radial_attention.md
     - PromptEnhancer: paper_reading/promptenhancer.md
+    - Lance: paper_reading/lance_arxiv.md
   - 代码分析:
     - 导读: code_analysis/index.md
     - 公共基础（CUDA）:

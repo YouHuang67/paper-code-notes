@@ -1524,5 +1524,24 @@
     "date_arxiv": "2025-04",
     "date_added": "2026-05-29",
     "organizations": "SJTU, Stanford, CMU, PKU, Fudan, PolyU, NUS"
+  },
+  {
+    "title": "Lance",
+    "path": "paper_reading/lance_arxiv.md",
+    "type": "论文阅读",
+    "tags": [
+      "Diffusion Model",
+      "Flow Matching",
+      "VLM",
+      "LLM Inference",
+      "KV Cache",
+      "Post Training",
+      "Unified Understanding"
+    ],
+    "summary": "字节跳动3B原生态统一多模态模型，Dual-Stream MoE架构+MaPE位置编码+分阶段多任务训练（PT→CT→SFT→RL），支持图像/视频理解、生成与编辑",
+    "category": "统一多模态模型",
+    "date_arxiv": "2026-05",
+    "date_added": "2026-06-02",
+    "organizations": "Intelligent Creation Lab, ByteDance"
   }
 ]
