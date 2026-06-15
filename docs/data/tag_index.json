@@ -1548,6 +1548,67 @@
     "organizations": "Intelligent Creation Lab, ByteDance"
   },
   {
+    "title": "PhyPrompt",
+    "path": "paper_reading/phyprompt.md",
+    "type": "论文阅读",
+    "tags": [
+      "Video Generation",
+      "Reinforcement Learning",
+      "GRPO",
+      "Post Training"
+    ],
+    "summary": "物理感知 CoT + 动态课程 GRPO 的 T2V prompt 改写器，先保语义再补物理约束，跨生成器零样本迁移",
+    "category": "视频生成对齐（RL / Human Feedback）",
+    "date_arxiv": "2026-03",
+    "date_added": "2026-06-15",
+    "organizations": "Northwestern University, Dolby Laboratories"
+  },
+  {
+    "title": "ReaDe",
+    "path": "paper_reading/reade.md",
+    "type": "论文阅读",
+    "tags": [
+      "Video Generation",
+      "Reinforcement Learning",
+      "GRPO",
+      "Post Training"
+    ],
+    "summary": "reason-then-describe 视频指令解释器，CoT 初始化 + 多维 reward GRPO，把多模态条件转成 6 段 structured caption",
+    "category": "视频生成对齐（RL / Human Feedback）",
+    "date_arxiv": "2025-09",
+    "date_added": "2026-06-15",
+    "organizations": "Anonymous authors (ICLR 2026 submission)"
+  },
+  {
+    "title": "SCMAPR",
+    "path": "paper_reading/scmapr.md",
+    "type": "论文阅读",
+    "tags": [
+      "Video Generation"
+    ],
+    "summary": "复杂场景 T2V prompt 多代理自纠错流程，taxonomy 路由 + policy synthesis + atom-level verification，并提出 T2V-Complexity",
+    "category": "视频生成架构",
+    "date_arxiv": "2026-04",
+    "date_added": "2026-06-15",
+    "organizations": "HiThink Research, East China Normal University, Guangzhou University, Tsinghua University"
+  },
+  {
+    "title": "APE",
+    "path": "paper_reading/ape.md",
+    "type": "论文阅读",
+    "tags": [
+      "Reinforcement Learning",
+      "Diffusion Model",
+      "GRPO",
+      "Post Training"
+    ],
+    "summary": "SAPE / MAPE 小模型 prompt enhancer，冻结下游图像模型，仅靠 GRPO/GDPO 后训练提升图像生成与编辑对齐",
+    "category": "文生图生成",
+    "date_arxiv": "2026-06",
+    "date_added": "2026-06-15",
+    "organizations": "NVIDIA, University of Michigan"
+  },
+  {
     "title": "DeepEP - 总览",
     "path": "code_analysis/deepep/00_overview.md",
     "type": "代码分析",

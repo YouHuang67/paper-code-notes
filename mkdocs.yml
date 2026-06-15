@@ -99,9 +99,11 @@ nav:
     - Euphonium: paper_reading/euphonium.md
     - RealDPO: paper_reading/realdpo.md
     - TAGRPO: paper_reading/tagrpo.md
+    - PhyPrompt: paper_reading/phyprompt.md
     - DreaMontage: paper_reading/dreamontage.md
     - DPP-GRPO: paper_reading/dppgrpo.md
     - AR-CoPO: paper_reading/arcopo.md
+    - ReaDe: paper_reading/reade.md
     - What Happens Next: paper_reading/whathappensnext.md
     - McSc: paper_reading/mcsc.md
     - MapReduce LoRA: paper_reading/mapreducelora.md
@@ -127,6 +129,7 @@ nav:
     - ELF: paper_reading/elf.md
     - Compact Attention: paper_reading/compact_attention.md
     - PAROAttention: paper_reading/paroattention.md
+    - SCMAPR: paper_reading/scmapr.md
     - Sparse VideoGen2: paper_reading/svg2.md
     - Sparse-vDiT: paper_reading/sparse_vdit.md
     - Sparse Forcing: paper_reading/sparse_forcing.md
@@ -134,6 +137,7 @@ nav:
     - PASA: paper_reading/pasa.md
     - Radial Attention: paper_reading/radial_attention.md
     - PromptEnhancer: paper_reading/promptenhancer.md
+    - APE: paper_reading/ape.md
     - Lance: paper_reading/lance_arxiv.md
   - 代码分析:
     - 导读: code_analysis/index.md
