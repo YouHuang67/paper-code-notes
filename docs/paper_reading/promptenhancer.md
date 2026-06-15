@@ -1,5 +1,6 @@
 ---
 tags:
+  - Prompt Enhancer
   - Reinforcement Learning
   - Diffusion Model
   - GRPO

@@ -1,5 +1,6 @@
 ---
 tags:
+  - Prompt Enhancer
   - Video Generation
   - Reinforcement Learning
   - Post Training

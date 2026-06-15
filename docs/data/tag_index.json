@@ -319,6 +319,7 @@
     "path": "paper_reading/vpo.md",
     "type": "论文阅读",
     "tags": [
+      "Prompt Enhancer",
       "Video Generation",
       "Reinforcement Learning",
       "Post Training"
@@ -1502,6 +1503,7 @@
     "path": "paper_reading/promptenhancer.md",
     "type": "论文阅读",
     "tags": [
+      "Prompt Enhancer",
       "Reinforcement Learning",
       "Diffusion Model",
       "GRPO",
@@ -1552,6 +1554,7 @@
     "path": "paper_reading/phyprompt.md",
     "type": "论文阅读",
     "tags": [
+      "Prompt Enhancer",
       "Video Generation",
       "Reinforcement Learning",
       "GRPO",
@@ -1568,6 +1571,7 @@
     "path": "paper_reading/reade.md",
     "type": "论文阅读",
     "tags": [
+      "Prompt Enhancer",
       "Video Generation",
       "Reinforcement Learning",
       "GRPO",
@@ -1584,6 +1588,7 @@
     "path": "paper_reading/scmapr.md",
     "type": "论文阅读",
     "tags": [
+      "Prompt Enhancer",
       "Video Generation"
     ],
     "summary": "复杂场景 T2V prompt 多代理自纠错流程，taxonomy 路由 + policy synthesis + atom-level verification，并提出 T2V-Complexity",
@@ -1597,6 +1602,7 @@
     "path": "paper_reading/ape.md",
     "type": "论文阅读",
     "tags": [
+      "Prompt Enhancer",
       "Reinforcement Learning",
       "Diffusion Model",
       "GRPO",
