@@ -131,327 +131,167 @@ SVG2 在更低密度下实现更高 PSNR 和更大加速。SVG2-Turbo 在与 SVG
 
 ## 代码实现分析
 
-仓库地址：[Sparse-VideoGen](https://github.com/svg-project/Sparse-VideoGen)。代码同时包含 SVG（v1）和 SVG2（SAP）两套方案，支持 HunyuanVideo、CogVideoX、Wan、Cosmos 四个模型。以 HunyuanVideo 为主线分析。
+仓库地址：[Sparse-VideoGen](https://github.com/svg-project/Sparse-VideoGen)。仓库同时保留 SVG v1 和 SVG2/SAP 两套实现，核心代码结构不是“一个新 attention kernel 替换全部”，而是一个分层流水线：
 
-### 整体架构
+1. 模型接入层把 Hunyuan/Wan 原始 attention processor 替换为 SVG/SAP processor，并把 timestep、layer id、prompt/video 长度等运行时信息传进 attention。
+2. 稀疏策略层决定当前层当前步是跑 full attention、SVG v1 的固定 mask，还是 SVG2 的 semantic-aware permutation。
+3. SAP 层先对 Q/K 做独立 k-means，生成 cluster label、centroid、cluster size，再用 centroid attention 生成 block graph。
+4. 数据布局层把 Q/K/V 按 cluster label 重排成连续段，让“语义簇”变成后端能执行的 variable block。
+5. 后端执行层在开源版本中主要调用 FlashInfer `VariableBlockSparseAttentionWrapper.plan/run`；仓库里的 Triton dynamic block sparse attention 更像机制原型，论文描述的定制 FA2/FA3 dynamic block kernel 没有开源。
 
-代码通过 **monkey-patch** 替换原模型的注意力处理器：
+这个分层很关键：SVG2 的加速不是单靠“少算一些边”，而是先把语义相关 token 聚到连续内存，再把不规则 token 稀疏问题改写成后端更容易调度的变长 block sparse attention。
 
-1. `replace_hyvideo_flashattention(pipe)`：先将原始 FSDP+mask 注意力替换为 FlashAttention varlen 实现
-2. `replace_hyvideo_attention(pipe, pattern="SAP")`：再替换为稀疏注意力处理器，通过 `pattern` 参数选择 SVG 或 SAP
-3. `replace_sparse_forward()`：替换 Transformer block 的 forward 方法，注入 timestep 参数传递
+### 模型接入：Wan 和 Hunyuan 的两条路径
 
-每个注意力层的处理器是独立实例，但**稀疏参数通过类变量全局共享**（如 `AttnModule.num_q_centroids = 50`）。
+Wan 路径相对直接：`WanAttn_SAPAttn_Processor.attention_core_logic()` 在非 warmup 阶段对完整序列执行 `semantic_aware_permutation()`，随后调用 `dynamic_block_sparse_fwd_flashinfer()`，最后用 `apply_inverse_permutation_triton()` 把 Q 侧输出还原到原 token 顺序。
 
-### SVG（v1）实现：在线 MSE 采样 + FlexAttention
+Hunyuan 路径更复杂：`Hunyuan_SAPAttn_Processor2_0.attention_core_logic()` 先用 `prepare_video_part()` 只切出 video token 做 SAP，context token 不参与 k-means。`dynamic_map_post_processing()` 再把 prompt 和 unused prompt 作为额外 block 拼到 block graph 后面：
 
-**源码位置**: [attention.py Hunyuan_SVGAttn_Processor2_0](https://github.com/svg-project/Sparse-VideoGen/blob/main/svg/models/hyvideo/attention.py)
+- video cluster 由 k-means 产生，block size 是真实 cluster size。
+- prompt block 与 video block 双向可见，保证文本条件仍能参与视频注意力。
+- unused prompt block 只和自己相连，避免 padding 语义污染 video token。
 
-核心流程（`attention_core_logic`）：
+因此 Hunyuan 送入 FlashInfer 的并不是“纯视频 cluster 图”，而是一个由 video clusters、prompt block、unused prompt block 共同组成的更大 block sparse graph。后端不理解文本/视频语义，这些约束全部在 wrapper 之前通过 `dyn_map` 和 `qc_sz_s/kc_sz_s` 改写完成。
 
-- **Warmup 判断**：前 `first_layers_fp` 层或前 `first_times_fp` 步 → 全注意力（FlashAttention varlen）
-- **在线模式选择**：`sample_mse()` 随机采样 32 行 Q，分别用 spatial mask 和 temporal mask 做 masked attention，与全注意力结果算 MSE，逐 (cfg, head) 选最小 → `best_mask_idx`（0=spatial, 1=temporal）
-- **Head Placement**：根据 `best_mask_idx`，temporal head 做 frame-major → token-major 重排（Triton kernel），spatial head 直接复制。重排后两种模式都变成对角线结构
-- **稀疏注意力**：统一调用 `torch.compile(flex_attention)` + 预编译的 `block_mask`
-- **逆重排**：temporal head 输出从 token-major 重排回 frame-major
+两条路径都有限制：SAP processor 中显式 `assert cfg == 1`，说明当前开源实现主要面向 batch size 1 的视频生成推理；同时稀疏参数大多是类变量，例如 `num_q_centroids`、`num_k_centroids`、`top_p_kmeans`，需要通过替换函数在模型级统一设置。
 
-`block_mask` 由 `generate_temporal_head_mask_mod` 生成，本质是 tri-diagonal 模式：`|q_idx - kv_idx| < 2 * frame_size`，加上 text token 的全连接。
+### SAP 主流程：从 Q/K 到可执行 block graph
 
-### SAP（v2）实现：KMeans 聚类 + 动态 Block Sparse
+SAP 的核心函数是 `semantic_aware_permutation()`，它把一次 attention 拆成四个状态转换：
 
-**源码位置**: [attention.py Hunyuan_SAPAttn_Processor2_0](https://github.com/svg-project/Sparse-VideoGen/blob/main/svg/models/hyvideo/attention.py)
+1. `query/key: [B, H, S, D] -> [B * H, S, D]`，每个 batch-head 独立做 Q/K k-means。
+2. k-means 返回 `qlabels/klabels`、`qcentroids/kcentroids`、`qcluster_sizes/kcluster_sizes`。
+3. `identify_dynamic_map()` 用 Q/K centroid 估计 cluster 级注意力，生成 `[B, H, Cq, Ck]` 的 boolean 邻接图。
+4. `permute_tensor_by_labels_triton()` 按 label 排序 Q、K、V，使每个 cluster 成为序列中的连续段。
 
-核心流程（`attention_core_logic`）：
+这里的 Q 和 K 是分开聚类的，不是共用一套 token 分组。原因是注意力矩阵行侧和列侧承担的角色不同：Q cluster 决定输出行如何分段，K cluster 决定每个行段要访问哪些列段。V 必须复用 K 的排序索引，否则 `softmax(QK^T)V` 的 K/V 行对应关系会被破坏；输出只需要按 Q 的 `q_sorted_indices` 做逆重排。
 
-**1. Warmup 阶段**：同 SVG，但可选 `zero_step_kmeans_init` 在全注意力步骤中预初始化 KMeans 质心
+这也解释了论文中 permutation 等价性的工程含义：K/V 共享同一置换、Q 输出再逆置换，才不改变 full attention 的数学结果；稀疏化只发生在后续 `dynamic_map` 裁剪的 block 连接上。
 
-**2. KMeans 聚类**（`kmeans_clustering`）：
+### K-means 设计：centroid cache 和两段 Triton 加速
 
-- 仅对 **video token**（排除 text token）做聚类
-- Q 和 K 分别独立聚类，默认 Q 50 簇、K 200 簇
-- 初始化：第一次用随机初始化 + `kmeans_iter_init` 轮迭代；后续步骤复用上一步质心（centroid cache）+ `kmeans_iter_step` 轮迭代
-- KMeans 迭代的两个核心操作均用 **Triton kernel 加速**：
-  - Assignment：`euclid_assign_triton` — 分块计算欧氏距离，BLOCK_N × BLOCK_K 的 tile 遍历质心
-  - Centroid update：`triton_centroid_update_sorted_euclid` — 先按 cluster ID 排序，chunk kernel 利用排序后的连续性，每个 run 只做一次 atomic add（而非每 token 一次）
+开源实现采用 `batch_kmeans_Euclid()`，输入形状是 `[B * H, S, D]`。每个 batch-head 是独立样本组，因此不同 head 可以形成完全不同的语义簇。首次进入稀疏阶段时，如果没有缓存质心，就随机从 token 中采样初始 centroid 并跑 `kmeans_iter_init` 轮；后续 step 使用上一轮 `self.q_centroids/self.k_centroids` 作为初始化，只跑 `kmeans_iter_step` 轮。这就是论文里的 centroid cache：利用 DiT 去噪相邻 step 激活变化小的性质，把在线 k-means 从高迭代成本压成一两轮局部修正。
 
-**3. Dynamic Map 生成**（`identify_dynamic_map`）：
+Hunyuan 版本用 `q_centroids/k_centroids` 字典按 `layer_idx` 缓存；Wan 版本用单个 `q_centroids/k_centroids` 成员，依赖 processor 实例与 layer 绑定。两者都支持 `zero_step_kmeans_init`：即使当前 warmup 仍跑 full attention，也先对 video token 做 k-means，等切到 sparse 阶段时 centroid cache 已经存在，避免第一步稀疏推理突然承担完整初始化成本。
 
-- 计算 Q-centroid 与 K-centroid 的注意力分数：$S_{ij} = Q_c \cdot K_c^\top / \sqrt{d}$
-- 加权 softmax：$P'_{ij} = |K_j| \cdot \exp(S_{ij}) / \sum_k |K_k| \cdot \exp(S_{ik})$
-- Top-p 截断：按 $P'$ 降序累积，达到 `top_p_kmeans` 阈值后停止
-- 可选 `min_kc_ratio` 保留最少比例的 K 簇
-- 输出：`[B, H, qc_num, kc_num]` 的 boolean mask
+k-means 每一轮由两个关键操作组成：assignment 和 centroid update。
 
-**4. 后处理**（`dynamic_map_post_processing`）：
+**Assignment kernel。** `_euclid_assign_kernel` 的 grid 是 `(ceil(N / BLOCK_N), B)`，这里的 `B` 实际是 flatten 后的 `B * H`。一个 Triton program 负责某个 batch-head 的 `BLOCK_N` 个 token：
 
-HunyuanVideo 的 context token 分为 prompt（有效）和 unprompt（padding）两部分：
-- 将 prompt 和 unprompt 作为额外的两个"簇"追加到 dynamic map
-- prompt 簇与所有 video 簇互相可见，unprompt 簇仅自注意
+- 先加载 `x_tile: [BLOCK_N, D]` 和预计算好的 `x_sq: [BLOCK_N]`。
+- 沿 centroid 维度以 `BLOCK_K` 分块加载 `c_tile: [D, BLOCK_K]`。
+- 用 `tl.dot(x_tile, c_tile)` 得到 cross term，再通过 `||x||^2 + ||c||^2 - 2 x c^T` 计算欧氏距离。
+- 每个 token 在所有 centroid chunk 上维护 `best_dist/best_idx`，最后写出 nearest cluster id。
 
-**5. Token 重排 + Block Sparse Attention**：
+这个设计把 assignment 变成 tile GEMM 风格计算，主要收益来自两点：D 维向量在一个 program 内复用，`BLOCK_N x BLOCK_K` 距离矩阵用 tensor-core 友好的 dot 形式求 cross term；同时 `BLOCK_N/BLOCK_K/num_warps` 走 Triton autotune，适配不同 token 数和 cluster 数。
 
-- `permute_tensor_by_labels_triton`：按 cluster label 排序 Q/K/V，使同簇 token 物理连续
-- 调用 FlashInfer 的 `VariableBlockSparseAttentionWrapper`：
-  - `plan()`：根据 dynamic map 和各簇大小规划稀疏计算
-  - `run()`：执行变长 block sparse attention
-- `apply_inverse_permutation_triton`：将输出还原回原始 token 顺序
+**Centroid update kernel。** 朴素做法是每个 token 对所属 centroid 做一次 `atomic_add`，视频序列长、head 多时 atomic 冲突会很重。仓库保留了 per-token atomic 的 `_centroid_update_kernel`，但 Euclidean 主路径实际调用 `triton_centroid_update_sorted_euclid()`：
 
-### Kernel 实现总结
+- 先对每个 batch-head 的 `cluster_ids` 排序，得到 `sorted_cluster_ids` 和原 token 索引 `sorted_idx`。
+- `_centroid_update_chunk_kernel` 的 grid 是 `(ceil(N / BLOCK_N), B)`，每个 program 处理排序后连续的 `BLOCK_N` 个 token。
+- 因为同 cluster id 在排序后形成连续 run，kernel 在 chunk 内按 cluster id 范围遍历，先把一个 run 的 feature sum 在 program 内归约，再对 centroid sum/count 做一次 atomic add。
 
-**自写 Triton kernel**（辅助性操作）：
+这样 atomic 粒度从“每 token 一次”降到“每个连续 cluster run 一次”。当 cluster 较大时，atomic 数量接近 cluster 数而不是 token 数，这是 SVG2 能把在线聚类放进推理循环的关键工程点。空 cluster 用旧 centroid 回填，避免下一轮因为缺失 centroid 产生不稳定标签；`cluster_sizes` 则直接成为后续 variable block 的真实行高/列宽。
 
-| Kernel | 文件 | 功能 |
-|---|---|---|
-| `hunyuan_sparse_head_placement_kernel` | [placement.py](https://github.com/svg-project/Sparse-VideoGen/blob/main/svg/models/hyvideo/placement.py) | SVG 的 token 重排（frame↔token major） |
-| `hunyuan_hidden_states_placement_kernel` | [placement.py](https://github.com/svg-project/Sparse-VideoGen/blob/main/svg/models/hyvideo/placement.py) | SVG 的输出逆重排 |
-| `_euclid_assign_kernel` | [kmeans_utils.py](https://github.com/svg-project/Sparse-VideoGen/blob/main/svg/kmeans_utils.py) | KMeans nearest-centroid assignment（autotuned） |
-| `_centroid_update_kernel` | [kmeans_utils.py](https://github.com/svg-project/Sparse-VideoGen/blob/main/svg/kmeans_utils.py) | KMeans centroid update（per-token atomic） |
-| `_centroid_update_chunk_kernel` | [kmeans_utils.py](https://github.com/svg-project/Sparse-VideoGen/blob/main/svg/kmeans_utils.py) | KMeans centroid update（sorted chunk，减少 atomic） |
-| `permute_tensor_by_labels_triton` | [permute.py](https://github.com/svg-project/Sparse-VideoGen/blob/main/svg/kernels/triton/permute.py) | 通用 token 重排 |
-| `apply_inverse_permutation_triton` | [permute.py](https://github.com/svg-project/Sparse-VideoGen/blob/main/svg/kernels/triton/permute.py) | 通用逆重排 |
+### Dynamic map：不是固定密度，而是 centroid 级 top-p 邻接图
 
-**自写 CUDA kernel**（`_kernels` 模块，可选加速）：
-
-- `rms_norm_forward`：QK normalization 的 RMSNorm
-- `apply_qk_rope_inplace_cossin_txtlast`：RoPE 应用（跳过 text token）
-
-**核心注意力计算完全依赖第三方库**：
-
-- SVG 模式 → `torch.compile(flex_attention)` + `block_mask`
-- SAP 模式 → FlashInfer `VariableBlockSparseAttentionWrapper`
-- Full attention → `flash_attn_varlen_func`
-
-论文中提到的**动态块大小 FA2/FA3 kernel**（sparse loading + dense wgmma）在开源仓库中**未包含**，SAP 模式实际使用 FlashInfer 的通用变长 block sparse 实现。这意味着论文中报告的 85%+ 理论性能和 1.48-1.88× 计算浪费减少的数据来自未开源的定制 kernel。
-
-### 附录：VariableBlockSparseAttentionWrapper 深入拆解
-
-前面的代码分析已经说明：开源仓库里真正承接 SVG2 变长块稀疏注意力执行的，不是论文中描述的自写 FA3 kernel，而是 FlashInfer 的 `VariableBlockSparseAttentionWrapper`。下面把这层 wrapper 在 Sparse-VideoGen 中的输入组织、plan/run 两阶段职责、以及它隐含的底层设计约束拆开讲清楚。
-
-#### 入口调用链：从语义簇到 wrapper
-
-**Wan 路径**：`WanAttn_SAPAttn_Processor.attention_core_logic()` → `semantic_aware_permutation()` → `dynamic_block_sparse_fwd_flashinfer()`。
-
-**Hunyuan 路径**：`Hunyuan_SAPAttn_Processor2_0.attention_core_logic()` → `prepare_video_part()` → `semantic_aware_permutation()` → `dynamic_map_post_processing()` → `dynamic_block_sparse_fwd_flashinfer()`。
-
-关键点在于，进入 wrapper 之前，Q/K/V 已经不是原始 token 顺序，而是**先按 cluster label 重排成簇内连续布局**。这样 wrapper 不需要理解“哪个 token 属于哪个簇”，它只需要知道：
-
-- 序列已经被切分成一段段连续 block
-- 每段 block 的长度是多少
-- 哪些 query block 和 key block 之间需要计算
-
-这三个输入分别对应：
-
-- `block_row_sz`：每个 query block 的长度
-- `block_col_sz`：每个 key block 的长度
-- `block_mask_map`：布尔稀疏邻接图，决定哪些 `(q_block, k_block)` 激活
-
-#### block size 的真正来源：不是 tile，而是 cluster size
-
-在 `semantic_aware_permutation()` 中，Q/K 先通过 `batch_kmeans_Euclid(...)` 聚类，返回：
-
-- `qlabels`, `qcentroids`, `qcluster_sizes`
-- `klabels`, `kcentroids`, `kcluster_sizes`
-
-随后 reshape 为：
-
-- `q_cluster_sizes: [B, H, qc_num]`
-- `k_cluster_sizes: [B, H, kc_num]`
-
-所以这里的“变长 block”不是 kernel 运行时自己发现的，而是**聚类阶段先决定好的静态分段结果**。如果某个 head 的 Q 侧簇大小是 `[96, 128, 64, ...]`，那么 query 侧 block row size 就真的是 `[96, 128, 64, ...]`；K 侧同理。
-
-也就是说，开源实现里的 variable block sparse attention，本质上是：
-
-1. 先把 token 序列离散成非均匀长度的 cluster 段
-2. 再把这些段当成 block sparse attention 的逻辑块
-
-因此“variable”体现为**不同 block 的行高/列宽不同**，而不是单一固定 `BLOCK_M × BLOCK_N` 模板覆盖所有块。
-
-#### block mask 的来源：centroid attention 上的 top-p 图裁剪
-
-`identify_dynamic_map(...)` 的输入不是原 token，而是 centroid 级表示：
-
-- `query_centroids: [B, H, qc_num, D]`
-- `key_centroids: [B, H, kc_num, D]`
-- `k_cluster_sizes: [B, H, kc_num]`
-
-它先计算：
+`identify_dynamic_map()` 不直接看 token 级注意力，而是在 centroid 上做近似：
 
 $$S_{ij} = Q^c_i {K^c_j}^\top / \sqrt{D}$$
 
-然后用 `k_cluster_sizes` 做 weighted softmax：
+随后对 K cluster size 加权 softmax：
 
-$$P'_{ij} = \frac{|K_j| \exp(S_{ij})}{\sum_k |K_k| \exp(S_{ik})}$$
+$$P'_{ij} = \frac{|K_j| \exp(S_{ij})}{\sum_t |K_t| \exp(S_{it})}$$
 
-最后按 top-p 累积截断，得到 `dynamic_map: [B, H, qc_num, kc_num]`。
+这个权重项很重要：一个大 K 簇即使 centroid logit 与小簇相同，对总注意力质量的影响也更大。代码中 `k_cluster_sizes.unsqueeze(-2)` 作为 `weighted_softmax()` 的权重进入分母和分子。
 
-这说明 wrapper 看到的不是一个规则窗口，也不是固定对角 pattern，而是一个**由语义聚类 + centroid 打分生成的非规则 block 邻接图**。某个 query cluster 可以连接 3 个 key cluster，另一个可以连接 11 个，完全由语义分数与预算共同决定。
+top-p 裁剪是逐 query cluster 做的：对每个 Q cluster，把所有 K cluster 的 $P'_{ij}$ 降序排序，累积概率超过 `top_p_kmeans` 后的 cluster 标为删除；`min_kc_ratio` 则强制保留至少一定比例的 K cluster。最终输出 `dynamic_map: [B, H, Cq, Ck]`。
 
-#### 为什么必须先 permutation：wrapper 只擅长处理连续 block
+因此 `top_p_kmeans` 控制的是每个 Q cluster 保留的近似注意力质量，不是直接控制 FLOPs 密度。真实密度由 `density_calculation()` 用 `q_cluster_sizes[:, :, :, None] * k_cluster_sizes[:, :, None, :]` 加权计算：保留一个 `128 x 160` 的 block 和保留一个 `16 x 24` 的 block 成本完全不同。
 
-`permute_tensor_by_labels_triton(...)` 的作用不是“让注意力更准”，而是把同簇 token 在物理内存中排成连续段。只有这样，`block_row_sz` / `block_col_sz` 才能真正表示一段连续内存区间的长度。
+### Semantic-aware permutation：把离散 token 集合变成连续 block
 
-如果不做 permutation，即使知道某个 cluster 有 96 个 token，这 96 个 token 也可能散落在整个序列里，wrapper 无法只靠一个长度数组描述它们。此时就只能：
+如果只知道某个 cluster 有 96 个 token，但这些 token 散落在原序列里，后端要么维护复杂 gather/scatter index，要么 pad 回规则块，都会抵消稀疏收益。SVG2 的 permutation 就是把这个问题提前解决：按 cluster label 排序，让同簇 token 在物理序列维度上连续。
 
-- 额外维护大量 gather/scatter index
-- 或者 pad 回规则块
-- 或者写更复杂的 sparse gather kernel
+`permute_tensor_by_labels_triton()` 的实现很直接但很关键：
 
-而当前开源实现故意选择了更简单直接的范式：
+- 输入限制为 `[B, H, S, D]` 且 `dim == 2`，先 flatten 成 `[B * H, S, D]`。
+- 如果没有传入 `sorted_indices`，先用 `torch.argsort(labels, dim=-1)` 生成每个 batch-head 的 cluster 排序。
+- Triton `_permute_kernel` 的 grid 是 `(B * H, ceil(S / BLOCK_S))`，每个 program 负责一个 batch-head 的一段 `BLOCK_S=64` token。
+- program 加载这 64 个目标位置对应的原 token index，然后一次性搬运完整 D 维向量到输出。
 
-- **先 sparse reordering**
-- **再 variable contiguous blocks**
-- **最后 dense-on-selected-blocks 计算**
+K 和 V 的处理有一个关键约束：V 调用 `permute_tensor_by_labels_triton(value, klabels, sorted_indices=k_sorted_indices)`，强制复用 K 的排序结果。这样 K/V 的第 t 行仍然对应同一个原 token。输出阶段 `apply_inverse_permutation_triton()` 使用 Q 的 `q_sorted_indices` 做 scatter 式逆重排，grid 同样是 `(B * H, ceil(S / 64))`。
 
-所以 SVG2 的“semantic-aware permutation”不仅提升 block 选择质量，也是在为后端 kernel / wrapper 构造可执行的数据布局。
+这个 permutation kernel 本身不是稀疏 attention 计算，但它决定了后端是否能把 `q_cluster_sizes/k_cluster_sizes` 当成连续区间长度。换句话说，SVG2 的语义排列同时服务两个目标：让 centroid 更能代表簇内 token，从而选边更准；也让被选中的簇在内存中连续，从而让 block sparse 后端有机会高效执行。
 
-#### FlashInfer wrapper 的 plan 阶段到底做什么
+### FlashInfer variable block sparse：开源主路径的实际执行方式
 
-在 [dynamic_block_sparse_fwd_flashinfer](./refs/codes/Sparse-VideoGen/svg/kmeans_utils.py#L1320-L1394) 中，Sparse-VideoGen 先把输入 reshape：
+开源 SAP 主路径调用 `dynamic_block_sparse_fwd_flashinfer()`。进入这个函数时，Q/K/V 已经完成 permutation，`dyn_map` 和 cluster sizes 已经生成。函数先检查所有 head 的 block size 之和一致，然后 reshape：
 
-- `q, k, v: [B, H, S, D] -> [B * H, S, D]`
-- `block_mask_map: [B, H, qc_num, kc_num] -> [B * H, qc_num, kc_num]`
-- `block_row_sz: [B, H, qc_num] -> [B * H, qc_num]`
-- `block_col_sz: [B, H, kc_num] -> [B * H, kc_num]`
+- `q/k/v: [B, H, S, D] -> [B * H, S, D]`
+- `block_mask_map: [B, H, Cq, Ck] -> [B * H, Cq, Ck]`
+- `block_row_sz: [B, H, Cq] -> [B * H, Cq]`
+- `block_col_sz: [B, H, Ck] -> [B * H, Ck]`
 
-然后调用：
+之后创建 `flashinfer.sparse.VariableBlockSparseAttentionWrapper(float_workspace_buffer, backend="auto")`，并额外分配 `vector_sparse_indices_buffer`。`plan()` 接收 block graph、row/col block size、head 数、head dim 和 dtype；`run(q, k, v)` 执行真正注意力。
 
-```python
-wrapper.plan(
-    block_mask_map=block_mask_map,
-    block_row_sz=block_row_sz,
-    block_col_sz=block_col_sz,
-    num_qo_heads=B * H,
-    num_kv_heads=B * H,
-    head_dim=D,
-    q_data_type=q.dtype,
-    kv_data_type=k.dtype,
-)
-```
+从接口和输入组织可以看出，`plan()` 的职责是把高层描述编译成后端调度元数据：根据 block size 前缀和得到每个 block 的起止 offset，把 dense boolean `block_mask_map` 转成更适合 kernel 消费的稀疏索引结构，并为 flatten 后的每个 batch-head 生成 active block 列表。`run()` 阶段则在这些 active block 上做 dense attention 子任务：稀疏的是 block 连接，block 内仍是 dense matmul、online softmax 和 value accumulation。
 
-虽然 FlashInfer 内部源码不在这个仓库里，但从接口形式可以反推出 `plan()` 至少在做以下几件事：
+一个最小例子：如果某个 head 的 Q block size 是 `[96, 64, 128]`，K block size 是 `[80, 160, 48, 96]`，而 `dynamic_map` 只保留 `(Q0,K0)`、`(Q0,K1)`、`(Q1,K1)`、`(Q2,K1)`、`(Q2,K3)`，那么后端需要执行的是 `96x80`、`96x160`、`64x160`、`128x160`、`128x96` 这五个 dense 子问题，而不是把所有块 pad 成统一 `128x128` 后全算。
 
-1. **把 block size 前缀和化**  
-   根据 `block_row_sz` / `block_col_sz` 生成每个 block 在扁平序列中的起止 offset。
+### FlashInfer patch：为什么连 plan 也要优化
 
-2. **把布尔 block mask 编译成稀疏调度元数据**  
-   `block_mask_map` 是一个稠密布尔张量，但实际运行更高效的形式通常会是 CSR/indptr/indices 一类结构。代码里专门额外分配了 `vector_sparse_indices_buffer`，很明显就是在给这种稀疏索引元数据留空间。
+仓库有一个容易忽略但很重要的 `flashinfer_patch.py`。它不是改数学结果，而是 gated monkey patch FlashInfer 的 `VariableBlockSparseAttentionWrapper.plan()`：只有在 `with flashinfer_patch_enabled():` 中才启用。
 
-3. **决定每个 head 的 block 计算计划**  
-   因为输入已经 flatten 到 `[B * H, ...]`，所以 wrapper 可以把每个 `(batch, head)` 看成一张独立的 block sparse 图，然后为每个 head 生成自己的 active block 列表。
+原 plan 中有一段逻辑会根据每个 active block 的 `base` 和 `lengths` 展开 `kv_indices`，典型写法是 `torch.repeat_interleave(base, lengths) + offsets_within`，还可能把 `kv_indices_host` 拷到 CPU。Sparse-VideoGen 用源码重写的方式把这段替换为 `_svg_expand_kv_indices()`：
 
-4. **为后续 kernel 选择后端和 workspace 布局**  
-   这里 `backend="auto"`，说明实际运行时 FlashInfer 还会根据 `head_dim`、dtype、稀疏模式等因素选择底层实现路径。
+- 如果 `lengths/base` 在 CUDA 上，就启动 Triton `_svg_kvidx_kernel`，grid 是 `(num_blocks,)`。
+- 每个 program 负责一个 active block，根据 `base`、`base_off`、`length` 写出该 block 内连续的 kv index。
+- `MAX_BLOCK_SIZE2` 取 `next_power_of_2(lengths.max())`，用 mask 处理不同 block 长度。
+- 同时把 `kv_indices_host` 替换为 GPU 侧 `kv_indices`，避免不必要的 host copy。
 
-换句话说，`plan()` 的职责不是做数学计算，而是把“高层 block 描述”翻译成“底层 kernel 可直接消费的调度结构”。
+这说明开源实现的性能瓶颈不只在 attention `run()`。对于每步每层都变化的 `dynamic_map`，planning 也在推理热路径上；如果索引展开留在 CPU 或用高开销 PyTorch repeat，会吞掉一部分稀疏节省。这个 patch 是把 variable block sparse 的调度准备也尽量留在 GPU 上。
 
-#### run 阶段为什么能高效：对选中的 block 做稠密算子
+### 自写 Triton dynamic block sparse：机制原型而非主路径
 
-`wrapper.run(q, k, v)` 接收的是 `[B * H, S, D]` 的连续张量，而不是 ragged tensor。真正的 ragged 信息已经全部体现在 planning 生成的元数据里。
+`kmeans_utils.py` 里还有 `dynamic_block_sparse_fwd_triton()`。它比 FlashInfer wrapper 更直观地展示了 variable block sparse attention 的算法：
 
-因此 run 阶段最合理的执行范式是：
+- 先对 `qc_size/kc_size` 做 cumsum，得到每个 Q/K block 的起止 offset。
+- Triton kernel grid 是 `(B * H * Cq,)`，一个 program 对应一个 batch-head 下的一个 query block。
+- program 内再把 query block 按 `BLOCK_M` 分片，把每个激活的 key block 按 `BLOCK_N` 分片。
+- 对每个激活 K chunk 计算 `QK^T`，用 online softmax 维护 `m_i/l_i/acc_o`，最后写回当前 query block 输出。
 
-- 遍历 active `(q_block, k_block)` 对
-- 通过 `block_row_sz` / `block_col_sz` 对应的 offset 找到 Q/K/V 的连续子段
-- 对这些子段调用高效 dense matmul / softmax / value accumulation
-- 把结果累积回对应 query block 输出
+这个实现解释了算法形态，但它不是当前 SAP processor 调用的生产路径。它的局限也比较明显：一个 program 覆盖一个 query block，遇到特别大的 query cluster 时只能在 program 内串行遍历 Q chunk；不同 query block 大小差异也会带来负载不均。实际运行选择 FlashInfer，是为了复用更成熟的 block sparse attention 调度和 kernel 后端。
 
-这本质上就是：
+### 论文 FA2/FA3 kernel 与开源代码的边界
 
-- **稀疏的是 block 选择**
-- **稠密的是 block 内计算**
+论文中真正强调的 system contribution 是定制 dynamic block-size FA2/FA3 kernel：FA3 版本使用 H100 的 `wgmma(m64n64k16)` 做 dense 计算，Q 因为 permutation 后同簇连续可以连续加载，K/V 则通过 per-token offset 做 sparse load，进入 shared memory 后重排成 dense tile，再用 dense compute 路径完成注意力。这是典型的 **sparse loading + dense computation**：全局内存访问允许不规则，但 tensor core 看到的是规整 tile。
 
-也就是论文里那句范式化描述：`sparse loading + dense computation`。只是开源代码把这件事交给了 FlashInfer 的 wrapper，而不是自带一个公开的 FA3 kernel。
+开源仓库没有包含这套论文 FA2/FA3 kernel。仓库中的 CUDA extension `_kernels` 主要暴露 RMSNorm、LayerNorm 和 RoPE 相关算子；SAP attention 主计算走 FlashInfer wrapper。`svg/kernels/ops/attention_ops_wan_dyn_blk.py` 也只是测试 FlashInfer variable block sparse attention 的封装，不是论文自研 FA3 kernel。
 
-#### Hunyuan 的特殊之处：wrapper 处理的不只是视频 cluster
+所以读实验结果时要分清两层：
 
-Hunyuan 路径比 Wan 多了 `dynamic_map_post_processing()`，这里做了三件非常关键的事：
+- 论文系统结果中的 85%+ 理论上界、相对 FlashInfer static block 1.48-1.88x 计算浪费减少，来自未开源的定制 dynamic block-size FA2/FA3 kernel。
+- 开源代码验证的是算法和工程流水线：k-means 语义聚类、Triton permutation、centroid top-p block graph、FlashInfer variable block sparse 执行，以及 plan 阶段 GPU 化 patch。
 
-1. 把视频部分 permutation 后的 `q_perm/k_perm/v_perm` 写回原始 `query/key/value`
-2. 给 `dyn_map` 在 Q/K 两侧各 pad 两个额外 block
-3. 给 `qc_sz_s/kc_sz_s` 末尾追加 `prompt_length` 和 `unprompt_length`
+这不是小差异。算法层面的 sparsity pattern 和 permutation 可以复现，但如果要复现论文的 kernel-level 性能，需要额外实现或获得论文中的 dynamic block-size FA2/FA3 kernel。
 
-于是 Hunyuan 送入 wrapper 的 block 划分不是单纯：
+### SVG v1 对比：为什么 SVG2 不再依赖固定模式
 
-- `video cluster 1`
-- `video cluster 2`
-- `...`
+仓库里的 SVG v1 仍值得对照。Hunyuan SVG processor 先在 warmup 后用 `sample_mse()` 随机采样若干 Q 行，分别评估 spatial mask 和 temporal mask 与 full attention 的 MSE，再按 head 选择更好的 pattern；temporal head 通过 placement kernel 做 frame-major/token-major 重排，让固定 mask 更接近对角结构；最后用 `torch.compile(flex_attention)` 加预编译 `block_mask` 执行。
 
-而是：
+这条路线的核心假设是视频注意力可以用少数位置模式近似。SVG2 放弃这个假设，改为每层每头在线从 Q/K 激活中学习语义 cluster，并用 centroid top-p 生成非规则 block graph。代价是多了 k-means、permutation 和 planning；收益是选边更贴近当前样本当前 step 的语义结构，也能通过 permutation 把原本分散的关键 token 收拢成可执行的连续 block。
 
-- `video cluster 1`
-- `video cluster 2`
-- `...`
-- `prompt block`
-- `unused prompt block`
+### 加速链条总结
 
-并且 `dyn_map` 还手工指定：
+SVG2 的端到端加速来自一条连续的工程链，而不是某个孤立技巧：
 
-- prompt block 和所有视频 block 双向可见
-- unused prompt block 只和自己相连
+- k-means 让 cluster centroid 比位置 pooling 更能代表注意力语义，降低低密度下的错误删边。
+- centroid cache 把在线聚类成本从“重新收敛”变成“跨 step 微调”。
+- assignment kernel 用 `BLOCK_N x BLOCK_K` tile dot 计算欧氏距离，centroid update 用排序 run 降低 atomic 冲突。
+- semantic-aware permutation 把语义簇转成连续内存段，使 cluster size 能直接成为 variable block size。
+- weighted top-p dynamic map 在 cluster 级选择 K block，真实 FLOPs 由 Q/K cluster size 加权决定。
+- FlashInfer wrapper 负责开源主路径的 variable block sparse execution，patch 则把 plan 阶段的 kv index 展开尽量留在 GPU 上。
+- 论文未开源 FA3 kernel 进一步把 K/V sparse load 和 shared-memory 重排接到 dense wgmma compute 上，解决变长 block 直接映射到 tensor core 时的 padding 浪费。
 
-所以 wrapper 底层其实并不关心“这是视频块还是文本块”，它只看到一个更大的 block sparse 图。**Hunyuan 的复杂语义约束，是在 wrapper 之前通过改写 block graph 完成的。**
-
-#### 这个 wrapper 设计隐含了哪些工程假设
-
-从当前代码可以看出，`VariableBlockSparseAttentionWrapper` 这一路实现依赖几个很强的前提：
-
-1. **每个 head 的总序列长度必须一致**  
-   代码显式检查 `block_row_sz.sum(dim=2)` 和 `block_col_sz.sum(dim=2)` 在各 head 上一致，否则不能 reshape 成统一的 `[B * H, S, D]`。
-
-2. **block 必须是连续段**  
-   所以必须先做 permutation，不能直接拿离散 token 集合喂给 wrapper。
-
-3. **稀疏模式是 block-level，而不是 token-level**  
-   wrapper 的输入是 `(qc_num, kc_num)` 的布尔图，不支持更细粒度的任意 token mask。
-
-4. **plan 成本被接受为运行前开销**  
-   每次 block graph 改变，都要重新 `plan()`。这说明该设计默认：相比 attention 主计算，planning 这点代价是可以接受的。
-
-5. **FlashInfer 更像调度器 + kernel 集合，而不是单一 kernel**  
-   从接口看，它暴露的是一个 wrapper，而不是一个“直接喂 ragged q/k/v 就算完”的函数。这通常意味着内部包含索引生成、调度、workspace 管理和若干后端 kernel 分发。
-
-#### 和仓库中自写 Triton 动态实现的关系
-
-`kmeans_utils.py` 里也有一个 [dynamic_block_sparse_fwd_triton](./refs/codes/Sparse-VideoGen/svg/kmeans_utils.py#L1206-L1317) 实现，它采用的是更直接的查询块循环：
-
-- 先根据 `qc_size/kc_size` 算 cumulative offsets
-- 每个 program 负责一个 query block
-- 再遍历 `dynamic_map` 中激活的 key block
-- 在 block 内做 online softmax
-
-这个实现更像论文机制的“教学版原型”，把 variable block sparse attention 的算法逻辑都显式写出来了；但主路径并没有实际调用它，而是走 FlashInfer wrapper。
-
-因此当前开源仓库的分层可以理解成：
-
-- **算法原理展示**：`dynamic_block_sparse_fwd_torch` / `dynamic_block_sparse_fwd_triton`
-- **实际生产执行**：`dynamic_block_sparse_fwd_flashinfer`
-
-#### 一个最小心智模型
-
-假设某个 head 的 permutation 后序列被切成：
-
-- Q blocks: `[96, 64, 128]`
-- K blocks: `[80, 160, 48, 96]`
-
-那么：
-
-- `block_row_sz = [96, 64, 128]`
-- `block_col_sz = [80, 160, 48, 96]`
-
-如果 `block_mask_map` 里只有：
-
-- Q0 连到 K0, K1
-- Q1 连到 K1
-- Q2 连到 K1, K3
-
-那么 wrapper plan 出来的底层执行任务，本质就是这 5 个稠密块：
-
-- `96 × 80`
-- `96 × 160`
-- `64 × 160`
-- `128 × 160`
-- `128 × 96`
-
-而不会去算未激活的 block，也不需要把它们 pad 成统一 `128 × 128`。
-
-这就是 Sparse-VideoGen 开源实现里“变化的 block size”最核心的含义：**block 的形状由 cluster size 决定，block 的连边由 dynamic_map 决定，block 内计算由 FlashInfer wrapper 调度成 dense attention 子任务执行。**
+这也是 SVG2 相比 SVG v1、SpargeAttn 等方法的本质优势：它同时优化“选哪些 token/block”和“这些 token/block 在 GPU 上如何被连续、稠密地计算”。

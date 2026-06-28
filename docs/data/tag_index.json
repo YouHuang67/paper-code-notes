@@ -1314,7 +1314,7 @@
       "CUDA",
       "Triton"
     ],
-    "summary": "语义感知排列：k-means 聚类+重排消除计算浪费，centroid cache 76× k-means 加速，动态块大小 FA3 wgmma kernel 达理论 85%+，HunyuanVideo 2.30× 加速。开源代码核心注意力依赖 FlashInfer/FlexAttention：SVG 走 FlexAttention，SVG2 走 VariableBlockSparseAttentionWrapper.plan/run，定制 FA3 kernel 未开源",
+    "summary": "语义感知排列：Q/K 独立 k-means 聚类并按 cluster 重排，centroid top-p 生成 variable block graph，centroid cache 76× 降低聚类开销，HunyuanVideo 2.30× 加速。开源实现重点是 Triton KMeans assignment/update、permutation、FlashInfer VariableBlockSparseAttentionWrapper.plan/run 和 GPU kv-index plan patch；论文定制 FA3 dynamic block kernel 未开源",
     "category": "Sparse Attention",
     "date_arxiv": "2025-05",
     "date_added": "2026-04-14",
