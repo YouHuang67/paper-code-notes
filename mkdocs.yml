@@ -134,6 +134,7 @@ nav:
     - Sparse VideoGen: paper_reading/sparse_videogen.md
     - Sparse VideoGen2: paper_reading/svg2.md
     - SVOO: paper_reading/svoo.md
+    - VecAttention: paper_reading/vecattention.md
     - Sparse-vDiT: paper_reading/sparse_vdit.md
     - Sparse Forcing: paper_reading/sparse_forcing.md
     - AdaCluster: paper_reading/adacluster.md

@@ -1338,6 +1338,23 @@
     "organizations": "Beihang University, Zhongguancun Academy, Peking University, Chinese Academy of Sciences, USTC, Tsinghua University"
   },
   {
+    "title": "VecAttention",
+    "path": "paper_reading/vecattention.md",
+    "type": "论文阅读",
+    "tags": [
+      "Sparse Attention",
+      "Video Generation",
+      "Diffusion Model",
+      "CUDA",
+      "Triton"
+    ],
+    "summary": "垂直向量级稀疏注意力：query pooling 后用 TilingSelect+minS 在 Triton QK tile 内直接输出 selected key column indices，modified vLLM FlashAttention sparse_attn_func gather-load K/V 并做 online softmax；DiT 通过 DP per-head threshold 调优，Wan/Hunyuan 生成在相近 sparsity 下优于 XAttention/SVG",
+    "category": "Sparse Attention",
+    "date_arxiv": "2026-03",
+    "date_added": "2026-06-28",
+    "organizations": "Peking University, Fudan University, Alibaba Group, Shanghai Jiao Tong University"
+  },
+  {
     "title": "Sparse-vDiT",
     "path": "paper_reading/sparse_vdit.md",
     "type": "论文阅读",
