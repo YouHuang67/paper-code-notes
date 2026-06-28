@@ -96,103 +96,154 @@ LVSA 希望每个 query frame 的可见帧数大致接近模型训练时的 late
 
 ## 代码实现
 
-### 1. Adapter 把不同模型接入统一 LVSA engine
+LVSA 的实现不是“写一个新的 attention kernel 然后强行接模型”，而是三层解耦：
 
-仓库把模型相关逻辑和稀疏 attention 逻辑分开：
+1. **模型接入层**：从不同 DiT 的 attention block 中取出 Q/K/V、应用 RoPE、做输出投影，并把原 attention processor 替换为 LVSA processor。
+2. **稀疏模式编译层**：把论文里的 `global anchors + local window + rotating offset` 编译成 frame-block 级 CSR、compact KV copy plan 和窗口边界。
+3. **执行层**：短序列或 NPU 走逐帧 SDPA fallback；CUDA 长序列走 FlashInfer block-sparse attention。
 
-- `lvsa/adapters/base.py` 定义 `ModelAdapter`
-- `lvsa/adapters/wan.py`、`hunyuan_video.py`、`cogvideox.py` 分别适配不同模型
-- `lvsa/lvsa_processor.py` 只处理稀疏模式、KV 收集、并行通信和 backend dispatch
-- `lvsa/sparse_attention.py` 保存无状态的窗口/CSR/attention primitive
+需要先明确一点：开源 LVSA 仓库本身没有自写 CUDA/Triton kernel。论文里所谓 LVSA-FI 的高性能路径，是把 LVSA 的稀疏图组织成 FlashInfer `BlockSparseAttentionWrapper` 接口，由 FlashInfer 内部 CUDA kernel 执行。LVSA 代码真正关键的工程贡献，是如何把视频 attention 映射成 FlashInfer 能高效吃下的 block-sparse 问题，而不是在 Python 层循环省 FLOPs。
 
-以 Wan 为例，`WanAdapter` 负责：
+### 模型接入：只抽象 attention 语义，不污染稀疏核心
 
-- `patches_per_frame`：根据 VAE spatial scale 和 patch size 算每帧 token 数 $P$
-- `latent_frames`：用 VAE temporal factor 将 raw frame 数转成 latent frame 数
-- `reference_latent_frames`：默认 21，即 81 raw frames 的训练 horizon
-- `extract_qkv`：调用 diffusers 的 `_get_qkv_projections`，做 QK norm 并 reshape 成 `[B, seq, H, D]`
-- `apply_rotary`：对 context parallel rank 切片后的 RoPE 做旋转
-- `install_processor`：把 `block.attn1.processor` 替换成 LVSA processor
+不同视频 DiT 的 attention 接口差异很大：
 
-这个适配层的意义是：LVSA 的稀疏模式只依赖 frame geometry，不依赖某个模型的 QKV 投影细节。
+- Wan 是 single-stream，视频 token 和 text condition 进入同一套 attention 逻辑
+- HunyuanVideo 是 dual-stream，文本/视觉 encoder token 和视频 token 有不同投影
+- Cosmos 3.0 甚至是 separate-stream，需要保留 understanding token 的 causal 分支，只替换 generation token 的 full attention
 
-### 2. LVSAMetadata 预计算所有索引结构
+LVSA 通过 adapter / processor-swap 两种方式接入这些模型。adapter 只负责模型私有语义：如何算每帧 token 数 $P$、raw frame 如何转 latent frame、Q/K/V 如何投影、RoPE 怎么切片、输出怎么投影回模型 hidden state。稀疏核心只接收统一形状：
 
-`LVSAMetadata.build(...)` 是核心入口。它从 `T, P, W, n_first_frames, kfi, rank, world, offset` 推导出三类结构：
+$$
+Q,K,V \in \mathbb{R}^{B \times (T\cdot P) \times H \times D}
+$$
 
-**窗口结构**
+这样做的好处是，稀疏策略完全在 frame geometry 上定义。只要某个模型能给出 $T$、$P$ 和 Q/K/V，LVSA 就能复用同一套窗口、CSR 和 FlashInfer 执行逻辑。
 
-- `global_indices` / `global_set`：当前 denoising step 的全局帧
-- `local_frames`：当前 rank 拥有的 query frame 和 token range
-- `window_ctx`：每个 local query frame 对应哪些本地 K/V token range
-- `window_bounds`：每个 frame 的窗口边界
+### 从 dense attention 到 frame-block sparse attention
 
-**SDPA / indexed kernel 结构**
+Dense video attention 可以看成一个 $T \times T$ 的 frame-pair block grid。每个 grid cell 是一个 dense token block：
 
-- `attended_indices`：每个 local frame 的可见 frame 列表，padding 到统一长度 `C`
-- `global_src_idx` / `global_dst_idx`：把 global K/V 放入统一位置的 copy plan
-- `local_src_idx` / `local_dst_idx`：把 local non-global K/V 放入统一位置的 copy plan
+$$
+Q_t \in \mathbb{R}^{P \times H \times D}, \quad K_\tau,V_\tau \in \mathbb{R}^{P \times H \times D}
+$$
 
-**FlashInfer 结构**
+如果全连接，每个 query frame $t$ 要访问全部 $T$ 个 key frame，计算规模近似：
 
-- `fi_indptr` / `fi_indices`：block-sparse CSR，block 行是 query frame，block 列是 compact key frame
-- `fi_M = MB * P`：padded query token 数，按 frame block 对齐
-- `fi_N = compact_n * P`：实际被访问的 compact K/V token 数
-- `fi_global_copies` / `fi_local_copies`：将 global 或 local K/V frame 复制到 compact buffer 的指令
+$$
+O(T^2 \cdot P^2 \cdot H \cdot D)
+$$
 
-因此，运行时不需要为每个 query token 重新做重要性判断，也不需要构造完整 $N \times N$ mask。稀疏模式是 frame block 级的静态结构，旋转 keyframe 时才重建。
+LVSA 把 block grid 的每一行裁成：
 
-### 3. SDPA backend：逐 frame 拼接上下文
+$$
+A(t)=G_s \cup W(t)
+$$
 
-`lvsa_sdpa` 是简单稳定的 fallback，适合较短序列、NPU 或没有 FlashInfer 的环境。
+其中 $|A(t)| \approx C$，$C$ 被 auto-keyframe scheduler 控制在接近训练 horizon 的 latent frame 数。于是计算变成：
 
-对每个 local query frame：
+$$
+O(T \cdot C \cdot P^2 \cdot H \cdot D)
+$$
 
-1. 取出该 frame 的 query chunk
-2. 将 `k_global/v_global` 和窗口内本地 K/V token range 拼接成 `k_ctx/v_ctx`
-3. 调用 diffusers `dispatch_attention_fn` 或 PyTorch `scaled_dot_product_attention`
-4. 将输出写回原 query token 区间
+这就是加速的根本来源：不是降低一个被选中 frame-pair 内部的空间 attention 复杂度，而是跳过大多数 frame-pair block。对于 Wan 2.1 1.3B 的 6× horizon，$T$ 远大于训练参考长度，$C$ 近似保持有界，因此速度随视频长度拉开。
 
-这个路径实现简单，但每个 frame 都会单独 dispatch，并且上下文拼接有额外开销。长序列下真正的加速主要来自 FlashInfer backend。
+### 稀疏图编译：把 `G ∪ W(t)` 变成 CSR
 
-### 4. FlashInfer backend：CSR + compact KV
+运行时不能每层每步都在 Python 里判断“第 t 帧看哪些帧”，否则 kernel 省下来的时间会被调度开销吃掉。LVSA 的做法是每当稀疏 pattern 改变时，一次性构造 metadata。
 
-FlashInfer 路径的关键在 `_build_flashinfer_csr` 和 `_compute_lvsa_flashinfer`。
+关键是 `_build_flashinfer_csr` 的逻辑：
 
-`_build_flashinfer_csr` 先遍历每个 query frame：
+- 遍历本 rank 的 query frame block row
+- 对每一行，根据当前 rotating offset 得到 global set，再加 expanded window
+- 收集该行实际访问的 key frame
+- 汇总所有被访问 key frame，压成一个 compact key-frame 空间
+- 用 CSR 记录每个 query frame row 访问 compact 空间中的哪些 column block
 
-- 收集该 frame 可见的 global frame 和 local window frame
-- 汇总所有被访问的 key frame，形成 compact frame layout
-- 为每个 query frame 写入 CSR row：它要访问 compact layout 中哪些 frame block
-- 生成 copy list，把原始 K/V 中的 frame block 搬到 compact K/V buffer
+CSR 的语义是 frame block 级：
 
-`_ensure_flashinfer_planned` 使用这些 CSR 调用：
+- `indptr` 长度为 `MB + 1`，`MB` 是本 rank 的 query frame block 数
+- `indices` 保存每个 query frame 要访问的 compact key-frame block id
+- 一个 row block 对应一个 query latent frame
+- 一个 column block 对应一个 key latent frame
+- FlashInfer plan 中设置 `R = C = P`，表示逻辑 block 的高和宽都是一帧内的 spatial token 数
 
-- `flashinfer.BlockSparseAttentionWrapper`
-- block size `R = C = P`，即一个 attention block 对应一个 latent frame 的所有 spatial tokens
-- `num_qo_heads` 和 `num_kv_heads` 分开传入，支持 GQA，不需要预先 repeat KV
-- 128MB workspace 复用，pattern 不变时 plan 也复用
+这里的 `R = C = P` 不是说一个 CUDA CTA 直接粗暴计算 $P \times P$ 的完整大矩阵。它是传给 FlashInfer 的**逻辑块大小**：LVSA 在 block-sparse 图上把“一帧对一帧”的可见关系交给 FlashInfer；FlashInfer 内部再按自己的 tiled attention kernel 切分 token tile、做 online softmax 和 value accumulation。LVSA 能控制的是 block grid 稀疏度和 K/V 内存布局，不直接控制 FlashInfer 内部 CTA 形状。
 
-`_compute_lvsa_flashinfer` 每次 attention 调用时：
+因此，CUDA 层面的工作量从 dense 的 $T \times T$ 个 logical frame-pair blocks，变为 $T \times C$ 个 nonzero frame-pair blocks。FlashInfer 内部只为 CSR 中存在的 block column 发起计算，不为被跳过的 frame-pair 生成 score tile，也不构造完整 $N \times N$ mask。
 
-1. 按 `fi_global_copies` 将 global video K/V 复制到 compact buffer
-2. 按 `fi_local_copies` 将 local non-global K/V 复制到 compact buffer
-3. query 长度不足 frame block 整数倍时 pad 到 `M = MB * P`
-4. 对 video token 调用 FlashInfer block-sparse kernel
-5. 如果模型有 text / encoder tokens，不把它们硬塞进 block CSR，而是单独跑 dense attention
-6. 用 log-sum-exp merge 将 video sparse 输出和 text dense 输出精确合并
+### compact KV：让非零 block 变成连续内存
 
-第 5 点很重要：早期实现如果把 text token padding 成 frame block，会引入 phantom zero key，稀释 softmax。当前代码把 encoder/text K/V 作为单独 dense term，再用 FlashInfer 返回的 LSE 做精确合并，避免 padding 伪影。
+只给 kernel 一个 CSR 还不够。如果 K/V 仍然散落在原始 `[T*P]` 序列中，访问全局帧和窗口帧会产生大量不连续 gather，吞掉带宽收益。LVSA 因此在 CSR 构造时同步生成 compact KV layout：
 
-### 5. Context Parallel 支持
+1. `compact_frames = sorted(all_attended)` 收集本次 attention 调用会被访问的所有 key frame
+2. `frame_to_compact` 把原始 frame id 映射到 compact column id
+3. `fi_global_copies` 描述 global K/V frame 从 `k_global` 复制到 compact buffer 的位置
+4. `fi_local_copies` 描述 local non-global K/V frame 从原始 K/V 复制到 compact buffer 的位置
 
-LVSA 还实现了多 GPU 路径：
+运行时 `_compute_lvsa_flashinfer` 先填充：
 
-- `custom`：sequence shard，每个 rank 负责本地 Q；global K/V 通过 all-reduce / gather 复制；rank 边界附近用 boundary guard frame 避免窗口断裂
-- `ulysses`：all-to-all 把完整 frame grid 重建到每个 rank 的 head shard 上，执行单机同构 LVSA，再 scatter 回去
-- `ring`：K/V 在 rank 间环形旋转，每个 block-pair 用 mask 或 FlashInfer CSR 计算，再用 online softmax / LSE merge 合并
+$$
+K_{\text{compact}}, V_{\text{compact}} \in \mathbb{R}^{B \times (N_c\cdot P) \times H_{kv} \times D}
+$$
 
-论文主结果主要强调单 80GB GPU，但代码已经把 LVSA 设计成可服务化的稀疏 attention engine，并提供 vLLM-Omni 插件。
+其中 $N_c$ 是本 rank 实际被访问的 compact frame 数。之后 FlashInfer kernel 看到的是一个连续的 K/V 空间，CSR 里的 column id 也都是 compact id。这样做有两个直接收益：
+
+- 避免在 CUDA kernel 内部按原始 frame id 做散乱索引
+- 减少 K/V resident buffer 宽度，只保留本次 sparse pattern 真正会访问的 frame
+
+这个设计解释了为什么 LVSA-FI 比 SDPA 版本快。SDPA 版本虽然也减少了可见帧，但它逐 query frame 拼接 `k_ctx/v_ctx` 并多次 dispatch；FlashInfer 版本把整层 attention 变成一次 block-sparse kernel 调用，减少 Python 循环、kernel launch 和临时拼接开销。
+
+### FlashInfer plan 复用：把调度开销摊到多个层
+
+FlashInfer block-sparse kernel 需要先 `plan(indptr, indices, M, N, R, C, heads, head_dim, dtype)`。plan 的输入本质上定义了 CUDA kernel 要执行的 block-sparse grid：
+
+- `M = MB * P`：query token 数按 frame block 对齐
+- `N = compact_n * P`：compact K/V token 数
+- `R = C = P`：logical block 是 frame-to-frame
+- `num_qo_heads` / `num_kv_heads`：分别传 query heads 和 KV heads，原生支持 GQA，避免提前 repeat KV
+- `head_dim` 和 dtype 决定底层 attention kernel 模板
+
+plan 不是每层都重建。代码用 `_FIState` 缓存 wrapper、128MB workspace、compact K/V buffer 和 padded Q buffer；vLLM-Omni / Cosmos 的 runner 进一步做 process-wide singleton，让所有层共享同一个 runner。因为同一次 denoising step 内，各 transformer layer 的 attention geometry 相同，CSR 和 compact buffer shape 也相同，复用 plan 可以避免每层重复规划和重复申请大块 workspace。
+
+旋转 keyframe 会改变 `indices`，所以 `set_step(step_idx)` 在 offset 变化时重建 `LVSAMetadata`，并重置 FlashInfer plan。这个开销只发生在 denoising step 粒度，而不是每个 attention layer 内重新推导稀疏图。
+
+### text / encoder token 的 LSE merge：保持 softmax 正确
+
+很多视频 DiT 的 attention 不只有 video token，还会有 text 或 understanding token。如果简单把这些 token 塞进 frame-block CSR，需要把 text length padding 到 $P$ 的整数倍；padding 出来的 zero key 会进入 softmax denominator，导致每个 query 的注意力被 phantom key 稀释。
+
+LVSA 的实现没有这么做。FlashInfer 路径把 key set 拆成两个互不相交的部分：
+
+- video K/V：走 LVSA block-sparse CSR
+- text / encoder K/V：走 dense `single_prefill_with_kv_cache`
+
+两边都返回 output 和 log-sum-exp。最终用 online softmax 的合并公式精确合并：
+
+$$
+O = \frac{e^{l_v}O_v + e^{l_t}O_t}{e^{l_v}+e^{l_t}}
+$$
+
+FlashInfer 返回的 LSE 是 log2 标度，所以代码里用 `exp2` 做权重。这个细节非常关键：它保证“video token 稀疏、text token 全保留”仍然等价于在两个 disjoint key set 上做一次统一 softmax，而不是近似相加。
+
+### SDPA fallback 为什么不是主要加速路径
+
+SDPA fallback 的实现更直观：每个 query frame 单独取 `q_chunk`，拼接 global K/V 和 window K/V，然后调用 PyTorch / diffusers attention。这个路径的价值是稳定、易移植、可跑 CUDA/NPU/CPU，但它有明显开销：
+
+- 每个 frame 一次 attention dispatch
+- 每次要拼接上下文 K/V
+- 无法像 FlashInfer 一样把整层 attention 表达为一个 block-sparse grid
+
+所以论文主表中长 horizon 的最大收益来自 LVSA-FI，而不是 SDPA 版本。SDPA 更像 correctness fallback 和短序列路径；真正接近 CUDA 级加速的是 CSR + compact KV + FlashInfer plan/run 这条路径。
+
+### 多 GPU路径的核心约束
+
+LVSA 的 sparse pattern 是 sequence/frame 维度上的，而不是 head 维度上的。多 GPU 时要保证每个 rank 计算本地 Q 时，能看到自己需要的 K/V frame：
+
+- `custom` 模式切 sequence shard，本地 Q 只算本 rank token；global K/V 复制到所有 rank，rank 边界附近加入 boundary guard frame，避免 local window 被 shard 边界切断
+- `ulysses` 模式先 all-to-all，把完整 sequence grid 汇聚到每个 head shard 上，再执行单机同构 LVSA，最后 scatter 回去
+- `ring` 模式让 K/V shard 在 rank 间环形传递；每到一个 K/V shard，就用当前 Q 对这个 shard 中符合 `G ∪ W(t)` 的 frame-pair 做 attention，并通过 LSE merge 合并多个 shard 的结果
+
+这些路径说明 LVSA 的工程抽象不是“mask 掉一部分 attention”这么简单，而是要保证稀疏图、K/V 数据分布和 softmax 归一化在单卡、多卡、dual-stream 模型里都一致。
 
 ## 实验效果
 
