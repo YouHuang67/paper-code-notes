@@ -1287,6 +1287,23 @@
     "organizations": "Huawei Paris Research Center, Huawei Technologies"
   },
   {
+    "title": "Sparse VideoGen",
+    "path": "paper_reading/sparse_videogen.md",
+    "type": "论文阅读",
+    "tags": [
+      "Sparse Attention",
+      "Video Generation",
+      "Diffusion Model",
+      "CUDA",
+      "Triton"
+    ],
+    "summary": "Spatial/Temporal head 动态稀疏：1% query row 在线 profiling 为每个 head 选 spatial 或 temporal mask，Triton placement 将 temporal slash pattern 重排为连续 block sparse layout，FlexAttention/FlashInfer BSR + 自定义 QK-norm/RoPE CUDA kernel，CogVideoX-v1.5 2.28× / HunyuanVideo+FP8 2.33× 加速",
+    "category": "Sparse Attention",
+    "date_arxiv": "2025-02",
+    "date_added": "2026-06-28",
+    "organizations": "UC Berkeley, MIT, NVIDIA, Tsinghua University"
+  },
+  {
     "title": "Sparse VideoGen2",
     "path": "paper_reading/svg2.md",
     "type": "论文阅读",

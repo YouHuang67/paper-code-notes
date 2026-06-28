@@ -131,6 +131,7 @@ nav:
     - PAROAttention: paper_reading/paroattention.md
     - SCMAPR: paper_reading/scmapr.md
     - LVSA: paper_reading/lvsa.md
+    - Sparse VideoGen: paper_reading/sparse_videogen.md
     - Sparse VideoGen2: paper_reading/svg2.md
     - Sparse-vDiT: paper_reading/sparse_vdit.md
     - Sparse Forcing: paper_reading/sparse_forcing.md
