@@ -1355,6 +1355,23 @@
     "organizations": "Peking University, Fudan University, Alibaba Group, Shanghai Jiao Tong University"
   },
   {
+    "title": "Rectified SpaAttn",
+    "path": "paper_reading/rectified_spaattn.md",
+    "type": "论文阅读",
+    "tags": [
+      "Sparse Attention",
+      "Video Generation",
+      "Diffusion Model",
+      "CUDA",
+      "Triton"
+    ],
+    "summary": "从 sparse softmax 分配偏置出发修正高稀疏注意力：IPAR 用文本隔离 pooled QK 估计 implicit full attention，GAPR 只补偿 gain 大于 pooling error 的 non-critical blocks，Triton one-hot block sparse kernel + 输出重标定/pooled V 补偿，HunyuanVideo 88.95% sparsity 下 3.33× 加速，结合 TeaCache 可达 5.24×",
+    "category": "Sparse Attention",
+    "date_arxiv": "2025-11",
+    "date_added": "2026-06-28",
+    "organizations": "Institute of Automation, Chinese Academy of Sciences; University of Chinese Academy of Sciences"
+  },
+  {
     "title": "Sparse-vDiT",
     "path": "paper_reading/sparse_vdit.md",
     "type": "论文阅读",
