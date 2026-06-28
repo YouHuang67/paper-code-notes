@@ -1321,6 +1321,23 @@
     "organizations": "UC Berkeley, MIT, Stanford"
   },
   {
+    "title": "SVOO",
+    "path": "paper_reading/svoo.md",
+    "type": "论文阅读",
+    "tags": [
+      "Sparse Attention",
+      "Video Generation",
+      "Diffusion Model",
+      "CUDA",
+      "Triton"
+    ],
+    "summary": "离线 layer/head sparsity profiling + 在线 QK bidirectional co-clustering：CSV schedule 控制 per-head key cluster 保留比例，Triton 低内存 profile-space 聚类与 sorted centroid update，FlashInfer variable block sparse attention 执行动态块，Wan2.1-1.3B-T2V 1.93× 加速且 PSNR 29.986",
+    "category": "Sparse Attention",
+    "date_arxiv": "2026-03",
+    "date_added": "2026-06-28",
+    "organizations": "Beihang University, Zhongguancun Academy, Peking University, Chinese Academy of Sciences, USTC, Tsinghua University"
+  },
+  {
     "title": "Sparse-vDiT",
     "path": "paper_reading/sparse_vdit.md",
     "type": "论文阅读",
