@@ -1271,6 +1271,22 @@
     "organizations": "Tsinghua University, ByteDance Seed"
   },
   {
+    "title": "LVSA",
+    "path": "paper_reading/lvsa.md",
+    "type": "论文阅读",
+    "tags": [
+      "Sparse Attention",
+      "Video Generation",
+      "Diffusion Model",
+      "CUDA"
+    ],
+    "summary": "Training-free 长视频稀疏注意力：全局锚点+expanded local window+旋转 keyframe，LVSAMetadata 预编译 CSR/compact KV，FlashInfer block-sparse kernel，Wan 2.1 1.3B 6× horizon 3.17× 加速并改善 frozen/loop failure",
+    "category": "Sparse Attention",
+    "date_arxiv": "2026-05",
+    "date_added": "2026-06-28",
+    "organizations": "Huawei Paris Research Center, Huawei Technologies"
+  },
+  {
     "title": "Sparse VideoGen2",
     "path": "paper_reading/svg2.md",
     "type": "论文阅读",
