@@ -8,11 +8,11 @@ tags:
 
 本文详细拆解 Dispatch 的完整流程。Dispatch 负责将每个 token 路由到其 top-k 专家所在的 GPU。
 
-**源码**: [dispatch.cuh](../../../refs/DeepEP/deep_ep/include/deep_ep/impls/dispatch.cuh)、[hybrid_dispatch.cuh](../../../refs/DeepEP/deep_ep/include/deep_ep/impls/hybrid_dispatch.cuh)、[dispatch_copy_epilogue.cuh](../../../refs/DeepEP/deep_ep/include/deep_ep/impls/dispatch_copy_epilogue.cuh)、[dispatch.hpp](../../../refs/DeepEP/csrc/kernels/elastic/dispatch.hpp)
+**源码**: [dispatch.cuh](https://github.com/deepseek-ai/DeepEP/blob/main/deep_ep/include/deep_ep/impls/dispatch.cuh)、[hybrid_dispatch.cuh](https://github.com/deepseek-ai/DeepEP/blob/main/deep_ep/include/deep_ep/impls/hybrid_dispatch.cuh)、[dispatch_copy_epilogue.cuh](https://github.com/deepseek-ai/DeepEP/blob/main/deep_ep/include/deep_ep/impls/dispatch_copy_epilogue.cuh)、[dispatch.hpp](https://github.com/deepseek-ai/DeepEP/blob/main/csrc/kernels/elastic/dispatch.hpp)
 
 ## 函数签名与模板参数
 
-[dispatch.cuh](../../../refs/DeepEP/deep_ep/include/deep_ep/impls/dispatch.cuh)
+[dispatch.cuh](https://github.com/deepseek-ai/DeepEP/blob/main/deep_ep/include/deep_ep/impls/dispatch.cuh)
 
 ```cpp
 template <bool kIsScaleupNVLink,       // scaleup 域是否全 NVLink（决定用 TMA store 还是 RDMA put）
@@ -349,7 +349,7 @@ TMA store 分为两条路径：
 
 ## Copy Epilogue
 
-[dispatch_copy_epilogue.cuh](../../../refs/DeepEP/deep_ep/include/deep_ep/impls/dispatch_copy_epilogue.cuh)
+[dispatch_copy_epilogue.cuh](https://github.com/deepseek-ai/DeepEP/blob/main/deep_ep/include/deep_ep/impls/dispatch_copy_epilogue.cuh)
 
 主 kernel 通过 `cudaTriggerProgrammaticLaunchCompletion()` 触发 PDL 链中的下一个 kernel。Copy epilogue 负责：
 
@@ -412,7 +412,7 @@ recv_src_metadata 的格式：
 
 ## Hybrid Dispatch
 
-[hybrid_dispatch.cuh](../../../refs/DeepEP/deep_ep/include/deep_ep/impls/hybrid_dispatch.cuh)
+[hybrid_dispatch.cuh](https://github.com/deepseek-ai/DeepEP/blob/main/deep_ep/include/deep_ep/impls/hybrid_dispatch.cuh)
 
 Hybrid 模式有三类 warp：
 

@@ -8,11 +8,11 @@ tags:
 
 本文详细拆解 Combine 的完整流程。Combine 负责将各 GPU 上专家计算的结果按 token 归约回原始 GPU。
 
-**源码**: [combine.cuh](../../../refs/DeepEP/deep_ep/include/deep_ep/impls/combine.cuh)、[hybrid_combine.cuh](../../../refs/DeepEP/deep_ep/include/deep_ep/impls/hybrid_combine.cuh)、[combine_reduce_epilogue.cuh](../../../refs/DeepEP/deep_ep/include/deep_ep/impls/combine_reduce_epilogue.cuh)、[combine_utils.cuh](../../../refs/DeepEP/deep_ep/include/deep_ep/impls/combine_utils.cuh)、[combine.hpp](../../../refs/DeepEP/csrc/kernels/elastic/combine.hpp)
+**源码**: [combine.cuh](https://github.com/deepseek-ai/DeepEP/blob/main/deep_ep/include/deep_ep/impls/combine.cuh)、[hybrid_combine.cuh](https://github.com/deepseek-ai/DeepEP/blob/main/deep_ep/include/deep_ep/impls/hybrid_combine.cuh)、[combine_reduce_epilogue.cuh](https://github.com/deepseek-ai/DeepEP/blob/main/deep_ep/include/deep_ep/impls/combine_reduce_epilogue.cuh)、[combine_utils.cuh](https://github.com/deepseek-ai/DeepEP/blob/main/deep_ep/include/deep_ep/impls/combine_utils.cuh)、[combine.hpp](https://github.com/deepseek-ai/DeepEP/blob/main/csrc/kernels/elastic/combine.hpp)
 
 ## 函数签名与模板参数
 
-[combine.cuh](../../../refs/DeepEP/deep_ep/include/deep_ep/impls/combine.cuh)
+[combine.cuh](https://github.com/deepseek-ai/DeepEP/blob/main/deep_ep/include/deep_ep/impls/combine.cuh)
 
 ```cpp
 template <bool kIsScaleupNVLink,            // scaleup 域是否全 NVLink
@@ -115,7 +115,7 @@ const auto gin = handle::NCCLGin(nccl_dev_comm, nccl_window, qp_idx, sharing_mod
 comm::gpu_barrier<kIsScaleupNVLink, 1, kNumRanks, ...>(gin, ..., comm::kCombineTag0, ...);
 ```
 
-[combine.cuh](../../../refs/DeepEP/deep_ep/include/deep_ep/impls/combine.cuh)
+[combine.cuh](https://github.com/deepseek-ai/DeepEP/blob/main/deep_ep/include/deep_ep/impls/combine.cuh)
 
 ### 主循环：逐 Token 处理
 
@@ -251,7 +251,7 @@ comm::gpu_barrier<..., comm::kCombineTag1, true, true, false>(...);
 
 ## Combine Reduce Epilogue
 
-[combine_reduce_epilogue.cuh](../../../refs/DeepEP/deep_ep/include/deep_ep/impls/combine_reduce_epilogue.cuh)
+[combine_reduce_epilogue.cuh](https://github.com/deepseek-ai/DeepEP/blob/main/deep_ep/include/deep_ep/impls/combine_reduce_epilogue.cuh)
 
 主 kernel 将数据写入 recv buffer 后，reduce epilogue kernel 负责归约回输出 tensor：
 
@@ -307,7 +307,7 @@ recv buffer 的排布取决于 `kUseRankLayout` 和 `kUseExpandedLayout`：
 
 ## Hybrid Combine
 
-[hybrid_combine.cuh](../../../refs/DeepEP/deep_ep/include/deep_ep/impls/hybrid_combine.cuh)
+[hybrid_combine.cuh](https://github.com/deepseek-ai/DeepEP/blob/main/deep_ep/include/deep_ep/impls/hybrid_combine.cuh)
 
 Hybrid combine 有两类 warp，与 hybrid dispatch 形成对称：
 

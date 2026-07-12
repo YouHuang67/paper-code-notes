@@ -10,3 +10,5 @@
 </div>
 <div id="tag-search-results"></div>
 </div>
+
+<!-- material/tags -->

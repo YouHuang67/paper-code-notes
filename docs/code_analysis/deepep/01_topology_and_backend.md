@@ -8,7 +8,7 @@ tags:
 
 本文详述 DeepEP 的通信拓扑抽象、NCCL Gin backend 的初始化流程、对称内存分配、QP 管理以及 Barrier 实现。
 
-**源码**: [nccl.cu](../../../refs/DeepEP/csrc/kernels/backend/nccl.cu)、[comm.cuh](../../../refs/DeepEP/deep_ep/include/deep_ep/common/comm.cuh)、[layout.cuh](../../../refs/DeepEP/deep_ep/include/deep_ep/common/layout.cuh)
+**源码**: [nccl.cu](https://github.com/deepseek-ai/DeepEP/blob/main/csrc/kernels/backend/nccl.cu)、[comm.cuh](https://github.com/deepseek-ai/DeepEP/blob/main/deep_ep/include/deep_ep/common/comm.cuh)、[layout.cuh](https://github.com/deepseek-ai/DeepEP/blob/main/deep_ep/include/deep_ep/common/layout.cuh)
 
 ## 通信拓扑抽象
 
@@ -48,7 +48,7 @@ if (allow_hybrid_mode) {
 
 ### NCCLSymmetricMemoryContext
 
-`NCCLSymmetricMemoryContext`（[nccl.cu](../../../refs/DeepEP/csrc/kernels/backend/nccl.cu)）封装了整个通信上下文：
+`NCCLSymmetricMemoryContext`（[nccl.cu](https://github.com/deepseek-ai/DeepEP/blob/main/csrc/kernels/backend/nccl.cu)）封装了整个通信上下文：
 
 ```
 初始化流程：
@@ -111,7 +111,7 @@ Workspace（`WorkspaceLayout`）的详细布局固定为：
 
 ## QP（Queue Pair）分配策略
 
-[comm.cuh](../../../refs/DeepEP/deep_ep/include/deep_ep/common/comm.cuh) 中 `get_qp_mode` 决定每个 warp 使用哪个 QP：
+[comm.cuh](https://github.com/deepseek-ai/DeepEP/blob/main/deep_ep/include/deep_ep/common/comm.cuh) 中 `get_qp_mode` 决定每个 warp 使用哪个 QP：
 
 ```cpp
 template <int kNumSMs, int kNumQPs, int kNumChannelsPerSM, bool kWithNotifyWarps>

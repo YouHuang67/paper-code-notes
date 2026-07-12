@@ -50,7 +50,7 @@ $$B_{text}(T) = [BOT, T, EOT], \quad B_{vis}(V) = [BOV, V, EOV]$$
 3. **干净 VAE latent token**：Wan2.2 3D causal VAE encoder，16× 空间下采样 + 4× 时间下采样，作为生成条件
 4. **噪声 VAE latent token**：同样是 VAE 隐空间，添加噪声后的生成目标
 
-**源码对应** [lance.py L148-L312](./refs/codes/Lance/modeling/lance/lance.py#L148-L312)：
+**源码对应** [lance.py L148-L312](https://github.com/bytedance/Lance/blob/main/modeling/lance/lance.py#L148-L312)：
 - ViT token → `connector`（2层MLP）→ LLM hidden space
 - VAE latent → `vae2llm`（nn.Linear）→ LLM hidden space + timestep embed + 3D position embed
 - LLM hidden → `llm2vae`（nn.Linear）→ VAE latent space（预测 velocity）
@@ -85,7 +85,7 @@ Lance 的 LLM backbone 基于 Qwen2.5-VL 3B，但进行了关键的 MoE 改造�
 - LayerNorm 也分两组：`input_layernorm/post_attention_layernorm` + `input_layernorm_moe_gen/post_attention_layernorm_moe_gen`
 - MLP 分两组：`mlp` + `mlp_moe_gen`
 
-**源码位置**：[qwen2_navit.py L229-L707](../refs/codes/Lance/modeling/lance/qwen2_navit.py#L229-L707)
+**源码位置**：[qwen2_navit.py L229-L707](https://github.com/bytedance/Lance/blob/main/modeling/lance/qwen2_navit.py#L229-L707)
 
 关键实现细节：
 - 训练时：将所有 token 分为 `packed_und_token_indexes`（理解侧）和 `packed_gen_token_indexes`（生成侧），分别通过各自的 Q/K/V/O 投影后合并做统一 attention
@@ -270,7 +270,7 @@ $$
 v_t = v_{uncond} + s_{text} \cdot (v_{cond} - v_{uncond}) + s_{vision} \cdot (v_{text\_cond} - v_{text\_vision\_cond})
 $$
 
-**源码位置**：[lance.py L590-L628](../refs/codes/Lance/modeling/lance/lance.py#L590-L628)
+**源码位置**：[lance.py L590-L628](https://github.com/bytedance/Lance/blob/main/modeling/lance/lance.py#L590-L628)
 
 三层 CFG 展开：
 1. 纯无条件 → 只有文本条件（text CFG）
@@ -279,7 +279,7 @@ $$
 
 ### 4.4 推理流程
 
-**生成推理**：[lance.py L315-L737](../refs/codes/Lance/modeling/lance/lance.py#L315-L737)
+**生成推理**：[lance.py L315-L737](https://github.com/bytedance/Lance/blob/main/modeling/lance/lance.py#L315-L737)
 1. 构建统一多模态序列（text + ViT + clean VAE）→ LLM 前向得 KV cache
 2. 初始化 $x_t \sim \mathcal{N}(0, I)$（纯噪声）
 3. for t in 1→0（24步 Euler 法）:
@@ -290,12 +290,12 @@ $$
    - $x_t = x_t - v_t \cdot dt$（Euler 步进）
 4. 最终 $x_0$ → VAE decoder → 像素空间
 
-**理解推理**：[lance.py L950-L1149](../refs/codes/Lance/modeling/lance/lance.py#L950-L1149)
+**理解推理**：[lance.py L950-L1149](https://github.com/bytedance/Lance/blob/main/modeling/lance/lance.py#L950-L1149)
 - KV cache 模式：分两步
   1. 预填充：text + ViT → LLM 前向，构建 KV cache
   2. 自回归解码：逐 token 生成，LM head → logits → argmax/sample
 
-**多图/交错推理**：[lance.py L1151-L1346](../refs/codes/Lance/modeling/lance/lance.py#L1151-L1346)
+**多图/交错推理**：[lance.py L1151-L1346](https://github.com/bytedance/Lance/blob/main/modeling/lance/lance.py#L1151-L1346)
 - 支持多张图像/视频在同一序列中交错排列
 - 每张图有自己的 `<start_of_image> ... <end_of_image>` 边界
 
@@ -496,4 +496,3 @@ RL 阶段用 PaddleOCR 奖励改善了文本渲染，但编辑中文本修改能
 - 流式多模态交互（实时感知+生成）
 - 视频专用奖励模型
 - 模型规模扩展和上下文长度扩展
-
