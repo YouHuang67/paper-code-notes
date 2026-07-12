@@ -117,6 +117,7 @@ nav:
     - IndexCache: paper_reading/indexcache.md
     - HySparse: paper_reading/hysparse.md
     - PISA: paper_reading/pisa.md
+    - MInference: paper_reading/minference.md
     - SnapGen++: paper_reading/snapgenplusplus.md
     - RainFusion2.0: paper_reading/rainfusion2.md
     - LLSA: paper_reading/llsa.md
@@ -199,6 +200,10 @@ nav:
         - 初始化与 plan 前准备: code_analysis/flashinfer_variable_block_sparse/01_python_wrapper_and_metadata.md
         - plan 阶段：模块准备与调度生成: code_analysis/flashinfer_variable_block_sparse/02_runtime_and_jit.md
         - run 阶段：进入 C++ 与 CUDA: code_analysis/flashinfer_variable_block_sparse/03_cpp_binding_and_kernel.md
+      - PISA:
+        - 总览: code_analysis/pisa/00_overview.md
+      - MInference:
+        - 总览: code_analysis/minference/00_overview.md
       - DeepSeek V4:
         - 总览: code_analysis/deepseek_v4/00_overview.md
         - 模型架构: code_analysis/deepseek_v4/01_model_architecture.md

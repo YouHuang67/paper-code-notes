@@ -47,6 +47,8 @@
 - [CUTLASS Memory Efficient Attention](cutlass_mem_eff_attention/00_overview.md) - PyTorch ATen CUTLASS 前向 kernel（Online Softmax + 模板分发）
 - [CUB Block 级原语](cub_block_primitives/01_block_radix_sort_and_scan.md) - BlockRadixSort 与 BlockScan 内部实现详解
 - [FlashInfer Variable Block Sparse Attention](flashinfer_variable_block_sparse/00_overview.md) - 本地剥离版 `variable_block_attn`：从 variable block 稀疏描述到 FA2 paged prefill 执行路径的完整代码拆解
+- [PISA](pisa/00_overview.md) - Piecewise Sparse Attention：Triton 块统计预扫描、exact/zero-order/global first-order 三阶段前向与 GPU 负载均衡分析
+- [MInference](minference/00_overview.md) - Dynamic Sparse Attention Prefill：离线 pattern 搜索、Vertical-Slash CUDA 索引转换与 Triton mixed sparse attention kernel
 - [DeepSeek V4](deepseek_v4/00_overview.md) - mHC + Hybrid Attention + MoE + TileLang 低精度推理实现
 - [DeepEP](deepep/00_overview.md) - MoE Expert-Parallel 通信库：基于 TMA + NCCL Gin 的全 GPU 端 all-to-all 实现
 - [ELF](elf/00_overview.md) - Embedded Language Flows: JAX/Flax DiT + Flow Matching + 共享权重 denoiser-decoder

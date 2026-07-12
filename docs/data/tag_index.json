@@ -933,11 +933,27 @@
       "Diffusion Model",
       "Video Generation"
     ],
-    "summary": "块级 Taylor 展开近似非关键 KV 块（exact-or-approximate），协方差感知路由 + 4 阶段 kernel，Wan2.1-14B 1.91× / Hunyuan 2.57×",
+    "summary": "DiT 视频/图像生成 training-free sparse attention：非关键 KV 块不丢弃而做块级 Taylor 近似，hybrid 全局一阶修正 + Triton 三阶段 kernel，Wan2.1-14B 1.91× / Hunyuan 2.57×",
     "category": "Sparse Attention",
     "date_arxiv": "2026-02",
-    "date_added": "2026-04-04",
+    "date_added": "2026-07-12",
     "organizations": "HKUST (Guangzhou)"
+  },
+  {
+    "title": "MInference",
+    "path": "paper_reading/minference.md",
+    "type": "论文阅读",
+    "tags": [
+      "Sparse Attention",
+      "LLM Inference",
+      "CUDA",
+      "Triton"
+    ],
+    "summary": "长上下文 LLM prefill 的 training-free dynamic sparse attention：离线 per-head pattern 搜索，在线构造 A-shape / Vertical-Slash / Block-Sparse 索引，单 A100 1M token prefill 最高 10× 加速",
+    "category": "Sparse Attention",
+    "date_arxiv": "2024-07",
+    "date_added": "2026-07-12",
+    "organizations": "Microsoft Research"
   },
   {
     "title": "SnapGen++",
@@ -1512,6 +1528,30 @@
       "Flash Attention"
     ],
     "summary": "按 run 阶段顺序分析张量重排、paged_run、plan_info 恢复与 kernel dispatch，说明执行阶段怎样真正落到底层"
+  },
+  {
+    "title": "PISA 代码实现：总览",
+    "path": "code_analysis/pisa/00_overview.md",
+    "type": "代码分析",
+    "tags": [
+      "CUDA",
+      "Triton",
+      "Sparse Attention",
+      "Video Generation"
+    ],
+    "summary": "解析 PISA 官方 Triton 实现：块统计预扫描、Top-K 路由、exact/zero-order/global first-order 三阶段前向、CTA/program 布局与负载均衡"
+  },
+  {
+    "title": "MInference 代码实现：总览",
+    "path": "code_analysis/minference/00_overview.md",
+    "type": "代码分析",
+    "tags": [
+      "CUDA",
+      "Triton",
+      "Sparse Attention",
+      "LLM Inference"
+    ],
+    "summary": "解析 MInference 官方实现：离线 pattern 标定、HuggingFace attention patch、Vertical-Slash CUDA 索引转换、Triton mixed sparse/block sparse attention kernel"
   },
   {
     "title": "DeepSeek-V4",
