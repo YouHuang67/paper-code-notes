@@ -134,6 +134,8 @@ nav:
     - Sparse VideoGen: paper_reading/sparse_videogen.md
     - Sparse VideoGen2: paper_reading/svg2.md
     - SVOO: paper_reading/svoo.md
+    - CalibAtt: paper_reading/calibatt.md
+    - ScalingAttention: paper_reading/scalingattention.md
     - VecAttention: paper_reading/vecattention.md
     - Rectified SpaAttn: paper_reading/rectified_spaattn.md
     - Sparse-vDiT: paper_reading/sparse_vdit.md

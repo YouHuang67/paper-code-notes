@@ -1388,6 +1388,38 @@
     "organizations": "Beihang University, Zhongguancun Academy, Peking University, Chinese Academy of Sciences, USTC, Tsinghua University"
   },
   {
+    "title": "CalibAtt",
+    "path": "paper_reading/calibatt.md",
+    "type": "论文阅读",
+    "tags": [
+      "Sparse Attention",
+      "Video Generation",
+      "Diffusion Model",
+      "CUDA"
+    ],
+    "summary": "离线标定 block energy 稀疏掩码与 spatial repetition head：为每个 timestep/layer/head 预编译 skip list，在线走 FlashAttention3 风格 block-sparse kernel 或 anchor-row broadcast，Wan/Mochi/LightX2V 最高 1.58x 端到端加速",
+    "category": "Sparse Attention",
+    "date_arxiv": "2026-03",
+    "date_added": "2026-07-12",
+    "organizations": "Apple, Tel Aviv University"
+  },
+  {
+    "title": "ScalingAttention",
+    "path": "paper_reading/scalingattention.md",
+    "type": "论文阅读",
+    "tags": [
+      "Sparse Attention",
+      "Video Generation",
+      "Diffusion Model",
+      "CUDA"
+    ],
+    "summary": "将视频 DiT 稀疏化拆为 WEST 拓扑发现与 FAST 敏感度调节：离线 threshold map 编码完整稀疏层级，Hellinger fidelity 控制分层分步稀疏度，配套 CRM bit-wise block-sparse kernel，Wan2.1 最高 1.90x 端到端加速",
+    "category": "Sparse Attention",
+    "date_arxiv": "2026-06",
+    "date_added": "2026-07-12",
+    "organizations": "KlingAI Research, Beijing Institute of Technology, NVIDIA, Tsinghua University"
+  },
+  {
     "title": "VecAttention",
     "path": "paper_reading/vecattention.md",
     "type": "论文阅读",
