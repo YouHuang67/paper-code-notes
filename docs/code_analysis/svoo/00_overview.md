@@ -49,6 +49,29 @@ Wan 路径中的 processor 负责：
 
 这里的主控逻辑并不是“kernel wrapper”，而是一个调度器：它决定何时 dense、何时 sparse、何时复用上一次聚类结果，以及 block budget 如何传给稀疏执行后端。
 
+再往下看一层，`attention_core_logic()` 的真实执行链并不短：
+
+```text
+record current inference step
+  -> dense warm-up gate
+  -> semantic_aware_permutation()
+    -> kmeans_clustering()
+    -> per-head min_kc_ratio lookup
+    -> identify_dynamic_map()
+    -> permute q/k/v by cluster labels
+  -> sparse backend dispatch
+  -> inverse permutation + output projection
+```
+
+这里的关键不是函数多，而是 `semantic_aware_permutation()` 在系统里承担了太多职责。它不是简单生成 `dynamic_map`，而是同时完成：
+
+- 聚类；
+- 预算接线；
+- token 重排；
+- 动态块元数据构造。
+
+因此如果只盯着后面的 sparse attention kernel，会把实现看窄。SVOO 的主逻辑其实早在进入 kernel 之前就决定了大半性能上限。
+
 ### 1.2 预算层：离线 profile 生成可查询的稀疏日程
 
 离线脚本用 calibration prompts 跑完整 attention，并把每个 `(step, layer, head)` 在累计 95% 注意力质量时所需的 key-token 比例写成 CSV。
@@ -96,6 +119,15 @@ preserve_length = int(min_kc_ratio[h] * kc_num)
 - 对冗余 head，可以把可见 key-cluster 数压得更低。
 
 所以 SVOO 的 profile 本质上是 **在线 block routing 的硬预算接口**，而不是一个松散的启发式先验。
+
+开源实现里这条预算接线还有两层保护：
+
+1. `has_data_for_step_layer()`
+   如果 CSV 对当前 `(step, layer)` 没有完整覆盖，就回退到固定 `min_kc_ratio`。
+2. `dynamic_min_kc_ratio_min / max`
+   即使 CSV 给出的值过激进或过保守，也会先做上下界裁剪，再交给 `identify_dynamic_map`。
+
+这说明作者并不是把离线 profile 当成绝对真值，而是把它视作在线路由的稳定先验，再用工程边界保护最终执行。
 
 ## 3. Co-clustering 不是普通 KMeans
 
@@ -214,6 +246,14 @@ program_id(1) = batch-head
 
 这也是一个很典型的 GPU 工程选择：先用一次并行 sort 改善数据布局，再让后续 reduction kernel 变得规则。
 
+这里还能看出一个进一步的设计判断：作者没有把 assignment 和 centroid update 强行 fuse 成一个超级 kernel。原因很直接：
+
+- assignment 更像 GEMM-like 点积搜索；
+- centroid update 更像 segmented reduction；
+- 两者的最佳 tile 形状、寄存器压力和瓶颈完全不同。
+
+把它们拆开后，前者可以围绕吞吐优化，后者可以围绕 atomic 冲突优化，整体更容易跑到稳定性能。
+
 ## 5. Dynamic map 的预算生成逻辑
 
 完成 co-clustering 后，SVOO 会基于 centroid attention 生成 `dynamic_map[B,H,Qc,Kc]`。
@@ -245,6 +285,14 @@ centroid attention ranking
   + profile-derived per-head floor
   + optional per-head cap
 ```
+
+另一个容易忽略的点是：`dynamic_map` 在 **centroid 域** 生成，但执行发生在 **token 域**。二者之间靠：
+
+- `qlabels / klabels`
+- `qcluster_sizes / kcluster_sizes`
+- permutation 后的连续布局
+
+连接起来。也就是说，路由决策是低成本粗粒度的，但真正 attention 仍然是 token 级的，只不过被限制在若干 active block pairs 内。
 
 ## 6. Triton fallback sparse attention：一个 program 对一个 query cluster
 
@@ -293,6 +341,14 @@ $$
 - CTA 数量取决于 `B * H * Qc`，而不是更细粒度的 `(q_cluster, k_cluster)` 对。
 
 所以它的优势是通用、直接、容易验证；真正追求论文级吞吐时，默认还是走 FlashInfer 后端。
+
+如果从 CTA 利用率角度看，这个 fallback kernel 的瓶颈通常不是算力，而是：
+
+- 小 query cluster 会让单个 program 工作量过低；
+- active key-cluster 数量不均会导致尾部拖长；
+- key-cluster 循环在 program 内串行，难以展开到更细粒度并行。
+
+这正是它适合作为保底实现、而不适合作为默认性能路径的原因。
 
 ## 7. FlashInfer patch 的关键意义
 
@@ -348,6 +404,8 @@ patch 后的 plan 路径会：
 
 这条路径的意义是：SVOO 不是只借用 FlashInfer 的 compute kernel，而是连 **稀疏元数据展开与计划生成** 都针对自己的动态块结构做了优化。
 
+从端到端时延看，这个 patch 解决的是一个经常被忽略的系统问题：如果 metadata 展开慢、plan 慢、CPU/GPU 往返多，那么即使计算 kernel 很快，整体也会被 planning 拖住。SVOO 把 `qo_indptr / kv_indptr / kv_indices` 尽量一次性规整出来，就是为了把 planning 成本压低到 sparse execution 的收益之下。
+
 ## 8. 为什么 clustering reuse 很重要
 
 从 FLOPs 角度看，稀疏 attention 省了很多计算；但从系统角度看，如果每个 diffusion step 都完整 co-clustering，实际端到端速度未必会更快。
@@ -372,6 +430,14 @@ SVOO 的处理有两层：
 只有当 `current_step` 落到 `reuse_interval` 指定的位置时才重算，否则直接复用。
 
 这相当于把 co-clustering 视为一种可摊销的路由预处理。论文之所以能拿到端到端加速，不只是 sparse kernel 快，而是路由成本被这种 reuse 机制压住了。
+
+代码层面这条逻辑还做了很实际的保护：
+
+- 如果当前 step 本该复用，但缓存为空，会强制 recluster；
+- 缓存的是 `detach()` 后的 labels / centroids / sizes，避免错误传播图状态；
+- 调试开关下还预留了 step-to-step NMI 相似度检查，用来验证复用假设是否成立。
+
+这说明作者把“聚类可复用”当成需要验证的系统假设，而不是写死的经验规则。
 
 ## 9. 开源实现还暴露了一个更有意思的方向：EAR 补偿
 

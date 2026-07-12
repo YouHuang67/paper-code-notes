@@ -171,6 +171,8 @@ $$
 
 这意味着空间重复路径本身也是经过离线标定后，在在线阶段作为硬分支使用。
 
+补充材料里的这组参数也说明，作者并没有把 repetition 当成一个很激进的近似分支。`k=5` 仍然保留了每帧多个 anchor rows，本质上是在 query 维做温和降采样，而不是极限压缩；`\gamma=0.87` 也意味着只有相似度足够高的 heads 才会进入这条路径。
+
 ## 实现结构
 
 虽然论文没有公开完整仓库，但从正文、补充材料和 arXiv 源文件可以比较清楚地还原实现结构。CalibAtt 不是一组孤立 kernel，而是一条从标定到执行的编译式流水线：
@@ -191,6 +193,27 @@ $$
    - 若是重复 head，走 reduced-query FA3 + broadcast。
 
 也就是说，CalibAtt 的系统边界比 `SVOO` 更窄：它不试图在线估计结构，而是尽量把一切可能静态化的内容都静态化。
+
+如果按论文 Figure 5 把这条流水线再写得更细一点，可以理解成：
+
+```text
+dense calibration attention
+  -> block energy
+  -> per-prompt block masks
+  -> cross-prompt aggregation
+  -> mask dictionary
+  -> skip-list compilation
+
+dense calibration attention
+  -> row similarity statistics
+  -> repetition dictionary
+
+inference
+  -> lookup by (t, l, h)
+  -> block-sparse path or anchor-row path
+```
+
+这说明 CalibAtt 并不是一篇“提出一种 sparse pattern”的论文，而是一个完整的离线编译式部署方案。
 
 ## CUDA 实现细节重建
 
@@ -219,6 +242,8 @@ $$
 - 最后只把 `N_B x N_B` 大小的 block energy 写回。
 
 这类 kernel 的关键收益不是减少 FLOPs，而是 **不落完整 attention matrix**。否则 calibration 成本会被显存和 IO 放大得很厉害。
+
+结合论文给出的 calibration 预算，这个 kernel 的意义会更具体。Wan2.1 14B 720p 在完整配置下的离线成本可到 `89.6` H100 GPU-hours`；即使把 prompt 数缩到 `16`，仍有 `13.7` H100 GPU-hours` 量级。若 block energy 统计还要显式保存完整 attention matrix，这个一次性成本会进一步恶化。
 
 ### 2. skip list 编译
 
@@ -249,6 +274,8 @@ for each query block-row:
 
 这和 `SVOO`/`FlashInfer variable block sparse` 的 CSR-like 思路相似，只是 CalibAtt 这里的结构更静态，适合预先压缩成 skip list。
 
+补充材料还给了一个很实际的工程信号：skip-list 存储本身是个大问题。Wan-T2V 14B 720p 的原始结构占用很高，经过压缩后才降到约 `6.3 GB` 且 sparsity 几乎不受影响。换句话说，这篇方法不只是“把 mask 预先算好”，而是连这些 mask 的部署格式都认真做了系统设计。
+
 ### 3. 基于 FlashAttention3 的 block-sparse kernel
 
 论文说推理 kernel “based on FlashAttention3 and prior block-sparse kernels”，并针对 **pre-computed masks varying per timestep / layer / head** 做了优化。
@@ -258,6 +285,14 @@ for each query block-row:
 - 它不会自己重写一整套 attention 数值逻辑；
 - 更可能是保留 FA3 的 block iterator / online softmax 主干；
 - 只把 dense KV block iterator 换成由 skip list 驱动的 sparse iterator。
+
+因此更合理的 kernel 结构应当是：
+
+1. 复用 dense FA3 的 query tile 装载与在线 softmax 状态；
+2. 用 skip list 逐段遍历当前 query block-row 对应的 active KV block intervals；
+3. 对每个区间内的 block，仍使用规则 dense tile 的 MMA 路径。
+
+这个结构的核心价值在于：全局虽然是 sparse 的，但局部计算单元仍是规则大块，因此 Tensor Core 不会因为 token-level 不规则稀疏而大幅掉利用率。
 
 因此执行主线应当是：
 
@@ -287,6 +322,8 @@ for each query block-row:
 - CTA 负载也更难平衡。
 
 直接使用 dense FA3 on reduced queries，本质上是在 query 维做规则降采样，通常比在 KV 维做更极端的不规则稀疏更容易吃满 GPU。
+
+更重要的是，这条分支几乎不引入新的元数据格式：它只是在前端减少 query rows，再把结果 broadcast 回去。因此它继承的是标准 FA3 的稳定执行路径，而不是另起一套复杂 sparse query kernel。
 
 ### 5. 内存开销与工程代价
 
@@ -339,6 +376,8 @@ CalibAtt 的加速不是来自单一来源，而是三部分叠加：
 - 720p 例子约 `62%` attention sparsity；
 - 480p 例子约 `68%` attention sparsity。
 
+附录里的更多结果显示，Mochi 大约能达到 `69%` sparsity，LightX2V 480p/720p 则能达到 `70%` / `74%`。这意味着 CalibAtt 的静态标定并不只适用于高步数、大模型配置，对 distilled few-step 场景同样有明显效果。
+
 ### Few-step distilled 模型
 
 在 LightX2V 这类 4-step distilled 模型上，CalibAtt 依然有效。这点很重要，因为很多 training-free 方法在 few-step regime 中更容易被在线选择开销抵消，而 CalibAtt 因为在线几乎只剩查表和执行，通常更稳定。
@@ -353,6 +392,14 @@ CalibAtt 的加速不是来自单一来源，而是三部分叠加：
 - 对 Wan2.1 14B 720p，calibration 成本可从约 `89.6` H100 GPU-hours 降到 `13.7` H100 GPU-hours。
 
 这说明它的 cross-prompt topology 稳定性确实很强，否则不可能用这么少的校准样本把静态 mask 编译出来。
+
+这组实验还有一个更深的系统含义：CalibAtt 的离线成本虽然不小，但所有中间产物都是可复用的部署资产：
+
+- mask dictionary
+- repetition dictionary
+- skip lists
+
+只要模型和推理配置不变，这些结构就能被长期复用，因此这篇方法更像一个前置编译成本换在线吞吐的部署优化方案。
 
 ## 局限
 
