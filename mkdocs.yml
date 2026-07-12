@@ -205,6 +205,8 @@ nav:
         - 总览: code_analysis/pisa/00_overview.md
       - MInference:
         - 总览: code_analysis/minference/00_overview.md
+      - SVOO:
+        - 总览: code_analysis/svoo/00_overview.md
       - FastVideo VSA:
         - 总览: code_analysis/fastvideo_vsa/00_overview.md
       - DeepSeek V4:

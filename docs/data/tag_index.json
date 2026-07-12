@@ -1588,6 +1588,19 @@
     "summary": "解析 MInference 官方实现：离线 pattern 标定、HuggingFace attention patch、Vertical-Slash CUDA 索引转换、Triton mixed sparse/block sparse attention kernel"
   },
   {
+    "title": "SVOO 代码实现：总览",
+    "path": "code_analysis/svoo/00_overview.md",
+    "type": "代码分析",
+    "tags": [
+      "CUDA",
+      "Triton",
+      "Sparse Attention",
+      "Video Generation",
+      "Flash Attention"
+    ],
+    "summary": "解析 SVOO 官方实现：离线 sparsity CSV 如何进入在线 per-head budget，低内存 Q/K co-clustering Triton kernels，dynamic map 生成，Triton fallback 与 FlashInfer variable block sparse plan patch"
+  },
+  {
     "title": "FastVideo VSA 代码分析：总览",
     "path": "code_analysis/fastvideo_vsa/00_overview.md",
     "type": "代码分析",

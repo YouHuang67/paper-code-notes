@@ -11,6 +11,7 @@ tags:
 
 - 论文：https://arxiv.org/abs/2603.18636
 - 代码：https://github.com/Mutual-Luo/SVOO
+- 代码分析：[SVOO 代码实现：总览](../code_analysis/svoo/00_overview.md)
 - 团队：Beihang University, Zhongguancun Academy, Peking University, Chinese Academy of Sciences, USTC, Tsinghua University
 
 ## 概述
