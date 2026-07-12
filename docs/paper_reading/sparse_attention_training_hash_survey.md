@@ -57,6 +57,38 @@ tags:
 - [Native Sparse Attention 代码分析](../code_analysis/native_sparse_attention/00_overview.md)：训练型 LLM sparse attention 的实现参考
 - [DeepSeek-V4](deepseek_v4.md)：不是哈希 Top-K 主论文，但包含压缩记忆 top-k 检索与 hash routing 参考
 
+## 代码准备状态
+
+为后续逐篇做笔记，这轮已经把能确认的官方代码仓库拉到 `refs/codes`。按当前状态可分三类：
+
+### 已确认官方开源并已拉取
+
+- `VSA`：当前最稳的代码入口是 `refs/codes/FastVideo`
+- `HashAttention`：`refs/codes/HashAttention-1.0`
+- `HATA`：`refs/codes/HATA`
+- `MagicPIG`：`refs/codes/MagicPIG`
+- `VMoBA`：`refs/codes/VMoBA`
+- `VIDEO-BLADE / BLADE`：`refs/codes/VIDEO-BLADE`
+- `Native Sparse Attention`：`refs/codes/native-sparse-attention`
+- `SpargeAttn`：`refs/codes/SpargeAttn`
+
+### 仓库已开，但功能发布仍不完整
+
+- `MoGA`：`refs/codes/MoGA`
+  README 已发布论文与项目页，但明确写了 inference code 将后续补齐，因此现阶段更适合做方法层解读，不适合做完整实现深挖。
+
+### 论文已确认，但暂未找到独立官方代码入口
+
+- `Sparse Forcing`
+- `Bidirectional Sparse Attention`
+- `SpargeAttention2`
+
+这里要注意：
+
+- `Sparse Forcing` 当前仍未见稳定公开的官方实现；
+- `SpargeAttention2` 很可能沿用 `SpargeAttn` 或相关仓库继续开发，但本轮没有检到明确独立官方仓库；
+- `Bidirectional Sparse Attention` 也尚未检到明确独立官方代码。
+
 ## 一、训练型 Sparse Attention
 
 ### 1.1 视频生成 / 视频扩散优先候选
@@ -64,7 +96,7 @@ tags:
 #### VSA: Faster Video Diffusion with Trainable Sparse Attention
 
 - arXiv: `2505.13389`
-- 状态：已确认论文存在；代码仓库需要进一步核到官方主页
+- 状态：已确认论文存在；当前可用官方代码入口是 `refs/codes/FastVideo`
 - 相关性：**高**
 
 这是目前最值得补的候选之一。它的定位非常清楚：不是 training-free patch，而是**让视频扩散模型直接学会在 sparse attention 下工作**。从标题和后续引用关系看，它大概率是视频 DiT 训练型 sparse attention 的代表工作之一。
@@ -98,7 +130,7 @@ tags:
 #### Bidirectional Sparse Attention for Faster Video Diffusion Training
 
 - arXiv: `2509.01085`
-- 状态：已确认论文存在；代码待核
+- 状态：已确认论文存在；当前未检到明确独立官方代码仓库
 - 相关性：**高**
 
 这篇从标题看不是只做推理，而是明确切到 **video diffusion training**。如果内容属实，它补的是当前仓库相对缺的一块：很多视频 sparse attention 论文强调推理加速，但训练阶段 attention 成本同样巨大，尤其是双向 denoising Transformer。
@@ -113,7 +145,7 @@ tags:
 #### SpargeAttention2: Trainable Sparse Attention via Hybrid Top-k+Top-p Masking and Distillation Fine-Tuning
 
 - arXiv: `2602.13515`
-- 状态：已确认论文存在；代码待核
+- 状态：已确认论文存在；当前未检到明确独立官方代码仓库，相关代码基座可先参考 `refs/codes/SpargeAttn`
 - 相关性：**高**
 
 从标题就能看出它是直接承接 `SpargeAttention` 路线的二代工作。最值得注意的是两点：
@@ -127,6 +159,33 @@ tags:
 - 第二阶段：用蒸馏或短程微调，让原模型适应这个 selector。
 
 对视频生成很有现实意义，因为很多工业模型不会从头重训，但可以接受轻量蒸馏。
+
+#### VMoBA: Mixture-of-Block Attention for Video Diffusion Models
+
+- arXiv: `2506.23858`
+- 状态：已确认论文存在；官方代码已拉取到 `refs/codes/VMoBA`
+- 相关性：**高**
+
+VMoBA 明确是为 **video diffusion model training** 设计的 sparse attention。它不是简单固定 block sparse，而是把稀疏结构做成 mixture-of-block attention，并强调：
+
+- layer-wise recurrent block partition
+- global block selection
+- threshold-based block selection
+
+从 README 给出的定位看，它更偏“训练期 FLOPs 压缩 + 长序列视频 token 组织”，这使它和 `Bidirectional Sparse Attention`、`VSA`、`Sparse Forcing` 形成互补关系。
+
+#### BLADE: Block-Sparse Attention Meets Step Distillation for Efficient Video Generation
+
+- arXiv: `2508.10774`
+- 状态：已确认论文存在；官方代码已拉取到 `refs/codes/VIDEO-BLADE`
+- 相关性：**高**
+
+BLADE 不是纯 sparse attention 论文，而是 **block-sparse attention + step distillation** 的联合效率方案。它的重要性在于：
+
+- 稀疏 attention 不再单独优化，而是与采样步数压缩一起联合设计；
+- 目标不只是减少 attention FLOPs，还要把端到端生成延迟整体拉下来。
+
+如果后续从“系统总加速”而不是只从“单层 attention kernel”看问题，BLADE 会很有代表性。
 
 ### 1.2 邻近的图像 DiT / 通用 Diffusion 候选
 
@@ -143,7 +202,7 @@ tags:
 #### SparseDiT: Token Sparsification for Efficient Diffusion Transformer
 
 - arXiv: `2412.06028`
-- 状态：已确认论文存在；代码待核
+- 状态：已确认论文存在；独立官方代码入口仍待进一步确认
 - 相关性：**中**
 
 这篇更偏 token sparsification，而不一定是标准 attention sparsification，但仍应列为候选，因为很多训练型 DiT 加速会把“少算 token”与“少算 attention”合并考虑。
@@ -155,7 +214,7 @@ tags:
 #### Native Sparse Attention: Hardware-Aligned and Natively Trainable Sparse Attention
 
 - arXiv: `2502.11089`
-- 代码：`fla-org/native-sparse-attention`
+- 代码：`fla-org/native-sparse-attention`，已拉取到 `refs/codes/native-sparse-attention`
 - 相关性：**高，但偏 LLM**
 
 这篇在仓库已有代码分析。它很重要，因为它代表的是**训练期就对硬件友好的 sparse attention 结构建模**，不是先发明稀疏模式，再想办法写 kernel。
@@ -197,7 +256,7 @@ tags:
 #### HashAttention: Semantic Sparsity for Faster Inference
 
 - arXiv: `2412.14468`
-- 状态：已确认论文存在；代码待核
+- 状态：已确认论文存在；官方代码已拉取到 `refs/codes/HashAttention-1.0`
 - 相关性：**高**
 
 从标题看，这是最直接命中“hash + sparse attention + faster inference”的方法。它值得优先深挖，因为它很可能不是经典 Reformer 那种 LSH bucket attention，而是更现代的**semantic-aware hashing / retrieval sparsity**。
@@ -211,7 +270,7 @@ tags:
 #### HATA: Trainable and Hardware-Efficient Hash-Aware Top-k Attention for Scalable Large Model Inference
 
 - arXiv: `2506.02572`
-- 状态：已确认论文存在；代码待核
+- 状态：已确认论文存在；官方代码已拉取到 `refs/codes/HATA`
 - 相关性：**极高**
 
 这是本轮检索里最贴近你问题表述的一篇。它的标题几乎就是：
@@ -232,7 +291,7 @@ tags:
 #### MagicPIG: LSH Sampling for Efficient LLM Generation
 
 - arXiv: `2410.16179`
-- 状态：已确认论文存在；代码待核
+- 状态：已确认论文存在；官方代码已拉取到 `refs/codes/MagicPIG`
 - 相关性：**高**
 
 MagicPIG 明确用 `LSH sampling` 做 LLM generation 加速。它不一定是标准 sparse attention paper，但从“哈希快速筛候选”的角度，它非常值得纳入。
