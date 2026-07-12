@@ -259,6 +259,79 @@ BLADE 不是纯 sparse attention 论文，而是 **block-sparse attention + step
 - 状态：已确认论文存在；官方代码已拉取到 `refs/codes/HashAttention-1.0`
 - 相关性：**高**
 
+## 三、标定 / Calibration 路线补充
+
+如果单独看“先离线标定，再在线稀疏执行”这条路线，当前视频生成里可以明确归到一起的有三篇：
+
+- `SVOO`：离线 **per-step / per-layer / per-head sparsity profiling** + 在线 **QK co-clustering**
+- `CalibAtt`：离线 **calibrated sparse attention**，本质也是用少量 calibration prompt 找到更稳的稀疏预算 / 结构
+- `ScalingAttention`：离线发现 **intrinsic sparse attention topology**，再按 head/layer 的 topology 执行稀疏 attention
+
+这三篇都不是训练型 sparse attention，而是 **training-free + calibration-aware** 方法。它们和 `MInference` 的共同点在于：
+
+- 不是直接用统一 sparsity ratio；
+- 先用 calibration 数据估计模型内部哪些 layer/head 更能剪、哪些模式更稳定；
+- 再把标定结果固化成在线运行时的 schedule / topology / budget。
+
+### 3.1 SVOO
+
+- arXiv: `2603.18636`
+- 全称：*Attention Sparsity is Input-Stable: Training-Free Sparse Attention for Video Generation via Offline Sparsity Profiling and Online QK Co-Clustering*
+- 状态：本仓库已做笔记；官方代码已拉取到 `refs/codes/svoo`
+
+SVOO 的标定对象是：
+
+- 每个 `(step, layer, head)` 在覆盖固定 attention mass 时需要保留多少 key；
+- 输出为 per-step/per-layer/per-head 的 sparsity CSV；
+- 在线再配合 QK co-clustering 选择 block pairs。
+
+它和一般 calibration 方法相比更进一步，因为它不是只标定“保留比例”，还把在线 block 组织方式也重写了。
+
+### 3.2 CalibAtt
+
+- arXiv: `2603.05503`
+- 全称：*Accelerating Text-to-Video Generation with Calibrated Sparse Attention*
+- 状态：已确认论文存在；当前未检到显著官方代码仓库
+
+从标题和定位看，CalibAtt 更纯粹地站在 **calibration-aware sparse attention** 路线：
+
+- 核心不是训练模型；
+- 也不一定重写 token clustering；
+- 而是通过少量 calibration 样本估计更稳的稀疏结构或预算，再在线执行。
+
+它很适合和 `MInference / SVOO` 放在一起比较：
+
+- `MInference` 更偏长上下文 LLM head pattern 标定；
+- `SVOO` 更偏视频 DiT 的 layer/head 稀疏度与 co-clustering；
+- `CalibAtt` 则更像视频生成里的“直接校准 sparse attention 行为”。
+
+### 3.3 ScalingAttention
+
+- arXiv: `2606.23019`
+- 全称：*ScalingAttention: Discovering Intrinsic Sparse Attention Topology for Video Diffusion Transformers*
+- 状态：已确认论文存在；当前未检到显著官方代码仓库
+
+这篇的关键词不是 ratio calibration，而是 **intrinsic sparse attention topology**。也就是说，它标定的对象更像：
+
+- 哪些稀疏拓扑在某层/某头天然更稳定；
+- 模型内部真实 attention map 的结构拓扑是什么；
+- 在线执行时应遵循怎样的稀疏连边形态。
+
+如果把这条路线和 `SVOO` 对比：
+
+- `SVOO` 更偏“预算 + co-clustering”；
+- `ScalingAttention` 更偏“拓扑发现 + topology-aware 稀疏执行”。
+
+### 3.4 这一组方法的关系
+
+这三篇可以看成视频 sparse attention 里的 **calibration family**：
+
+- `SVOO`：标定 **稀疏度预算**
+- `CalibAtt`：标定 **稀疏 attention 行为 / 预算**
+- `ScalingAttention`：标定 **注意力拓扑**
+
+它们都和训练型方法不同。训练型方法靠优化权重去适应稀疏结构；这组方法则是假设 dense 模型不动，只通过离线 profiling / calibration 找出更合理的在线 sparse policy。
+
 从标题看，这是最直接命中“hash + sparse attention + faster inference”的方法。它值得优先深挖，因为它很可能不是经典 Reformer 那种 LSH bucket attention，而是更现代的**semantic-aware hashing / retrieval sparsity**。
 
 如果后续核到代码，需要重点看：
