@@ -140,6 +140,7 @@ nav:
     - Sparse Forcing: paper_reading/sparse_forcing.md
     - AdaCluster: paper_reading/adacluster.md
     - PASA: paper_reading/pasa.md
+    - 训练型 Sparse Attention 与哈希 Top-K 调研: paper_reading/sparse_attention_training_hash_survey.md
     - Radial Attention: paper_reading/radial_attention.md
     - PromptEnhancer: paper_reading/promptenhancer.md
     - APE: paper_reading/ape.md

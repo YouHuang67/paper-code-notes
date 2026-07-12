@@ -46,6 +46,23 @@
     "organizations": "Beijing University of Posts and Telecommunications, Nanyang Technological University"
   },
   {
+    "title": "训练型 Sparse Attention 与哈希 Top-K 调研",
+    "path": "paper_reading/sparse_attention_training_hash_survey.md",
+    "type": "论文阅读",
+    "tags": [
+      "Sparse Attention",
+      "Video Generation",
+      "Diffusion Model",
+      "LLM Inference",
+      "KV Cache"
+    ],
+    "summary": "初步筛查训练型视频/DiT sparse attention 与 hash-aware Top-K attention 候选，区分视频生成主线、LLM 迁移参考与当前开源核验状态",
+    "category": "Sparse Attention",
+    "date_arxiv": "2026-07",
+    "date_added": "2026-07-12",
+    "organizations": "Survey / repository note"
+  },
+  {
     "title": "HySparse",
     "path": "paper_reading/hysparse.md",
     "type": "论文阅读",
