@@ -24,7 +24,7 @@ ScalingAttention 是一篇很典型的“标定型 sparse attention”论文，�
 2. **FAST**：Fidelity-Aware Sensitivity Tuning，根据层/步的 fidelity 需求动态决定每个 head 的稀疏密度；
 3. **crm kernel**：hardware-aligned bit-wise block-sparse kernel，把静态拓扑高效地映射到 GPU 上。
 
-和 `CalibAtt` 相比，ScalingAttention 更强调“拓扑”和“稀疏度”应当解耦：
+ScalingAttention 更强调“拓扑”和“稀疏度”应当解耦：
 
 - **拓扑问题**：哪里可以看；
 - **敏感度问题**：到底能剪到多 sparse。
@@ -244,7 +244,7 @@ $$
 
 - 只要高分辨率块与低分辨率活跃区有重叠，就不会被错误地裁掉。
 
-这和 CalibAtt 的“每个推理配置都重新 calibration”相比更有体系感。它把低分辨率 profiling 变成高分辨率部署的代理，从而降低一次性离线成本。
+它把低分辨率 profiling 变成高分辨率部署的代理，从而降低一次性离线成本。
 
 ## crm kernel：bit-wise block-sparse attention
 
@@ -372,7 +372,7 @@ while word != 0:
 
 ### Kernel 效率
 
-论文专门对 crm kernel 做了与 FlashAttention-3 的对比，结论是：
+论文专门对 crm kernel 做了单独 benchmark，结论是：
 
 1. **0% sparsity 的 dense setting 下，overhead 小于 10%**
 2. **随着 sparsity 上升，理论 FLOPs 降幅可以稳定转成 wall-clock speedup**
@@ -388,30 +388,6 @@ while word != 0:
 - FAST 在固定 WEST topology 下，甚至只用一个 profiling prompt 也能得到与 aggregate reference 很接近的结果，IoU 可达 `94%+`。
 
 这进一步支持它的核心主张：拓扑是稳定结构，敏感度调节只需轻量 profiling。
-
-## 与 SVOO / CalibAtt 的关系
-
-### 相比 SVOO
-
-`SVOO` 的离线部分主要是 **budget profiling**，在线仍然需要 co-clustering 和 dynamic map。ScalingAttention 更强调：
-
-- topology 也应该尽量静态化；
-- 稀疏度控制再在 topology 内进行。
-
-因此它比 SVOO 更“静态先验驱动”。
-
-### 相比 CalibAtt
-
-`CalibAtt` 和 ScalingAttention 都属于 calibration family，但有两个关键区别：
-
-1. **表示不同**
-   - CalibAtt 直接产出 final binary masks；
-   - WEST 产出 threshold map，支持按任意 density 实例化。
-2. **预算控制更系统**
-   - CalibAtt 主要靠 timestep energy threshold `\epsilon(t)` 与 agreement threshold `\rho`；
-   - FAST 显式用 fidelity metric 建立 layer/timestep 的 sensitivity model。
-
-所以可以把 ScalingAttention 看成 CalibAtt 的一个更理论化、层次更清晰的泛化版本。
 
 ## 局限
 

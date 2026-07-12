@@ -24,7 +24,7 @@ CalibAtt 是一个面向视频扩散 Transformer 的 **training-free sparse atte
 1. **离线标定 block 稀疏结构**：为每个 `(timestep, layer, head)` 生成一个数据无关的块掩码；
 2. **离线标定空间重复 head**：为重复性很强的 head 只算少量 anchor query rows，再把结果广播给邻近行。
 
-和 `SVOO`、`SVG2` 这类在线聚类/在线路由方法相比，CalibAtt 更彻底地把决策前移到离线阶段。在线阶段它不做 query-dependent block search，而是直接读取预编译的 skip list 和重复头字典，把 attention 送进定制 CUDA kernel。论文报告在 Wan 2.1 14B、Mochi 1、LightX2V 上达到最高 **1.58x 端到端加速**，同时保持 VBench 质量和文本对齐。
+在线阶段它不做 query-dependent block search，而是直接读取预编译的 skip list 和重复头字典，把 attention 送进定制 CUDA kernel。论文报告在 Wan 2.1 14B、Mochi 1、LightX2V 上达到最高 **1.58x 端到端加速**，同时保持 VBench 质量和文本对齐。
 
 ## 核心动机
 
@@ -312,7 +312,7 @@ CalibAtt 的一个现实问题是 mask storage。论文明确给出：
 CalibAtt 的加速不是来自单一来源，而是三部分叠加：
 
 1. **省掉在线 selector**  
-   与 SVG2/SVOO 这类在线聚类或在线块选择相比，它没有 runtime route construction。
+   推理阶段没有额外的 runtime route construction。
 2. **skip list 让 block-sparse 执行更规整**  
    每个 query block-row 的 active KV blocks 已压成连续区间，避免 metadata 开销太大。
 3. **对重复头直接减少 query 数**  
@@ -353,39 +353,6 @@ CalibAtt 的加速不是来自单一来源，而是三部分叠加：
 - 对 Wan2.1 14B 720p，calibration 成本可从约 `89.6` H100 GPU-hours 降到 `13.7` H100 GPU-hours。
 
 这说明它的 cross-prompt topology 稳定性确实很强，否则不可能用这么少的校准样本把静态 mask 编译出来。
-
-## 和 SVOO / SVG2 / ScalingAttention 的关系
-
-### 相比 SVG2
-
-`SVG2` 更偏在线：
-
-- 在线聚类；
-- 在线 centroid attention；
-- 在线选择 active cluster pairs。
-
-CalibAtt 则把“该看哪些块”的主要信息离线编译掉，只保留在线纯执行。
-
-### 相比 SVOO
-
-`SVOO` 的离线 profile 只负责 **预算**，真正的块划分和路由仍要在线通过 co-clustering 产生。CalibAtt 更强地静态化了结构：
-
-- `SVOO`：离线 schedule + 在线 co-clustering + 在线 dyn map；
-- `CalibAtt`：离线 block mask + 离线 repetition dictionary + 在线 skip-list execution。
-
-因此：
-
-- `SVOO` 更适合追求更高结构适应性；
-- `CalibAtt` 更适合追求更低在线 overhead。
-
-### 相比 ScalingAttention
-
-两者都属于“标定型 / calibration-driven” sparse attention，但重心不同：
-
-- `CalibAtt` 标定的是 **block 是否被保留**，并额外标定 spatial repetition；
-- `ScalingAttention` 标定的是更一般的 **intrinsic sparse topology + head-wise density control**。
-
-可以把 CalibAtt 看成更直接、更工程化的“基于 calibration 的 block mask 编译器”，而 ScalingAttention 则把这件事上升成“拓扑发现 + 敏感度控制”的更完整框架。
 
 ## 局限
 
