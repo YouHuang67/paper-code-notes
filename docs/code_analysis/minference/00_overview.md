@@ -3,18 +3,344 @@
 对应论文：[MInference 1.0: Accelerating Pre-filling for Long-Context LLMs via Dynamic Sparse Attention](../../paper_reading/minference.md)
 
 官方代码位于 `refs/codes/MInference`，当前解析提交：
-`a4eb395f949ea39e871f9bc586d683390692c6be`。MInference 是长上下文 LLM prefill 加速方法，不是视频生成 DiT 方法；它在本仓库中适合作为 training-free sparse attention 的模式发现、标定流程和稀疏 kernel 参考。
+`a4eb395f949ea39e871f9bc586d683390692c6be`。MInference 是长上下文 LLM prefill 加速方法，不是视频生成 DiT 方法；它在本仓库中作为 training-free sparse attention 的模式发现、标定流程和稀疏 kernel 工程参考。
 
-## 实现结构
+## 先明确它解决的工程问题
 
-MInference 的工程结构可以分成四层：
+LLM 长上下文 prefill 的瓶颈是一次性计算整段 prompt 的 causal attention：
 
-1. 配置层：`MInferenceConfig` 解析 `attn_type`、`kv_type`、`config_path`、`is_search`、`starting_layer`，并把模型名映射到预先搜索好的 best pattern JSON。
-2. Patch 层：`MInference(...)` / `new_patch(...)` 替换 HuggingFace LLaMA/GLM attention forward，把 prefill 和 decoding 分流。
-3. Pattern 层：`minference_prefill_forward` 对每个 layer/head 读取或搜索最佳稀疏模式，支持 `stream_llm`、`vertical_and_slash`、`block_sparse`。
-4. Kernel 层：`vertical_slash_sparse_attention` 和 `block_sparse_attention` 把动态索引转成 GPU-friendly 稀疏格式，再调用 SGLang/vLLM sparse kernel 或本地 Triton fallback。
+$$
+O = \operatorname{Softmax}\left(\frac{QK^T}{\sqrt{d}} + M_{causal}\right)V
+$$
 
-源码交叉引用：
+如果上下文长度是 `T`，计算和中间 attention 访问都随 `T^2` 增长。MInference 的目标不是训练一个新模型，也不是写一个固定稀疏 mask，而是：
+
+1. 离线判断每个 layer/head 更适合哪种稀疏结构；
+2. 推理时根据当前输入动态生成具体 token index；
+3. 把这些 index 转成 CUDA/Triton kernel 能高效消费的 metadata；
+4. 用稀疏 attention kernel 只计算被保留的位置。
+
+所以它的核心工程链路是：
+
+```text
+offline search
+  -> best_pattern JSON
+    -> patch HuggingFace attention
+      -> prefill per-layer/per-head dispatch
+        -> dynamic index construction
+          -> metadata conversion
+            -> sparse attention kernel
+```
+
+这条链路缺一环都不完整：只有 pattern 没有 index 不可执行，只有 index 没有 kernel 不会快，只有 kernel 没有标定会掉质量。
+
+## 实现分层
+
+MInference 的代码可以分成五层，而不是简单理解成一个 attention 函数：
+
+| 层级 | 代表代码 | 作用 |
+|---|---|---|
+| 配置层 | `MInferenceConfig` | 解析 `attn_type/kv_type/config_path/is_search/starting_layer` |
+| Patch 层 | `new_patch`, `attn_forward` | 替换模型 attention forward，并把 prefill/decode 分流 |
+| 标定层 | `search_pattern`, `search_pattern_v2` | 为每个 layer/head 选 pattern 和预算 |
+| 索引层 | `vertical_and_slash_kernel`, `_build_block_index` | 对当前输入生成 sparse token/block index |
+| Kernel 层 | CUDA converter, Triton fallback, SGLang/vLLM kernel | 把 index 转成 GPU metadata 并执行 sparse attention |
+
+源码交叉引用集中放在附录 A，正文按数据流解释。
+
+## 配置与 patch：把算法接进模型
+
+`MInferenceConfig` 做两件事：
+
+1. 决定 attention 类型：`minference`、`dense`、`a_shape`、`tri_shape`、`flexprefill` 等。
+2. 决定 KV cache/decode 类型：`dense`、`quest`、`snapkv`、`kivi` 等。
+
+这说明 MInference 工程上把 **prefill sparse attention** 和 **decode KV cache 策略** 分开。论文主线是 prefill；decode 只是可以组合其他方法。
+
+`new_patch` 从模型中拿到 attention module 类型和 decoder layer 类型，然后把 attention forward 替换为 `attn_forward` 的 partial：
+
+```text
+model attention.forward
+  -> attn_forward(
+       prefill_forward=prefill_forwards[attn_type],
+       decoding_forward=decoding_forwards[kv_type],
+       attn_forward_config=...
+     )
+```
+
+`attn_forward` 内部仍然先做标准 transformer attention 前处理：
+
+1. Q/K/V projection；
+2. RoPE；
+3. KV cache update；
+4. GQA/MQA 的 `repeat_kv`；
+5. 判断当前是 prefill 还是 decode。
+
+判断逻辑是：
+
+```python
+if not use_cache or q_len == past_key_value.get_seq_length(layer_idx):
+    prefill_forward(...)
+else:
+    decoding_forward(...)
+```
+
+这保证 MInference 不改模型权重，也不改 attention 前后的 hidden state contract。它只替换 prefill 阶段的 attention kernel。
+
+## best pattern：离线标定输出到底是什么
+
+MInference 的离线搜索结果是一个 per-layer/per-head 的 JSON。每个 head 的条目近似为：
+
+```json
+["vertical_and_slash", 100, 750, 0.98]
+```
+
+四个字段分别表示：
+
+1. pattern 类型：`stream_llm`、`vertical_and_slash` 或 `block_sparse`；
+2. vertical/global 预算；
+3. slash/local/block 预算；
+4. 搜索阶段得到的质量分数或误差分数。
+
+线上执行时，`minference_prefill_kernel` 读取：
+
+```text
+config["best_pattern"][layer_idx][head_id]
+```
+
+然后选择对应 kernel。也就是说，离线标定只决定“这个 head 用什么稀疏形状、保留多少条线或多少块”；它不保存具体 token id。具体 token id 必须在当前 prompt 上重新算。
+
+## 标定流程：为什么叫 kernel-aware
+
+代码里有两套搜索：
+
+- `search_pattern`: 用 full attention 权重召回作为 proxy；
+- `search_pattern_v2`: 用 dense FlashAttention output 作 reference，比对 sparse output 的误差。
+
+候选空间不是任意 mask，而是 kernel 能执行得好的形状：
+
+```text
+stream_llm:        (n_init, n_local)
+vertical_slash:    (vertical_size, slash_size)
+block_sparse:      top_k_blocks
+```
+
+这就是 kernel-aware 的含义。一个数学上稀疏率很低的 mask，如果随机分布在注意力矩阵上，kernel 只能做大量 gather，未必比 dense 快。MInference 只搜索 A-shape、Vertical-Slash、Block-Sparse 这类可被压缩成连续范围或规则 block 的结构。
+
+标定命令在 `experiments/infinite_bench` 下运行，典型流程是：
+
+```text
+load model
+enable is_search
+for selected calibration examples:
+    for layer:
+        for head:
+            run candidate sparse patterns
+            compare recall/output error
+            write best pattern to JSON
+```
+
+标定不是训练：权重不变，没有梯度更新。但它依赖模型、任务样本、上下文长度和 kernel 实现。换模型或换部署 kernel 后，best pattern 未必仍然最优。
+
+## Prefill 执行：逐 head dispatch 的意义和代价
+
+`minference_prefill_forward` 的输入是标准 attention 中间态：
+
+```text
+query_states: [B, H, T, D]
+key_states:   [B, H, T, D]
+value_states: [B, H, T, D]
+```
+
+它逐 head 循环：
+
+```text
+for head in heads:
+    q = query_states[:, head:head+1]
+    k = key_states[:, head:head+1]
+    v = value_states[:, head:head+1]
+    output[:, head] = minference_prefill_kernel(q,k,v,head,layer)
+```
+
+这个设计的好处是每个 head 可以使用不同 pattern。代价是 Python 层循环和很多小 kernel launch，在短上下文下会吃掉收益。README 的 latency 表中 1K/10K context 下 MInference 不一定比 FlashAttention 快，原因就在这里：稀疏计算省下的 `T^2` 还不够抵消 index building 和 dispatch overhead。
+
+在长上下文下，attention 主计算占比迅速上升，逐 head overhead 被摊薄，MInference 才进入优势区间。
+
+## Vertical-Slash：从注意力模式到 token index
+
+Vertical-Slash 是 MInference 最重要的 pattern。它把 attention map 拆成两类结构：
+
+- **vertical line**：很多 query 共同关注的 key column，常对应开头 token、分隔符、检索事实；
+- **slash line**：沿对角线或固定相对位移的局部依赖，常对应近邻上下文。
+
+在线构造 index 时，并不计算完整 `T x T` attention。代码只取最后 `last_q=min(64,T)` 个 query：
+
+```text
+Q_last = Q[:, :, -last_q:, :]
+score = Q_last @ K^T / sqrt(D)
+score = causal_mask(score)
+prob = softmax(score)
+```
+
+然后：
+
+```text
+vertical_score[j] = sum_i prob[i, j]
+slash_score[delta] = sum_i prob[i, i - delta]
+```
+
+`vertical_topk` 选出全局 key column，`slash` 选出若干相对位移。只用最后 64 个 query 是一个非常实际的折中：
+
+- index 构造成本是 `O(64*T*D)`，不是 `O(T^2*D)`；
+- 最后的 query 往往最能反映当前 prompt 尾部对历史信息的需求；
+- 对 causal LLM prefill，后续更长位置的注意力结构通常和尾部 query 更接近。
+
+这个假设不是数学恒真，所以 MInference 需要离线 search 和 downstream 验证来兜底。
+
+## Index converter：为什么还要 CUDA 预处理
+
+Vertical-Slash 的 `vertical_topk` 和 `slash` 还不是 sparse kernel 最想要的格式。主 kernel 不应该一边计算 attention 一边解释“这条 slash line 对当前 row block 覆盖哪些 KV token”，否则会把整数逻辑塞进热路径。
+
+因此 `convert_vertical_slash_indexes` 先把 line pattern 转成四个 metadata 张量：
+
+| metadata | 形状 | 含义 |
+|---|---:|---|
+| `block_count` | `[B,H,N_ROWS]` | 每个 query row block 有多少段连续 KV block |
+| `block_offset` | `[B,H,N_ROWS,NNZ_S]` | 每段连续 slash block 的起始 token/block offset |
+| `column_count` | `[B,H,N_ROWS]` | 每个 query row block 有多少个 vertical column |
+| `column_index` | `[B,H,N_ROWS,NNZ_V]` | 需要 gather 的 vertical key column |
+
+CUDA converter 的 grid：
+
+```cpp
+dimBlock(64)
+dimGrid(N_HEADS, BATCH_SIZE, ceil(N_ROWS / 64))
+```
+
+一个 CUDA thread 处理一个 64-row query block。它做三件事：
+
+1. 根据当前 row block 的 `[start_m,end_m)` 把 slash offset 转成 causal 范围；
+2. 将相邻或重叠的 slash 范围合并成连续 64-token block；
+3. 扫描 vertical index，如果某个 vertical column 已经落入 slash range，则不写入 `column_index`，避免重复计算。
+
+这个预处理把复杂 pattern 解释从 attention 热路径中移出去。它本身主要是整数逻辑，计算量受 `NNZ_S + NNZ_V` 限制；真正决定吞吐的是后续 sparse attention 中每个 row block 的非零 block/column 数。
+
+## Mixed sparse Triton kernel：主计算怎么跑
+
+如果安装了 SGLang 或 vLLM，代码优先调用它们的 `sparse_attn_func`。没有这些依赖时，走本地 Triton fallback `_triton_mixed_sparse_attn_fwd_kernel`。
+
+fallback 的 grid 是：
+
+```python
+grid = (ceil(N_CTX / BLOCK_M), B * H, 1)
+```
+
+一个 Triton program 负责一个 `(batch-head, query row block)`。默认 `BLOCK_M=64`、`BLOCK_N=64`，内部状态和 FlashAttention 类似：
+
+```text
+q     = load Q row block
+m_i   = -inf
+l_i   = 0
+acc   = 0
+```
+
+然后按两类稀疏项顺序累积：
+
+### 1. Slash ranges：连续 block 路径
+
+```text
+for each block_offset:
+    cols = start_n + [0..BLOCK_N)
+    K,V = contiguous load
+    qk = q @ K
+    apply causal mask
+    online_softmax_update
+```
+
+这是最接近 FlashAttention 的路径：K/V 访问连续，tile 规则，coalescing 好。Slash line 被 converter 转成 block range，就是为了让这部分尽量像 block sparse attention 而不是离散 gather。
+
+### 2. Vertical columns：离散 gather 路径
+
+```text
+for columns in column_index chunks:
+    cols = gather column ids
+    K,V = gather load
+    qk = q @ K
+    online_softmax_update
+```
+
+Vertical columns 表达全局重要 token，但访存更离散。MInference 用预算限制 `NNZ_V`，并把已经被 slash range 覆盖的 vertical column 去掉，降低 gather 成本。
+
+### online softmax 保证语义正确
+
+两类稀疏项不是分别 softmax 后相加。kernel 对 slash 和 vertical 共享 `m_i/l_i/acc`，因此最终输出是：
+
+$$
+\tilde{O}_i =
+\operatorname{Softmax}
+\left(
+Q_i K_{\Omega_i}^{T}
+\right)V_{\Omega_i}
+$$
+
+其中 `\Omega_i` 是 slash ranges 与 vertical columns 的并集。这保持了 sparse attention 的 softmax 语义。
+
+## Block-Sparse 路径：规则但表达力有限
+
+Block-Sparse 路径先构造 block index：
+
+```text
+Q_pool = mean(Q over 64-token blocks)
+K_pool = mean(K over 64-token blocks)
+score_block = Q_pool @ K_pool^T
+block_index = topk(score_block)
+```
+
+主 Triton kernel 同样是一个 program 处理一个 query block。它遍历 `block_index[start_m]` 中的 KV block，每个非零块都是完整 64x64 tile。
+
+这条路径的硬件形态很好：规则 block、连续 K/V、少 gather。但论文消融中 only block-sparse 平均分只有 18.7，说明 block mean pooling 容易把细粒度检索信号抹掉。换句话说，Block-Sparse 的瓶颈不是 CUDA 设计，而是 pattern 表达能力。
+
+## 负载均衡与 GPU 利用率
+
+MInference 的 GPU 利用率取决于四个层面。
+
+### 1. 搜索空间约束
+
+只允许 kernel-friendly pattern，避免随机稀疏 mask。A-shape 是固定连续窗口，Vertical-Slash 可拆成连续 range + 少量 columns，Block-Sparse 是 64x64 tile。
+
+### 2. metadata 预处理
+
+CUDA converter 预先合并 slash range、去重 vertical column，让主 attention kernel 只看 `block_offset/column_index`，不在热路径解释复杂稀疏结构。
+
+### 3. 每个 program 的工作量上界
+
+预算来自 best pattern，例如 vertical/slash 数量固定。这样每个 head 的最大非零数有界，不会无限制增长。
+
+### 4. 仍然存在的负载不均
+
+Vertical-Slash fallback 里，每个 row block 的 `num_blks/num_cols` 仍可能不同。某些 row/head 需要更多 slash range 或 vertical columns，就会让对应 program 跑更久。SGLang/vLLM 的优化 sparse kernel 通常比本地 fallback 更能处理这些调度问题，所以 README 推荐安装它们，且 latency 表里 `MInference w/ SGLang` 明显更快。
+
+## 从实现解释实验结果
+
+MInference 的实验现象和实现链路是对应的：
+
+- **短上下文不占优**：1K/10K 下 index building、逐 head dispatch、kernel launch overhead 比节省的 attention 计算更显著。
+- **长上下文加速扩大**：当 `T` 到 100K、300K、1M，dense attention 的 `T^2` 成本成为主项，稀疏计算收益迅速扩大。
+- **SGLang 版本更快**：同样的 sparse metadata，优化 kernel 的调度和访存比本地 Triton fallback 更好。
+- **only vertical-slash 接近完整方法但仍落后**：Vertical-Slash 捕获了大多数长上下文结构，但有些 head 更适合 A-shape 或 Block-Sparse；per-head 混合是质量来源。
+- **only block-sparse 掉分严重**：block pooling 虽硬件友好，但对 KV retrieval 等细粒度任务表达不足。
+
+这也是 MInference 对后续视频/DiT sparse attention 的启示：模式设计必须同时满足“能表达模型真实 attention 结构”和“能被 GPU kernel 高效执行”。
+
+## 工程限制
+
+- MInference 主线是 LLM prefill，不处理视频 DiT 的空间/时间 token 拓扑。
+- best pattern 依赖模型和校准数据，跨模型迁移需要重新验证。
+- 逐 head Python dispatch 简单但有 overhead，短上下文不划算。
+- fallback Triton kernel 对不均匀 sparse list 的负载均衡有限，部署应优先使用 SGLang/vLLM sparse kernel。
+- Vertical-Slash 的在线估计只看最后 64 个 query，极端输入中可能漏掉早期 query 特有的全局依赖。
+
+## 附录 A：源码交叉引用
 
 - 配置入口：[minference_configuration.py#L7-L110](https://github.com/microsoft/MInference/blob/a4eb395f949ea39e871f9bc586d683390692c6be/minference/minference_configuration.py#L7-L110)
 - patch 到通用 attention forward：[patch.py#L850-L892](https://github.com/microsoft/MInference/blob/a4eb395f949ea39e871f9bc586d683390692c6be/minference/patch.py#L850-L892)
@@ -25,150 +351,50 @@ MInference 的工程结构可以分成四层：
 - CUDA index converter：[vertical_slash_index.cu#L27-L167](https://github.com/microsoft/MInference/blob/a4eb395f949ea39e871f9bc586d683390692c6be/csrc/vertical_slash_index.cu#L27-L167)
 - Block-Sparse Triton kernel：[block_sparse_flash_attention.py#L29-L186](https://github.com/microsoft/MInference/blob/a4eb395f949ea39e871f9bc586d683390692c6be/minference/ops/block_sparse_flash_attention.py#L29-L186)
 
-## Patch 与 prefill 执行链路
+## 附录 B：Vertical-Slash 执行伪代码
 
-`new_patch` 从模型中取 `Attention`、`DecoderLayer` 类型，把每个 attention module 的 `forward` 替换成 `attn_forward` 的 partial。`prefill_forward` 由 `prefill_forwards[config.attn_type]` 决定；当 `attn_type="minference"` 时，就是 `minference_prefill_forward`。
+```text
+for layer:
+    for head:
+        ty, vertical_size, slash_size = best_pattern[layer][head]
 
-`attn_forward` 内部先做标准 Q/K/V 投影、RoPE、KV cache 更新和 GQA repeat。随后用一个条件判断 prefill 或 decode：
+        if ty == "vertical_and_slash":
+            Q_last = Q[-64:]
+            P = softmax(Q_last @ K.T / sqrt(D), causal=True)
+            vertical_topk = topk(sum_over_queries(P), vertical_size)
+            slash_topk = topk(sum_over_diagonals(P), slash_size)
 
-```python
-if not use_cache or q_len == past_key_value.get_seq_length(layer_idx):
-    prefill_forward(...)
-else:
-    decoding_forward(...)
+            block_count, block_offset, column_count, column_index =
+                convert_vertical_slash_indexes(vertical_topk, slash_topk)
+
+            O_head = sparse_attention(
+                Q, K, V,
+                block_count, block_offset,
+                column_count, column_index
+            )
 ```
 
-因此 MInference 的核心加速目标是 prefill，即长 prompt 一次性进入模型时的 `QK^T` 计算。decode 阶段可以叠加 SnapKV、Quest、RetrAttn、KIVI 等 KV cache 方法，但这不是 MInference 论文主线。
+## 附录 C：Mixed sparse kernel 伪代码
 
-## 离线 kernel-aware pattern search
+```text
+program(row_block, batch_head):
+    q = load Q[row_block]
+    m = -inf
+    l = 0
+    acc = 0
 
-MInference 的标定不是训练权重，而是为每个 layer/head 选择最适合的稀疏模式和预算。代码有两套搜索函数：
+    for each slash block range:
+        cols = contiguous 64-token block
+        k, v = load contiguous K/V
+        qk = q @ k
+        qk = apply causal mask
+        m, l, acc = online_softmax_update(m, l, acc, qk, v)
 
-- `search_pattern`: 用注意力权重召回作为 proxy；
-- `search_pattern_v2`: 直接比较 sparse output 与 dense FlashAttention output 的差异。
+    for each vertical column chunk:
+        cols = gather column_index
+        k, v = gather K/V
+        qk = q @ k
+        m, l, acc = online_softmax_update(m, l, acc, qk, v)
 
-候选模式包括：
-
-- A-shape / StreamingLLM：固定初始全局 token + 局部窗口；
-- Vertical-Slash：保留若干 vertical lines 和 diagonal/slash lines；
-- Block-Sparse：按 64 或 32 token block 做 top-k。
-
-论文中的 kernel-aware search space 不是单纯指定“稀疏率”，而是指定真实 kernel 能高效执行的形状。例如 A-shape 是 `(1024,4096)`，Vertical-Slash 是若干 `(vertical_count, slash_count)`，Block-Sparse 是 top-100 block。代码当前候选略有版本差异，例如 `search_pattern_v2` 中 Vertical-Slash 包含 `(30,800),(100,800),(100,750),(500,700),(3500,100),(1000,4096)`。
-
-搜索结果写成 JSON，结构近似：
-
-```json
-[
-  {
-    "0": ["vertical_and_slash", 100, 750, 0.98],
-    "1": ["block_sparse", 10, 1, 0.95]
-  }
-]
+    store acc / l
 ```
-
-线上执行时，`minference_prefill_kernel` 用 `config["best_pattern"][layer_idx][head_id]` 取出模式和预算；如果没有找到，则默认回退到 `("vertical_and_slash", 1000, 6096, 1)`。
-
-## Vertical-Slash 在线索引构造
-
-Vertical-Slash 是 MInference 最重要的模式。它的假设是长上下文 LLM attention 里常见两类结构：
-
-- vertical line：很多 query 都关注的全局 key，例如文档开头、特殊分隔符、重要事实 token；
-- slash line：沿对角线的局部/近邻依赖，表示 query 主要看前面固定偏移范围。
-
-在线执行并不直接复用离线 token 索引，而是只复用“这个 head 适合 Vertical-Slash，以及保留多少条 line”。实际索引由当前输入动态生成：
-
-1. 取最后 `last_q=min(64,q_len)` 个 query；
-2. 计算 `Q_last K^T / sqrt(d)`；
-3. 对最后 64 个 query 内部加 causal mask；
-4. softmax 后沿 query 维求和得到 vertical 重要性；
-5. 用对角线求和 `sum_all_diagonal_matrix` 得到 slash/diagonal 重要性；
-6. top-k 得到 `vertical_topk` 和 `slash`，传给 sparse attention kernel。
-
-这一步的计算量是 `O(64 * T * D)`，相对完整 prefill 的 `O(T^2 * D)` 很小；但在短上下文下 overhead 会明显，所以 README 的 latency 表里 1K/10K 时 MInference 不一定比 FlashAttention-2 快。
-
-## CUDA index converter：把 line pattern 变成 kernel 可执行格式
-
-`vertical_slash_sparse_attention` 先对 `v_idx` 升序、`s_idx` 降序排序，然后调用 `convert_vertical_slash_indexes`。本地 CUDA converter 输出四个张量：
-
-- `block_count[B,H,N_ROWS]`: 每个 query row block 有多少个连续 slash block；
-- `block_offset[B,H,N_ROWS,NNZ_S]`: slash range 拆成 64-token KV block 后的起点；
-- `column_count[B,H,N_ROWS]`: 每个 query row block 有多少个 vertical column；
-- `column_index[B,H,N_ROWS,NNZ_V]`: 不在 slash range 内的 vertical token id。
-
-CUDA grid 是：
-
-```cpp
-dimBlock(64)
-dimGrid(N_HEADS, BATCH_SIZE, ceil(N_ROWS / 64))
-```
-
-一个 CUDA thread 负责一个 64-row query block。它把 diagonal/slash 范围转成连续 block range，同时扫描 vertical indices；如果 vertical column 已经落在 slash range 内，就不写入 `column_index`，避免后续 sparse attention 重复计算。
-
-这个 converter 的计算很轻，主要是整数索引整理。负载均衡上它不是重计算 kernel：每个 thread 的循环次数受 `NNZ_S + NNZ_V` 上界约束，且候选预算由离线 search 固定。真正影响吞吐的是后面的 sparse attention 对每个 row block 的非零 block/column 数是否均衡。
-
-## Mixed sparse Triton kernel
-
-如果安装了 SGLang 或 vLLM，代码优先调用它们的 `sparse_attn_func`；否则使用本地 Triton fallback `_triton_mixed_sparse_attn_fwd_kernel`。
-
-fallback grid：
-
-```python
-grid = (ceil(N_CTX / BLOCK_M), B * H, 1)
-```
-
-一个 Triton program 处理一个 `(batch-head, query row block)`，默认 `BLOCK_M=64`、`BLOCK_N=64`。内部保持 `q`、`m_i`、`l_i`、`acc`，用 online softmax 顺序累积两类稀疏项：
-
-1. slash ranges：`for block_index in range(num_blks)`，从 `block_offset` 取连续 64-token KV block，K/V load 连续、coalescing 好，并应用 causal mask；
-2. vertical columns：`for start_n in range(0, num_cols, BLOCK_N)`，从 `column_index` gather 任意 key column，适合表达全局关键 token，但内存访问比 slash range 更离散。
-
-这种“连续 range + 离散 column”的格式是 Vertical-Slash 的硬件核心。Slash line 被转成 64-token block range 后，可以像 block sparse FlashAttention 一样做规则 tile GEMM；vertical line 保留为列 gather，虽然访存不完全连续，但数量受 `vertical_size` 限制。
-
-负载均衡上，Triton fallback 每个 row block 的 `num_blks/num_cols` 可变，尾部 CTA 可能因为某些 head/row 有更多 slash range 或 vertical columns 而拖慢。MInference 通过两点缓解：
-
-- 离线 search 选择的是 kernel-aware 预算，不让稀疏形状只在数学稀疏率上漂亮却在 kernel 中碎片化；
-- 优先使用 SGLang/vLLM 的稀疏内核，它们对 block metadata 和调度有更成熟的优化；README 也显示 `MInference w/ SGLang` 在长上下文下明显更快。
-
-## Block-Sparse kernel
-
-Block-Sparse 路径先在 Python 侧构造 block index：
-
-1. 把 Q/K padding 到 64 的倍数；
-2. 对每个 64-token block 做 mean pooling；
-3. 计算 block-level `Q_pool K_pool^T`；
-4. causal mask 后 top-k，得到每个 query block 要看的 KV block id。
-
-Triton kernel 同样使用：
-
-```python
-grid = (ceil(q_len / 64), B * H, 1)
-```
-
-每个 program 对一个 query block 遍历 `block_index[start_m]`，每个非零项是完整 64x64 dense attention tile。由于 `block_count = min((start_m + 1) * 64 / 64, MAX_BLOCKS_PRE_ROW)`，早期行天然只能看更少历史块，后期行达到 `MAX_BLOCKS_PRE_ROW` 上限。相较 Vertical-Slash，Block-Sparse 访存更规则，但如果 top-k block 捕获不到长程检索 token，质量会掉得更明显；论文 ablation 里 only block-sparse 的 InfiniteBench 平均分远低于完整 MInference。
-
-## GPU 利用率设计要点
-
-MInference 的 GPU 利用率取决于三个工程选择：
-
-1. 稀疏形状和 kernel 绑定：离线搜索的不是抽象 mask，而是 A-shape、Vertical-Slash、Block-Sparse 这些 kernel 能高效表示的模式。
-2. 动态索引构造轻量化：只用最后 64 个 query 估计全局/对角线结构，避免在线构造 mask 本身接近 `T^2`。
-3. 稀疏 metadata 分离：把 slash 转成 `block_offset`，把 vertical 转成 `column_index`，让主 attention kernel 不需要在循环里解释复杂 pattern。
-
-剩余风险也很明确：如果某些 head 的 sparse list 长度差异很大，row-block program 的执行时间会不一致；如果 vertical columns 太多，gather 访存会降低带宽效率；如果上下文较短，index building 的 5%-20% overhead 和 per-head Python 循环会吃掉收益。
-
-## 实验脚本与复现路径
-
-仓库给出的离线搜索入口在 `experiments/infinite_bench/run_infinitebench.py`，典型参数包括：
-
-```bash
-python run_infinitebench.py \
-  --task kv_retrieval \
-  --model_name_or_path gradientai/Llama-3-8B-Instruct-262k \
-  --max_seq_length 30000 \
-  --is_search \
-  --topk_dims_file_path Llama_3_8B_Instruct_262k_kv_out_v32_fit_o_best_pattern.json \
-  --num_eval_examples 20 \
-  --starting_layer 0 \
-  --attn_type minference
-```
-
-端到端 latency 脚本是 `experiments/benchmarks/benchmark_e2e.py`，README 建议长于 700K token 时启用 `--kv_cache_cpu`。对于真实使用，应优先安装 SGLang 或 vLLM sparse kernel；本地 Triton fallback 更适合理解算法和做可用性兜底。
