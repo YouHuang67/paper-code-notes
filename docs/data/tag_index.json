@@ -63,6 +63,23 @@
     "organizations": "Survey / repository note"
   },
   {
+    "title": "VSA",
+    "path": "paper_reading/vsa.md",
+    "type": "论文阅读",
+    "tags": [
+      "Sparse Attention",
+      "Video Generation",
+      "Diffusion Model",
+      "CUDA",
+      "Triton"
+    ],
+    "summary": "可训练视频稀疏注意力：3D 时空 tile 上 coarse 压缩分支 + block Top-K 稀疏分支 + 门控融合，FastVideo 中已实现为正式 attention backend",
+    "category": "Sparse Attention",
+    "date_arxiv": "2025-05",
+    "date_added": "2026-07-12",
+    "organizations": "Hao AI Lab, UC Berkeley, Stanford University"
+  },
+  {
     "title": "HySparse",
     "path": "paper_reading/hysparse.md",
     "type": "论文阅读",
@@ -1569,6 +1586,19 @@
       "LLM Inference"
     ],
     "summary": "解析 MInference 官方实现：离线 pattern 标定、HuggingFace attention patch、Vertical-Slash CUDA 索引转换、Triton mixed sparse/block sparse attention kernel"
+  },
+  {
+    "title": "FastVideo VSA 代码分析：总览",
+    "path": "code_analysis/fastvideo_vsa/00_overview.md",
+    "type": "代码分析",
+    "tags": [
+      "Sparse Attention",
+      "Video Generation",
+      "CUDA",
+      "Triton",
+      "CUTLASS"
+    ],
+    "summary": "解析 FastVideo 中 VSA 的完整执行链：3D tile metadata、fused compress+topk selector、64/256 block sparse 后端路由与 GPU 负载形态"
   },
   {
     "title": "DeepSeek-V4",

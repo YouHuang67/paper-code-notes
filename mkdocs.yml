@@ -138,6 +138,7 @@ nav:
     - Rectified SpaAttn: paper_reading/rectified_spaattn.md
     - Sparse-vDiT: paper_reading/sparse_vdit.md
     - Sparse Forcing: paper_reading/sparse_forcing.md
+    - VSA: paper_reading/vsa.md
     - AdaCluster: paper_reading/adacluster.md
     - PASA: paper_reading/pasa.md
     - 训练型 Sparse Attention 与哈希 Top-K 调研: paper_reading/sparse_attention_training_hash_survey.md
@@ -204,6 +205,8 @@ nav:
         - 总览: code_analysis/pisa/00_overview.md
       - MInference:
         - 总览: code_analysis/minference/00_overview.md
+      - FastVideo VSA:
+        - 总览: code_analysis/fastvideo_vsa/00_overview.md
       - DeepSeek V4:
         - 总览: code_analysis/deepseek_v4/00_overview.md
         - 模型架构: code_analysis/deepseek_v4/01_model_architecture.md
