@@ -73,11 +73,11 @@
       "CUDA",
       "Triton"
     ],
-    "summary": "可训练视频稀疏注意力：3D 时空 tile 上 coarse 压缩分支 + block Top-K 稀疏分支 + 门控融合，FastVideo 中已实现为正式 attention backend",
+    "summary": "可训练视频稀疏注意力：3D cube coarse dense + block Top-K fine sparse + annealed sparse adaptation，FastVideo 中已落成 Triton/TK/CuTe 多后端 attention backend",
     "category": "Sparse Attention",
     "date_arxiv": "2025-05",
     "date_added": "2026-07-12",
-    "organizations": "Hao AI Lab, UC Berkeley, Stanford University"
+    "organizations": "UC San Diego, MBZUAI, UC Berkeley"
   },
   {
     "title": "HySparse",
@@ -1643,7 +1643,7 @@
       "Triton",
       "CUTLASS"
     ],
-    "summary": "解析 FastVideo 中 VSA 的完整执行链：3D tile metadata、fused compress+topk selector、64/256 block sparse 后端路由与 GPU 负载形态"
+    "summary": "解析 FastVideo 中 VSA 的完整执行链：tile metadata、Triton coarse selector、64-token Triton/TK sparse kernel，以及 256-token route-A/CuTe DSL 路由"
   },
   {
     "title": "DeepSeek-V4",

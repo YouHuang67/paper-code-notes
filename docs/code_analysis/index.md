@@ -50,6 +50,10 @@
 - [PISA](pisa/00_overview.md) - Piecewise Sparse Attention：Triton 块统计预扫描、exact/zero-order/global first-order 三阶段前向与 GPU 负载均衡分析
 - [MInference](minference/00_overview.md) - Dynamic Sparse Attention Prefill：离线 pattern 搜索、Vertical-Slash CUDA 索引转换与 Triton mixed sparse attention kernel
 - [SVOO](svoo/00_overview.md) - 离线 sparsity profile、低内存 Q/K co-clustering、dynamic map 预算生成、Triton fallback 与 FlashInfer variable block sparse plan patch
+- [FastVideo VSA](fastvideo_vsa/00_overview.md) - FastVideo 中 VSA 的完整执行链：tile metadata、Triton coarse selector、64/256 sparse backend 与 TK/CuTe 路由
+  - [框架接入、Tile Metadata 与门控](fastvideo_vsa/01_framework_and_metadata.md) - 3D tile 重排、variable block size、sequence parallel、`gate_compress` 与论文到实现的映射
+  - [Triton Coarse Selector](fastvideo_vsa/02_fused_coarse_selector.md) - `fused_block_mean` 与 `fused_topk_mask` 的程序布局、数值路径与寄存器边界
+  - [Sparse Backends](fastvideo_vsa/03_sparse_backends.md) - 64-token Triton/TK sparse attention、256 route-A 与 CuTe DSL block-sparse fastpath
 - [DeepSeek V4](deepseek_v4/00_overview.md) - mHC + Hybrid Attention + MoE + TileLang 低精度推理实现
 - [DeepEP](deepep/00_overview.md) - MoE Expert-Parallel 通信库：基于 TMA + NCCL Gin 的全 GPU 端 all-to-all 实现
 - [ELF](elf/00_overview.md) - Embedded Language Flows: JAX/Flax DiT + Flow Matching + 共享权重 denoiser-decoder

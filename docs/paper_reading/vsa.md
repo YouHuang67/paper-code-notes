@@ -9,389 +9,424 @@ tags:
 
 # VSA: Faster Video Diffusion with Trainable Sparse Attention
 
-[arXiv 2505.13389](https://arxiv.org/abs/2505.13389) | [代码分析](../code_analysis/fastvideo_vsa/00_overview.md) | 当前官方代码入口：`refs/codes/FastVideo`
+[arXiv 2505.13389](https://arxiv.org/abs/2505.13389) | [代码](https://github.com/hao-ai-lab/FastVideo) | [代码分析](../code_analysis/fastvideo_vsa/00_overview.md)
 
-## 结论先行
+**团队**: UC San Diego, MBZUAI, UC Berkeley
 
-VSA 是一篇面向视频扩散模型的 **trainable sparse attention** 工作。它不是把 dense attention 后处理成稀疏，而是把 attention 拆成：
+## 概述
 
-- **压缩分支**：对时空 tile 做 coarse attention，覆盖全局长程信息；
-- **稀疏分支**：在压缩分支给出的 block 级候选上做精细 Top-K sparse attention；
-- **融合门控**：把 coarse output 与 sparse output 重新组合，让模型在训练中适应这套稀疏访问机制。
+VSA 的核心不是“给已有 dense DiT 推理时套一个稀疏 mask”，而是把视频 DiT 的自注意力改写成一个从训练开始就存在的 **两级注意力结构**：
 
-这篇工作的关键点不只是“保留 Top-K block”，而是 **让视频模型从训练时就学会依赖 coarse-to-sparse 两级记忆访问**。因此它和 `PISA/PASA/SVG2` 这类 training-free 推理稀疏化有本质不同。
+- **coarse stage**：先把视频 latent 按 `(C_t,C_h,C_w)` 时空 cube 做均值池化，在 cube 空间上做 dense attention；
+- **fine stage**：对每个 query cube，只在 coarse stage 选出的 Top-K key cube 内做 token 级精确注意力；
+- **gate 融合**：把 coarse 输出和 fine 输出重新合成，让模型学会在“低频全局上下文”和“高频精细检索”之间分配信息。
 
-从 `FastVideo` 当前实现看，VSA 已经不是孤立 demo，而是被做成了框架内正式 attention backend：
+这篇论文的真正贡献有三层：
 
-- Python 框架层：负责 token tile 重排、metadata 构建、训练/推理接入；
-- `fastvideo-kernel` 层：负责压缩 + Top-K mask 的 Triton fused kernel，以及 64/256 tile volume 下的 block-sparse backend 路由；
-- 后端层：支持 `Triton`、`ThunderKittens(sm_90)`、`FA4 CuTe DSL(sm_100, VSA-256)` 三条执行路径。
+- **算法层**：把 critical token 预测问题降成 block 级预测，而不是先算完整 `QK^T` 再稀疏化；
+- **训练层**：通过 annealing 把 full attention checkpoint 平滑迁移到 sparse attention，而不是直接替换；
+- **内核层**：稀疏模式严格贴合 block-sparse kernel，selector 也专门做了 Triton fused kernel，因此稀疏 FLOPS 可以转成真实 wall-clock speedup。
 
-这也解释了为什么 FastVideo 官方文档已经把 `VSA finetune` 列为正式训练方法，而不是实验特性。
+论文报告的主结论是：
 
-## 1. 动机
+- 对 16K token 训练，VSA 在 87.5% 注意力稀疏率下，与 full attention 达到几乎相同的 loss；
+- attention FLOPS 下降约 `8x`，总训练 FLOPS 下降约 `2.53x`；
+- 在 Wan2.1-1.3B 上，端到端推理时间从 `31s` 降到 `18s`；
+- 在 Wan-14B 上，端到端时间从 `1274s` 降到 `576s`；
+- 稀疏 attention 还能和 sparse distillation 同时工作。
 
-视频扩散模型的 attention 成本随 token 数快速爆炸。视频 token 比图像多出一个时间维，而且高分辨率、长时长、更多帧数都会把序列长度推高。标准 full attention 有两个直接问题：
+当前官方开源实现位于 `refs/codes/FastVideo`，本仓库代码分析基于提交 `970409962f358afd529b969a378174c849665837`。我在 **2026-07-20** 额外检查了该提交到 `origin/main` 的 VSA 相关文件，核心 VSA 路径未发生实质变化，因此以下论文和代码对应关系仍然成立。
 
-- **计算量是二次的**：`O(N^2 d)`；
-- **真正重要的远程交互并不均匀**：大量时空 token 只需要粗粒度全局信息，没必要都做 token 级精确注意力。
+## 1. 问题设定
 
-VSA 的核心判断是：
-
-- 远距离全局依赖可以先在 **压缩块空间** 中大致定位；
-- 真正需要精算的只是少数 block；
-- 但模型必须在训练中适应这种稀疏访问，不然 inference-only 稀疏替换会带来明显质量退化。
-
-所以 VSA 不是单纯为了推理补 kernel，而是直接把 **coarse global retrieval + fine sparse refinement** 做成可训练注意力结构。
-
-## 2. 方法主线
-
-### 2.1 时空 tile 化
-
-VSA 先把视频 latent token 组织成规则时空 tile。`FastVideo` 当前默认 tile size 是：
+视频 DiT 的视频 latent 形状记作 `(T,H,W)`，拉平后序列长度为：
 
 $$
-(t_s, h_s, w_s) = (4, 4, 4)
+L = T H W
 $$
 
-因此一个 tile 的 token 数是：
+单头 full attention 写成：
 
 $$
-B = 4 \times 4 \times 4 = 64
+S = \frac{QK^\top}{\sqrt{d}},\qquad
+A = \operatorname{Softmax}(S + M),\qquad
+O = AV
 $$
 
-如果换成更大的 tile，例如 `(4, 8, 8)`，则 block volume 变成：
+这里 `Q,K,V \in \mathbb{R}^{L \times d}`，`M` 是 attention mask。对普通双向自注意力，`M` 全零；代价是：
 
 $$
-B = 256
+\mathcal{O}(L^2 d)
 $$
 
-这个 tile volume 不只是论文超参，而是直接决定后端执行路径：
+视频生成里这件事非常贵，原因不是抽象意义上的“二次复杂度”，而是具体序列真的很长。论文直接指出，5 秒 720p 视频展开后会超过 100K token，训练和推理都会被注意力吃掉。
 
-- `B=64`：走现有 64-token block sparse 路径；
-- `B=256`：走 VSA-256 路径，可路由到 Triton route-A 或 Blackwell 上的 FA4 CuTe block-sparse fastpath。
+VSA 想解决的问题可以表述为：
 
-### 2.2 压缩分支
+- 不显式构造完整 token-token attention；
+- 仍能找到真正“承重”的 critical token 区域；
+- 稀疏模式必须是硬件友好的 block 结构，而不是任意 token 稀疏。
 
-对每个 tile 内 token 做 block mean，得到压缩后的 block 表示：
+## 2. VSA 的数学建模
 
-$$
-q_c^{(i)} = \frac{1}{|B_i^q|} \sum_{u \in B_i^q} q_u,\quad
-k_c^{(j)} = \frac{1}{|B_j^k|} \sum_{v \in B_j^k} k_v,\quad
-v_c^{(j)} = \frac{1}{|B_j^k|} \sum_{v \in B_j^k} v_v
-$$
+### 2.1 Cube 划分不是附属细节，而是方法本体
 
-这里特别要注意，视频边界 tile 可能是不完整块，所以实际除数不是固定 `64` 或 `256`，而是 **variable block size**。
-
-压缩分支在 block 空间执行 dense attention：
+VSA 先把 `(T,H,W)` 视频 latent 划成 cube，cube 大小记作：
 
 $$
-S_{ij} = \frac{q_c^{(i)} {k_c^{(j)}}^\top}{\sqrt d}
+(C_t, C_h, C_w)
 $$
 
-$$
-A_{ij} = \operatorname{Softmax}(S_{ij})
-$$
+每个 cube 的 token 数是：
 
 $$
-o_c^{(i)} = \sum_j A_{ij} v_c^{(j)}
+B = C_t C_h C_w
 $$
 
-之后再把 `o_c^{(i)}` 广播回这个 query block 内的所有 token。
-
-这条分支的作用不是高精度建模，而是：
-
-- 提供全局 coarse 上下文；
-- 同时提供 block-level score，用于后续 Top-K sparse selection。
-
-### 2.3 稀疏分支
-
-压缩分支得到 `S_{ij}` 后，对每个 query block 选 Top-K key block，构造 block 稀疏图：
+论文默认使用：
 
 $$
-\mathcal{N}(i) = \operatorname{TopK}_j \; S_{ij}
+(C_t, C_h, C_w) = (4,4,4),\qquad B=64
 $$
 
-然后只对这些候选 block 执行 token 级精确 sparse attention：
+令 cube 网格数为：
 
 $$
-o_s^{(u)} =
+(N_t,N_h,N_w)=\left(\frac{T}{C_t},\frac{H}{C_h},\frac{W}{C_w}\right)
+$$
+
+原论文给出从三维坐标 `(t,h,w)` 到 tile-contiguous 一维顺序的映射：
+
+$$
+n =
+\left(
+\left\lfloor \frac{t}{C_t}\right\rfloor N_h N_w +
+\left\lfloor \frac{h}{C_h}\right\rfloor N_w +
+\left\lfloor \frac{w}{C_w}\right\rfloor
+\right) B
++ (t \bmod C_t) C_h C_w
++ (h \bmod C_h) C_w
++ (w \bmod C_w)
+$$
+
+这个式子非常重要，因为它不是只为数学方便。它保证：
+
+- 同一时空 cube 的 token 在内存中连续；
+- 一个 cube 天然对应一个 block-sparse attention tile；
+- 后续 coarse selector 和 fine sparse kernel 都能直接以块为单位执行。
+
+### 2.2 Coarse stage：在 cube 空间预测 critical block
+
+对每个 cube 做均值池化：
+
+$$
+q_c^{(i)}=\frac{1}{|B_i^q|}\sum_{u\in B_i^q} q_u,\quad
+k_c^{(j)}=\frac{1}{|B_j^k|}\sum_{v\in B_j^k} k_v,\quad
+v_c^{(j)}=\frac{1}{|B_j^k|}\sum_{v\in B_j^k} v_v
+$$
+
+注意论文和代码都明确支持 **variable block size**。边界 cube 可能不满，因此分母不是固定 `64`，而是当前块真实 token 数 `|B_i|`。
+
+在压缩后的 cube 空间执行 dense attention：
+
+$$
+S_c = \frac{Q_c K_c^\top}{\sqrt d},\qquad
+A_c = \operatorname{Softmax}(S_c),\qquad
+O_c = A_c V_c
+$$
+
+然后对每一行做 Top-K：
+
+$$
+\mathcal{N}(i)=\operatorname{TopK}_j \; S_c(i,j)
+$$
+
+本质上，VSA 用 `Q_c K_c^\top` 预测“哪个 key cube 里藏着 critical token”。
+
+### 2.3 Fine stage：只在选中的 cube 上做 token 级精算
+
+Top-K 之后，VSA 不是在压缩 token 上继续近似，而是回到原始 token 分辨率，仅对选中的 block 做精确 sparse attention：
+
+$$
+o_f^{(u)} =
 \operatorname{Softmax}
 \left(
 \frac{q_u K_{\mathcal{N}(i)}^\top}{\sqrt d}
 \right)
 V_{\mathcal{N}(i)},
-\quad u \in B_i^q
+\qquad u \in B_i^q
 $$
 
-因此，VSA 的精确计算预算不是按 token 逐个挑 key，而是先在 block 空间检索，再在选中的 block 内做 full token interaction。
+这一步的关键不是公式本身，而是 mask 的结构天然是 `B \times B` block：
 
-### 2.4 融合门控
+- coarse stage 选中的是 cube；
+- 广播到 token 级后，每条边对应一个 `B \times B` 子矩阵；
+- 这样 fine stage 就能直接进入 block-sparse kernel。
 
-FastVideo 当前实现里，最终输出不是只用 sparse 分支，而是：
+### 2.4 输出融合：论文是双 gate，开源实现是单 gate
 
-$$
-o = o_s + g \odot o_c
-$$
-
-或等价地，把 `o_c` 乘一个 `compress_attn_weight / gate_compress` 再加回 sparse 输出。
-
-这一步很关键。它说明 VSA 不是“压缩分支只做 selector”，而是把压缩分支当作真正的低频全局信息通道。模型训练过程中会学会如何利用这条分支补充 sparse branch 的长程信息损失。
-
-## 3. 数学与复杂度直觉
-
-设 token 数为 `N`，block size 为 `B`，block 数为 `T=N/B`，每个 query block 只访问 `K` 个 key block。
-
-那么：
-
-- 压缩分支复杂度：`O(T^2 d) = O((N/B)^2 d)`
-- 稀疏分支复杂度：`O(N K B d)`
-
-当 `B` 足够大、`K << T` 时，总复杂度显著低于 full attention 的 `O(N^2 d)`。
-
-VSA 和简单 block-sparse 方法的区别在于：它不是直接在 block-level score 上截断后只保留 sparse branch，而是保留了一个全局 coarse path。这让它在高稀疏率下更稳。
-
-## 4. FastVideo 实现结构
-
-当前官方实现不是把 VSA 写成一两个函数，而是四层结构：
-
-### 4.1 框架层：`VideoSparseAttentionBackend`
-
-入口在 `fastvideo/attention/backends/video_sparse_attn.py`。
-
-这一层做的事情是：
-
-- 根据视频 latent shape 构建 tile metadata；
-- 把 raster order token 重排成 tile-contiguous layout；
-- 计算 `variable_block_sizes`、`non_pad_index`、`untile_combined_index`；
-- 在 forward 中调用 `fastvideo_kernel.video_sparse_attn` 或 `video_sparse_attn_bshd`；
-- 再把输出从 tile layout 还原回原始 token 顺序。
-
-这层的重点不是算 attention，而是把 **视频时空 token 拓扑** 转成 kernel 喜欢的 padded block layout。
-
-### 4.2 算子封装层：`fastvideo_kernel.ops.video_sparse_attn`
-
-入口在 `fastvideo-kernel/python/fastvideo_kernel/ops.py`。
-
-这一层把 VSA 明确拆成三段：
-
-1. `fused_block_mean(q/k/v)` 生成压缩表示；
-2. `scores = q_c @ k_c^T / sqrt(d)`，再用 `fused_topk_mask(scores, topk)` 构造 block mask；
-3. 对 mask 调 `block_sparse_attn` 或 `block_sparse_attn_256` 做精细 sparse branch。
-
-最后把 `out_c` 和 `out_s` 用门控重新相加。
-
-### 4.3 稀疏分支后端层
-
-`block_sparse_attn.py` 负责 64-token block 路径：
-
-- 默认优先 `sm_90` 上的 `ThunderKittens` C++ kernel；
-- 否则回退到 Triton index-native sparse attention；
-- 支持 autograd forward/backward。
-
-`block_sparse_attn_256.py` 负责 256-token block 路径：
-
-- 默认仍是 Triton route-A；
-- 在 `FASTVIDEO_VSA_CUTEDSL=1` 且依赖齐全时，走 `FlashAttention-4 CuTe DSL` block sparse fastpath；
-- 256 logical block 会展开到 128-token 或 64-token 的物理表示。
-
-### 4.4 Metadata 工具层
-
-`vsa_utils.py` / backend builder 负责：
-
-- `tile_partition_indices`
-- `reverse_tile_partition_indices`
-- `variable_block_sizes`
-- `non_pad_index`
-
-这部分是 VSA 真正落地到视频 token 的关键。没有这层，论文里的“3D 时空 tile”就只是概念，无法变成内核可执行的连续 block。
-
-## 5. 关键实现细节
-
-### 5.1 先 tile，再 pad，再 sparse
-
-VSA 不是直接对 raster order token 做 block sparse。FastVideo 先把 `(T,H,W)` 网格上的相邻 token 重排到连续 tile 中，再对每个 tile 进行 padding。
-
-这样做的原因很直接：
-
-- block 的语义变成真实的时空局部块；
-- block mean 才有明确几何含义；
-- 稀疏分支的 block 访问也更符合视频局部性。
-
-如果不先 tile，而直接对光栅顺序 block 化，那么一个 block 可能跨多个空间区域甚至跨帧，压缩分支的 coarse score 会失真。
-
-### 5.2 Variable block size 是一等公民
-
-视频边界 tile 往往是不满的，例如最后几个 frame 或空间边界不足 `4x4x4`。FastVideo 没有粗暴把这些 pad token 当成真实 token 参与平均，而是显式维护：
+论文写法是：
 
 $$
-\text{variable\_block\_sizes}[j] = |B_j|
+O = O_c \odot G_c + O_f \odot G_f
 $$
 
-这同时影响：
+其中 `G_c,G_f` 都来自输入 hidden states 的线性投影。
 
-- 压缩分支 block mean 的除数；
-- sparse branch 中每个 block 的真实有效长度；
-- 从 padded layout 映射回真实 token 的 `non_pad_index`。
+但官方开源实现和论文正文这里存在一个很关键的差别：
 
-这一步虽然看似工程细节，但对质量和数值稳定性都重要。
+- 论文方法层面保留 `G_c` 与 `G_f` 两个门；
+- FastVideo 当前公开实现里，VSA kernel 实际只接收 **`compress_attn_weight`**，也就是 coarse 分支门控；
+- fine 分支在 kernel 中默认系数为 `1`，即：
 
-### 5.3 压缩和 Top-K 不是两串 PyTorch 小算子，而是 fused Triton
+$$
+O \approx O_f + G_c \odot O_c
+$$
 
-`fused_compress_topk.py` 做了两件事：
+这和论文 §2.3 的 sparse adaptation 描述其实一致。论文为了从 dense checkpoint 迁移，会把 `G_f` 去掉，等价于固定 `G_f=1`；当前开源工程就把这条简化保留了下来。
 
-- `fused_block_mean`
-- `fused_topk_mask`
+### 2.5 复杂度
 
-其目标非常明确：避免 Python 层 `.view() -> sum() -> div()` 和 `torch.topk() -> scatter_()` 带来的多次 launch 与中间张量物化。
+设 token 数为 `N`，block size 为 `B`，block 数为 `T=N/B`，每个 query block 选 `K` 个 key block。
 
-对于视频扩散，attention 层很多，denoising step 也多。如果 coarse selector 每层都由一串小 op 组成，最后 overhead 会相当显著。
+则：
 
-### 5.4 64 与 256 两条路不是同一个 kernel 换个超参
+- coarse stage：`O(T^2 d) = O((N/B)^2 d)`
+- fine stage：`O(N K B d)`
 
-当前实现把 block volume 分成两个 regime：
+与 full attention 的 `O(N^2 d)` 相比，只要 `K << T`，总成本就会显著降低。
 
-- `64 = 4x4x4`
-- `256 = 4x8x8`
+VSA 的优势不只来自 `K` 小，还来自 coarse 分支保留了一个低成本全局通道。也就是说它不是纯粹“砍掉大部分注意力”，而是把全局信息搬到更便宜的分辨率上。
 
-`64` 更像当前稳态默认路径，后端成熟：
+## 3. 设计空间与消融：论文真正有价值的部分
 
-- Triton fallback
-- Hopper `sm_90a` 上可走 TK C++ kernel
+这篇论文最好的部分不是最终公式，而是它系统地把 sparse attention 的几个关键设计变量拆开验证了。
 
-`256` 更像为更大 tile / Blackwell fastpath 准备的分支：
+### 3.1 Data-dependent 稀疏比固定模式更重要
 
-- 默认用 Triton route-A，把 logical 256-block 展开成多个 64-block；
-- 如果启用 CuTe DSL，则把 logical 256-block 改写成 FA4 兼容的物理 block sparse 表示。
+论文比较了多种固定模式：
 
-因此 `256` 的重点不只是“大 block 更省选择开销”，而是 **为新硬件上的更强 block sparse kernel 适配物理布局**。
+- spatial-temporal；
+- spatial-full；
+- strided window；
+- compress KV。
 
-## 6. Kernel 设计要点
+结论很直接：
 
-### 6.1 `fused_block_mean` 的程序布局
+- 在较小训练预算下，固定模式能比 full attention 更省；
+- 但当训练预算扩大时，这些固定模式优势会消失甚至反转；
+- VSA 的 **data-dependent** block 选择在小预算和大预算下都更稳。
 
-`_fused_block_mean_kernel` 是一个很典型的 Triton 二维 grid：
+也就是说，VSA 的关键不在“有稀疏”，而在“稀疏模式是由数据决定的”。
 
-- `program_id(0) = block_idx`
-- `program_id(1) = bh_idx`
+### 3.2 Global coarse output 必要，显式 locality 反而收益很小
 
-也就是一个 program 负责：
+论文把 coarse、fine、local 几种组合都测了一遍：
 
-- 某个 `(batch, head)` 对；
-- 某个 query 或 key/value block；
-- 对这个 block 的 `BLOCK_ELEMENTS x HEAD_DIM` 子矩阵做 reduction。
+- 只有 local，不够；
+- 只有 fine sparse，也不够；
+- coarse + fine 最稳；
+- 再额外硬塞 local stage 或强制 local cube，收益很有限。
 
-它的核心设计很清晰：
+这个结论很值得重视。它说明在视频 DiT 中，真正短缺的不是局部先验，而是：
 
-- 沿 token 维一次性加载整个 block；
-- 在寄存器 / fp32 accumulator 中 `tl.sum(axis=0)`；
-- 再除以 `variable_block_size`；
-- 输出一个 `[HEAD_DIM]` 向量。
+- 低成本全局检索；
+- 数据相关的精确重算。
 
-这不是 Tensor Core kernel，而是一个典型的 reduction kernel，所以性能关键不在 MMA，而在：
+因此 VSA 最终选的是最简单的 `C & F` 结构。
 
-- 每个 program 的寄存器占用是否可控；
-- `BLOCK_ELEMENTS x HEAD_DIM` 读取是否连续；
-- `B*H*num_blocks` 是否足够大，能提供足够 program 数填满 SM。
+### 3.3 Tile size 是表达能力与硬件效率的主旋钮
 
-它的好处是负载非常规整。每个 `(block, bh)` 的工作量几乎一致，因此几乎没有 row imbalance。
+论文比较了：
 
-### 6.2 `fused_topk_mask` 的程序布局
+- `B=256`, `(4,8,8)`
+- `B=128`, `(4,8,4)`
+- `B=64`, `(4,4,4)`
+- `B=16`, `(2,4,2)`
 
-`_fused_topk_mask_kernel` 的 grid 同样是：
+结论：
 
-- `program_id(0) = q_idx`
-- `program_id(1) = bh_idx`
+- tile 越小，coarse selector 越容易更精准地定位 critical token；
+- fine stage 也能只对更小、更干净的区域做精确注意力；
+- 但 tile 太小会让 kernel 吞吐掉得很厉害。
 
-也就是一个 program 处理一个 `(batch, head, q_block)` 行。
+作者最终选择 `B=64`，理由是：
 
-这个 program 会：
+- 表达能力已经明显优于 `128/256`；
+- 相比更小的 `16`，吞吐损失可接受；
+- 又能很好贴合 block-sparse kernel。
 
-1. 把这一整行 `kv_blocks` 分数加载到寄存器；
-2. 用二分搜索近似找出第 `k` 大阈值；
-3. 用 `>` 和 `==` + `cumsum` 处理 ties；
-4. 直接写出 bool mask。
+这点和代码实现是直接绑定的：FastVideo 的默认 VSA tile 就是 `(4,4,4)`。
 
-这里最关键的不是“Top-K 算法多高级”，而是它有一个非常现实的 GPU 约束：
+### 3.4 Mean pooling 足够，卷积预测器反而不稳
 
-- 一整行 `kv_blocks` 都要被 program 放进寄存器逻辑里处理；
-- 寄存器数组过长会导致 spilling；
-- 所以实现里明确设了 `MAX_KV_BLOCK_SIZE = 4096`，再大就回退到 PyTorch `topk`。
+论文还比较了：
 
-这就是非常典型的 kernel-aware 设计：算法上完全可以继续写，但硬件上不值得。
+- average pooling；
+- max pooling；
+- 3D convolution pooling。
 
-### 6.3 64-block sparse branch 的后端选择
+结果是 average pooling 最好，卷积池化甚至会带来训练不稳定。
 
-`block_sparse_attn.py` 的 public API 先把 bool block map 压缩成 index-native 表示：
+这说明 VSA 的 coarse stage 不需要一个复杂 predictor；简单均值池化已经足够给出高质量 block-level score。这也是为什么代码里 `fused_block_mean` 能写成一个非常直接的 reduction kernel。
 
-- `q2k_idx`
-- `q2k_num`
+## 4. 训练策略：为什么可以从 dense 平滑过渡到 sparse
 
-然后根据硬件与环境变量选择后端：
+### 4.1 从头训练
 
-- `FASTVIDEO_VSA_TRITON=1`：强制 Triton
-- `FASTVIDEO_VSA_TK=1`：若 `sm_90` 且扩展可用，则优先 TK
-- 默认：`sm_90` 有 TK 就用 TK，否则 Triton
+论文的大规模实验使用 Wan2.1 风格架构，在 `16 × 32 × 32` latent、`16384` token 上做预训练。
 
-这个路由非常重要。说明官方并没有把某个后端绝对化，而是明确承认：
+120M 消融模型的关键配置包括：
 
-- Hopper 上可以吃更强的专用 C++ kernel；
-- 其他 GPU 则靠 Triton 保底；
-- 同一套 VSA 上层逻辑不变，底层 sparse backend 可替换。
+- `head dim = 64`
+- `num heads = 12`
+- `num layers = 12`
+- `batch size = 1024`
+- `objective = Flow Matching`
+- `total FLOPs = 4.5 × 10^{20}`
 
-### 6.4 256-block path 的 route-A 思想
+作者还做了 `60M -> 1.4B` 的 scaling study，并指出 VSA 和 full attention 的 loss 曲线基本平行，因此 `2.53x` 的总 FLOPs 降幅可以稳定延续到更大模型。
 
-`block_sparse_attn_256.py` 默认并不是直接写一个完整的 256-token Triton kernel，而是：
+### 4.2 Sparse adaptation：从 full checkpoint 迁移
 
-- 把 logical 256-block 拆成多个 64-token 物理块；
-- 把 logical block map 也沿 Q/K 维重复展开；
-- 然后复用现有 64-block Triton sparse kernel。
+如果直接把 full attention 替换成 VSA，训练会不稳定。论文认为主要有两个原因：
 
-这条 route-A 的核心价值不是最优，而是 **最小化新 kernel 开发量**：
+- coarse gate 是新加参数，初始是随机的；
+- attention 结构被突然改成“两级 + 稀疏”，分布漂移太大。
 
-- 上层算法已经支持更大 tile；
-- 后端没有现成 256 sparse kernel 时，仍能运行；
-- 真正高性能的 256 fastpath 交给可选的 FA4 CuTe block-sparse 实现。
+解决方案是 annealing：
 
-这是很典型的工程取舍：先让算法路径可用，再用新硬件专用 kernel 吃性能红利。
+1. 初始化 coarse gate `G_c = 0`；
+2. 去掉 fine gate，等价于 `G_f = 1`；
+3. 初始令 `K = L/B`，让 VSA 退化为 full attention；
+4. 训练过程中逐步减小 `K` 到目标稀疏率。
 
-## 7. 训练与框架定位
+附录 C.5 给了更具体的 schedule：
 
-FastVideo 文档里已经把 `VSA finetune` 列为正式训练方法，说明这篇论文在官方项目中的角色不是“一个推理 benchmark”，而是：
+- 先 full attention 训练 50 steps；
+- 每 50 steps，把 attended cubes 减少 10，也就是 Top-K 减少 4；
+- 直到目标 `Top-K = 32`。
 
-- 可用于 finetune / post-training；
-- 可作为框架 attention backend；
-- 与推理优化、量化、蒸馏等其他系统组件组合使用。
+这个 schedule 是理解开源代码和论文差异的关键。代码只保留 coarse gate，本质上就是为这条迁移路径服务。
 
-这很符合 VSA 的论文定位：它强调的是 **trainable sparse attention**，不是 inference-only patch。
+### 4.3 Sparse Distill
 
-## 8. 实现与实验现象的对应关系
+论文还做了一个很有意思的 pilot study：
 
-从实现链路看，VSA 的优势主要来自三点：
+- teacher 保持 full attention；
+- student 改成 VSA；
+- DMD2 的蒸馏损失和超参都不改。
 
-1. **全局信息不完全丢失**：
-   coarse branch 仍保留了压缩全局上下文，因此高稀疏率下比纯 Top-K block sparse 稳定。
-2. **真实 token 级计算只花在候选块上**：
-   expensive attention 被限制在少数 block 内。
-3. **selector overhead 被专门优化过**：
-   `fused_block_mean + fused_topk_mask` 避免 coarse selector 自己变成瓶颈。
+结果是 sparse attention 可以和少步蒸馏共存，Wan-1.3B 的 3-step 生成器能达到 `50.9x` 的 denoising 加速。
 
-而它的限制也同样直接：
+这很重要，因为它说明 VSA 不是只能单独吃“attention 稀疏化”这一个红利，而是可以继续叠加到更激进的生成加速链路里。
 
-1. coarse selector 仍然是 block-level dense attention，因此 block 数过大时会有额外成本；
-2. 目前高性能后端强依赖硬件条件，尤其 `TK sm_90` 与 `CuTe sm_100`；
-3. 256 path 的默认 Triton route-A 更像兼容路径，不一定是最终最优实现。
+## 5. Kernel 视角：论文为什么能落成真实速度
+
+### 5.1 Coarse stage 并不需要“全都塞进一个超级 FlashAttention”
+
+论文非常务实地指出：
+
+- coarse stage 序列长度已经被 `64x` 压缩；
+- 即使 materialize `Q_c K_c^T`，内存和 FLOPs 都很小；
+- 真正的额外开销主要来自 Top-K 和 mask/index 转换。
+
+所以他们没有强行把 coarse stage 改成一版“支持 in-kernel Top-K 的 FlashAttention”，而是只做了更合算的事情：
+
+- `block mean` fused；
+- `softmax + topk + mask-to-index` 部分尽量 fused。
+
+这也是当前 FastVideo 实现的选择。
+
+### 5.2 Fine stage 才是主要加速来源
+
+论文里真正的速度红利来自 fine sparse kernel：
+
+- 87.5% 稀疏率时，fine kernel 接近理论 `8x` 上限；
+- 只看 fine stage，本地 benchmark 接近 `7x` over FA3；
+- 把 coarse stage 算进去，仍有 `6x+` 的 attention kernel speedup。
+
+这解释了为什么实现上要投入这么多工程到 sparse backend：
+
+- Triton fallback；
+- Hopper ThunderKittens CUDA kernel；
+- 256 tile 的 CuTe DSL / FA4 路线。
+
+## 6. 实验结果怎么读
+
+### 6.1 训练 scaling
+
+在 `410M` 模型、`16384` token 设置下，论文声称：
+
+- 与 full attention 几乎同 loss；
+- attention FLOPs 约 `8x` 降低；
+- 端到端训练 FLOPs 约 `2.53x` 降低。
+
+再扩展到 `60M -> 1.4B`，VSA 与 full attention 的 scaling 曲线几乎平行。作者把这解读为：VSA 不是只在小模型或小预算上暂时占便宜，而是更优 Pareto frontier。
+
+### 6.2 Wan2.1-1.3B sparse finetune
+
+在 `480P` 合成数据上：
+
+- `Top-K = 32`
+- attention sparsity `91.2%`
+- VBench 与 full finetune 接近
+- 推理时间从 `31s` 到 `18s`
+
+论文还把 VSA 与 training-free 的 SVG 比较，指出即使在更高稀疏率下，训练型 sparse attention 仍更受人偏好。
+
+### 6.3 Wan-14B sparse finetune
+
+在 `720P`、`77` 帧、`90%` 稀疏下：
+
+- 人类偏好与官方 full model 基本接近；
+- 端到端时延从 `1274s` 降到 `576s`。
+
+这比 1.3B 实验更关键，因为它说明 VSA 的收益并不止于小模型补丁，而是能扩到真正重型视频模型。
+
+## 7. 论文与开源代码的对应关系
+
+当前 FastVideo 中，VSA 不再是论文 demo，而是正式 attention backend：
+
+- `fastvideo/attention/backends/video_sparse_attn.py`
+  - tile / pad / untile / metadata / 稀疏率转 Top-K
+- `fastvideo-kernel/python/fastvideo_kernel/ops.py`
+  - coarse branch、Top-K mask、稀疏分支调度
+- `fastvideo-kernel/python/fastvideo_kernel/triton_kernels/fused_compress_topk.py`
+  - Triton `fused_block_mean` 和 `fused_topk_mask`
+- `fastvideo-kernel/python/fastvideo_kernel/block_sparse_attn.py`
+  - 64-token 稀疏分支的 Triton / ThunderKittens 路由
+- `fastvideo-kernel/python/fastvideo_kernel/block_sparse_attn_256.py`
+  - 256-token 路径的 Triton route-A / CuTe DSL 路由
+- `fastvideo-kernel/csrc/attention/block_sparse_h100.cu`
+  - Hopper `sm_90a` 上的 ThunderKittens CUDA kernel
+
+实现上的几个关键事实：
+
+- VSA 路径里 **没有 TileLang**；相关 DSL 主要是 `Triton`、`ThunderKittens CUDA`、`CuTe DSL`；
+- 论文中的双 gate，在开源实现里收敛成“只门控 coarse 分支”；
+- 256-tile 路径默认仍是 Triton route-A，CuTe fastpath 是 opt-in，不是默认；
+- VSA 的 `block_size=64/256` 不只是算法超参，也决定具体 backend。
+
+详细代码拆解见：
+
+- [FastVideo VSA 代码分析：总览](../code_analysis/fastvideo_vsa/00_overview.md)
+- [框架接入、tile metadata 与门控](../code_analysis/fastvideo_vsa/01_framework_and_metadata.md)
+- [Triton coarse selector：fused block mean 与 Top-K mask](../code_analysis/fastvideo_vsa/02_fused_coarse_selector.md)
+- [Sparse backends：Triton / ThunderKittens CUDA / CuTe DSL](../code_analysis/fastvideo_vsa/03_sparse_backends.md)
+
+## 8. 局限
+
+### 局限
+
+- 当前默认 tile 固定为 `(4,4,4)`，因此 latent shape 最好可整除 4；
+- 最优 Top-K 依赖序列长度、模型规模和训练预算，目前还没有统一 scaling law；
+- coarse stage 尽管便宜，但仍不是零成本，尤其短序列下 Top-K runtime 更显眼；
+- 256-tile 的最高性能路径依赖可选 CuTe/FA4 构建，不是所有机器都能直接跑。
 
 ## 9. 关键启示
 
-- **训练型 sparse attention 和 training-free sparse patch 是两种不同范式**：VSA 的价值在于模型本身学会了依赖 coarse+sparse 双通道，而不是把 dense 模型硬切 sparse。
-- **视频 sparse attention 真正落地必须绑定 3D token 组织**：tile partition、variable block size、untile index 都是算法的一部分。
-- **selector 不是免费午餐**：如果 coarse block scoring 与 Top-K 构造没有 fused kernel，稀疏 attention 本身省下的算力很容易被 selector 吃回去。
-- **后端分层是工业实现的关键**：同一篇论文方法，在 `FastVideo` 里对应的是 Python backend + Triton fused selector + sparse kernel dispatch + optional TK/CuTe fastpath，而不是单一手写 CUDA 文件。
-
-## 10. 下一步阅读
-
-- [FastVideo VSA 代码分析：总览](../code_analysis/fastvideo_vsa/00_overview.md)
-- [Sparse Forcing](sparse_forcing.md)
-- [PISA](pisa.md)
-- [训练型 Sparse Attention 与哈希 Top-K 调研](sparse_attention_training_hash_survey.md)
+- 对视频 DiT，attention 稀疏化不能只看“mask 够不够 sparse”，而要看是否保留了一个便宜但有效的全局通道；VSA 的 coarse stage 正是这个通道。
+- 如果训练阶段不让模型看到 sparse attention，推理阶段再强行替换，质量很容易掉；VSA 的 annealing 说明“先平滑过渡再收缩预算”是更可靠的路径。
+- block size 不是单纯的算子超参，而是表达能力、selector 精度和 GPU kernel 形态的共同交点；这也是为什么 `64` 会成为论文和代码同时收敛到的默认值。
+- VSA 的 DSL 重心是 Triton / CUDA / CuTe，而不是 TileLang；阅读实现时应优先关注 online softmax、稀疏索引、TMA/WGMMA 与 block-sparse tensor 描述。
