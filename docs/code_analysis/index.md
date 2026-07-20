@@ -54,6 +54,7 @@
   - [框架接入、Tile Metadata 与门控](fastvideo_vsa/01_framework_and_metadata.md) - 3D tile 重排、variable block size、sequence parallel、`gate_compress` 与论文到实现的映射
   - [Triton Coarse Selector](fastvideo_vsa/02_fused_coarse_selector.md) - `fused_block_mean` 与 `fused_topk_mask` 的程序布局、数值路径与寄存器边界
   - [Sparse Backends](fastvideo_vsa/03_sparse_backends.md) - 64-token Triton/TK sparse attention、256 route-A 与 CuTe DSL block-sparse fastpath
+  - [Kernel Execution Appendix](fastvideo_vsa/04_kernel_execution_appendix.md) - 按源码执行顺序展开 `q2k/k2q` 索引、Triton sparse loop、Hopper CTA 内部状态与 256 路径图展开
 - [DeepSeek V4](deepseek_v4/00_overview.md) - mHC + Hybrid Attention + MoE + TileLang 低精度推理实现
 - [DeepEP](deepep/00_overview.md) - MoE Expert-Parallel 通信库：基于 TMA + NCCL Gin 的全 GPU 端 all-to-all 实现
 - [ELF](elf/00_overview.md) - Embedded Language Flows: JAX/Flax DiT + Flow Matching + 共享权重 denoiser-decoder

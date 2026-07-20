@@ -178,12 +178,14 @@ VSA 相关实现里真正涉及的“非 PyTorch DSL / 低层实现”是：
 1. [框架接入、tile metadata 与门控](01_framework_and_metadata.md)
 2. [Triton coarse selector：fused block mean 与 Top-K mask](02_fused_coarse_selector.md)
 3. [Sparse backends：Triton / ThunderKittens CUDA / CuTe DSL](03_sparse_backends.md)
+4. [Kernel Execution Appendix：按源码执行顺序展开](04_kernel_execution_appendix.md)
 
 这样读的原因很简单：
 
 - 先搞清楚数据怎么被重排、padding、还原；
 - 再看 coarse selector 如何构造 block 图；
-- 最后看不同后端怎么吃这张 block 图。
+- 再看不同后端怎么吃这张 block 图；
+- 最后回到附录，按 host wrapper、grid、CTA、shared memory 和写回结果逐段对源码。
 
 ## 6. 先给结论
 
@@ -191,3 +193,4 @@ VSA 相关实现里真正涉及的“非 PyTorch DSL / 低层实现”是：
 - 论文里的核心思想在代码里基本没有走样：tile 化、coarse dense、Top-K block sparse、coarse 残差融合都还在。
 - 真正决定性能的不是某个单独 kernel，而是 **数据布局 + selector + 稀疏后端** 三者的一致性。
 - 如果只想看“非 PyTorch DSL”，重点看 `fused_compress_topk.py`、`block_sparse_attn_triton.py`、`block_sparse_h100.cu`、`block_sparse_attn_cute_fwd.py`。
+- 如果要直接对照源码执行细节，补充看 [Kernel Execution Appendix](04_kernel_execution_appendix.md)。

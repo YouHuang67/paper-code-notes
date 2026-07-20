@@ -214,6 +214,7 @@ nav:
         - 框架接入、Tile Metadata 与门控: code_analysis/fastvideo_vsa/01_framework_and_metadata.md
         - Triton Coarse Selector: code_analysis/fastvideo_vsa/02_fused_coarse_selector.md
         - Sparse Backends: code_analysis/fastvideo_vsa/03_sparse_backends.md
+        - Kernel Execution Appendix: code_analysis/fastvideo_vsa/04_kernel_execution_appendix.md
       - DeepSeek V4:
         - 总览: code_analysis/deepseek_v4/00_overview.md
         - 模型架构: code_analysis/deepseek_v4/01_model_architecture.md

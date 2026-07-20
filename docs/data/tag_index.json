@@ -1643,7 +1643,7 @@
       "Triton",
       "CUTLASS"
     ],
-    "summary": "解析 FastVideo 中 VSA 的完整执行链：tile metadata、Triton coarse selector、64-token Triton/TK sparse kernel，以及 256-token route-A/CuTe DSL 路由"
+    "summary": "解析 FastVideo 中 VSA 的完整执行链：tile metadata、Triton coarse selector、64-token Triton/TK sparse kernel、256-token route-A/CuTe DSL 路由，以及按源码执行顺序展开的 kernel 附录"
   },
   {
     "title": "DeepSeek-V4",
