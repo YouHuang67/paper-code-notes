@@ -58,14 +58,20 @@ $$
 
 `k_c` 与 `v_c` 同理。
 
-### 2.2 程序布局
+### 2.2 launch grid 与 program 粒度
 
-`_fused_block_mean_kernel` 的 grid 是：
+`_fused_block_mean_kernel` 的 wrapper launch grid 是：
 
 ```text
+grid = (num_blocks, B * H)
 program_id(0) = block_idx
 program_id(1) = bh_idx
 ```
+
+wrapper 先把张量展平成：
+
+- `x_flat: [B*H, seq_len, D]`
+- `out_flat: [B*H, num_blocks, D]`
 
 也就是一个 Triton program 负责：
 
@@ -89,7 +95,22 @@ tl.store(out_base, acc.to(OUTPUT_DTYPE))
 - **一 program 一块**：负载极规整；
 - **2D 连续 load/store**：规避 Python eager 中间 view/sum/div 的多次 launch。
 
-### 2.3 backward 也被显式实现
+### 2.3 `variable_block_sizes` 只影响除数，不改变工作量
+
+这个 kernel 里 `variable_block_sizes[block_idx]` 只参与：
+
+- `acc / vbs`
+- backward 的 `grad_out / vbs`
+
+它不改变：
+
+- grid 形状；
+- 单个 program 读取的 tile 大小；
+- reduction 的迭代次数。
+
+因此只要 `BLOCK_ELEMENTS` 和 `HEAD_DIM` 固定，coarse pooling 的每个 program 都会执行同样大小的 `64 x D` 读、同样一次列向 reduction、同样一次写回。边界块即使真实 token 数更少，也仍按填充后的整块装载，只是在数值上用 `vbs` 修正均值。这也是 coarse stage 基本没有 program 级负载不均衡的原因。
+
+### 2.4 backward 也被显式实现
 
 `_fused_block_mean_bwd_kernel` 不是依赖 PyTorch 自动拆解，而是手写了反向：
 
@@ -137,6 +158,7 @@ mask = torch.zeros_like(scores, dtype=torch.bool).scatter_(-1, topk_idx, True)
 `_fused_topk_mask_kernel` 的 grid：
 
 ```text
+grid = (q_blocks, B * H)
 program_id(0) = q_idx
 program_id(1) = bh_idx
 ```
@@ -144,6 +166,13 @@ program_id(1) = bh_idx
 一个 program 处理一个 `(batch, head, q_block)` 的整行 `kv_blocks` 分数。
 
 **源码位置**: [`_fused_topk_mask_kernel`](https://github.com/hao-ai-lab/FastVideo/blob/970409962f358afd529b969a378174c849665837/fastvideo-kernel/python/fastvideo_kernel/triton_kernels/fused_compress_topk.py#L203-L269)
+
+wrapper 会先把输入展平成：
+
+- `scores_flat: [B*H, q_blocks, kv_blocks]`
+- `mask_flat: [B*H, q_blocks, kv_blocks]`
+
+每个 program 用 `tl.arange(0, KV_BLOCK_SIZE)` 一次性覆盖整行，其中 `KV_BLOCK_SIZE = next_power_of_2(kv_blocks)`，越过真实行长的位置由 `valid_mask` 屏蔽。
 
 ### 3.3 它不是完整排序，而是二分阈值
 
@@ -176,6 +205,14 @@ for _i in range(32):
 - 对 VSA 这种 `scores=q_c@k_c^T/sqrt(d)`、数值范围有限的分数矩阵足够稳定；
 - ties 可以被明确控制，而不是依赖库内部不透明行为。
 
+从执行结构看，这个 kernel 也是规则的：
+
+- bisection 固定跑 32 轮；
+- 每轮都做同样的按行比较与计数；
+- 尾部只多一次 `>` / `==` / `cumsum` 的向量逻辑。
+
+因此单个 program 的成本主要由 `kv_blocks` 决定，而不是由该行最终选中了哪些列决定。coarse selector 的两类 Triton kernel 都属于 “program 数规则、program 工作量也规则” 的形态。
+
 ### 3.4 ties 被当成一等问题处理
 
 这不是理论上的小心谨慎，而是实际 reviewer case 驱动的工程问题。测试里专门覆盖了：
@@ -190,7 +227,7 @@ for _i in range(32):
 
 这说明 `fused_topk_mask` 的设计目标不是“近似对就行”，而是 **保证 row-count 精确正确**。
 
-## 4. `MAX_KV_BLOCK_SIZE = 4096` 是很典型的 GPU 边界
+## 4. 行长度边界：`MAX_KV_BLOCK_SIZE = 4096`
 
 源码里明确写了：
 
@@ -202,10 +239,11 @@ MAX_KV_BLOCK_SIZE = 4096
 
 **源码位置**: [`MAX_KV_BLOCK_SIZE` 与 fallback](https://github.com/hao-ai-lab/FastVideo/blob/970409962f358afd529b969a378174c849665837/fastvideo-kernel/python/fastvideo_kernel/triton_kernels/fused_compress_topk.py#L272-L334)
 
-原因很现实：
+这里受限的不是算法定义，而是“整行常驻寄存器”的实现形态。原因很现实：
 
 - 这个 kernel 需要把整行 `kv_blocks` 分数装进寄存器逻辑；
 - 同时还要维护 `valid_mask`、`above_threshold`、`at_threshold`、`cumsum` 等数组；
+- `KV_BLOCK_SIZE` 会先补成 2 的幂，实际寄存器数组长度可能大于真实 `kv_blocks`；
 - 超过一定长度后会寄存器溢出或严重 spill。
 
 所以这不是“算法上不能继续做”，而是：
@@ -215,7 +253,21 @@ MAX_KV_BLOCK_SIZE = 4096
 
 这是 VSA 实现里非常典型的系统风格。
 
-## 5. coarse branch 的输出如何回到 token 维
+## 5. 测试覆盖的边界
+
+测试不只是做一个前向数值对照，而是把几个最容易出错的边界单独拎了出来：
+
+- `fused_topk_mask` 的 ties 行为，验证每行严格选出 `topk` 个位置；
+- `fused_block_mean` 对 eager `view -> sum -> div` 的前向一致性；
+- `fused_block_mean` 的 backward parity；
+- `fused_block_mean` 接进 `matmul -> softmax -> matmul` 后，整条 coarse branch 的梯度一致性。
+
+**源码位置**:
+
+- [`TestFusedTopkMaskTies`](https://github.com/hao-ai-lab/FastVideo/blob/970409962f358afd529b969a378174c849665837/fastvideo-kernel/tests/test_fused_compress_topk.py#L16-L75)
+- [`TestFusedBlockMeanBackward`](https://github.com/hao-ai-lab/FastVideo/blob/970409962f358afd529b969a378174c849665837/fastvideo-kernel/tests/test_fused_compress_topk.py#L161-L260)
+
+## 6. coarse branch 的输出如何回到 token 维
 
 coarse 分支算完后：
 
@@ -230,7 +282,7 @@ out_c = out_c.repeat(1, 1, 1, block_elements, 1).view(batch, heads, q_seq_len, d
 
 也因此 `gate_compress` 的形状必须是 token 级 `[B,H,S,D]`，而不是 block 级。模型侧的 `to_gate_compress` 也是按 token 投影的。
 
-## 6. 为什么官方没有把 coarse attention 全部写成一版 FlashAttention 变体
+## 7. 为什么官方没有把 coarse attention 全部写成一版 FlashAttention 变体
 
 论文里已经给了原则：coarse stage 的 FLOPs 和显存占比很小，真正显著的是 Top-K 与 index conversion 的 overhead。
 
@@ -247,7 +299,7 @@ out_c = out_c.repeat(1, 1, 1, block_elements, 1).view(batch, heads, q_seq_len, d
 - 小头不做过度内核化；
 - 代码复杂度、可维护性和收益之间取平衡。
 
-## 7. 这一层与论文 §2.4 的精确对照
+## 8. 这一层与论文 §2.4 的精确对照
 
 论文 §2.4 的说法可以压缩成两句：
 
@@ -259,16 +311,12 @@ FastVideo 当前实现就是这个结论的直接代码化：
 - 用 Triton fused kernel 清理 coarse selector 的碎算子开销；
 - 把真正的 heavy lifting 留给 sparse fine kernel。
 
-## 8. 小结
+## 9. 小结
 
-VSA 的 coarse selector 值得深入看的原因，不是它用了 Triton，而是它非常清楚地回答了一个问题：
+coarse selector 的实现可以压成三点：
 
-“哪些环节值得专门写 kernel，哪些环节不值得？”
+- `fused_block_mean` 用规则的 `(num_blocks, B*H)` grid 消掉 pooling 的碎 kernel；
+- `fused_topk_mask` 用“一行一 program + 阈值二分”替代 `topk + scatter`；
+- `q_c @ k_c^T` 与 softmax 保留在 PyTorch，因为 coarse 矩阵已经足够小。
 
-FastVideo 的答案是：
-
-- `block mean` 值得写 Triton
-- `topk mask` 值得写 Triton
-- `q_c @ k_c^T` 没必要硬写
-
-这恰好体现了 VSA 作为一篇系统论文最强的地方：它不只是提出了方法，也知道真正的 runtime 瓶颈在哪里。
+因此这部分最关键的不是算子种类，而是 launch 粒度、寄存器边界和是否保留规则负载。

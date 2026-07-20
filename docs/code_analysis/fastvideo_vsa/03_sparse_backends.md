@@ -7,6 +7,14 @@
 - 256-token 路径的 Triton route-A
 - 256-token 路径的 CuTe DSL / FA4 fastpath
 
+这里实际出现的 DSL 只有三类：
+
+- Triton
+- ThunderKittens/CUDA C++
+- CuTe DSL
+
+VSA 这条开源路径里没有 TileLang 内核。
+
 核心源码：
 
 - [`block_sparse_attn.py`](https://github.com/hao-ai-lab/FastVideo/blob/970409962f358afd529b969a378174c849665837/fastvideo-kernel/python/fastvideo_kernel/block_sparse_attn.py#L1-L424)
@@ -54,6 +62,14 @@ return block_sparse_attn_from_indices(...)
 
 因此 VSA 在内核执行层已经完全不是“dense mask + masked matmul”的思路，而是 **CSR-like row execution**。
 
+更具体地说：
+
+- `q2k_num[b,h,q_blk]` 是这一行的非零块数；
+- `q2k_idx[b,h,q_blk,:]` 是这一行实际访问的 KV block 编号；
+- 最后一维虽然是定长 `max_kv_blks`，但只有前 `q2k_num` 个位置有效。
+
+这相当于把 block mask 从布尔邻接矩阵压成“每行一段索引表”。forward 直接按 `q` 行走，backward 再把它翻成按 `kv` 行走的 `k2q` 表。
+
 ## 3. 64-token 后端路由：Triton 与 TK 的角色分工
 
 `block_sparse_attn_from_indices()` 的决策逻辑是：
@@ -77,6 +93,7 @@ return block_sparse_attn_from_indices(...)
 `_attn_fwd_sparse` 的 program mapping：
 
 ```text
+wrapper launch grid = (Tq / 64, B * H, 1)
 program_id(0) = q_blk
 program_id(1) = off_hz = batch * head
 ```
@@ -88,6 +105,8 @@ program_id(1) = off_hz = batch * head
 - 先从 `q2k_num` 读出本行有多少个有效 KV block；
 - 再从 `q2k_index` 读这行对应的 block 列表；
 - 对这些 block 逐个执行 `Q_i @ K_j^T`、softmax 累积、`P @ V_j`。
+
+这里的 `q_blk` 永远对应一个 64-token query tile。`off_hz` 再把 `(batch, head)` 融成一个轴，所以 grid 上一个 program 就是一块标准的输出 tile：`[64, D]`。
 
 ### 4.2 仍然是 FlashAttention 风格 online softmax
 
@@ -125,6 +144,18 @@ qk = tl.where(mask[None, :], qk, -float("inf"))
 
 所以边界块的 pad token 永远不会混进 sparse softmax。
 
+### 4.4 前向 grid 为什么基本均衡
+
+这一层的 program 数量固定是 `B * H * (Tq / 64)`。单个 program 的主要工作量由它要遍历多少个 `kv` block 决定，而 VSA 的 coarse selector 会把每个 query block 的 `q2k_num` 固定到同一个 `topk`，只在 `topk > kv_blocks` 时整体截断到 `kv_blocks`。
+
+这意味着前向的行稀疏度几乎是常数：
+
+- 每个 `q_blk` 都做同样数量的 sparse block 迭代；
+- 每次迭代的 tile 形状固定都是 `64 x 64`；
+- `variable_block_sizes` 只减少最后一个边界块中的有效列数，不改变 CTA/program 的 tile 形状。
+
+因此 Triton 前向几乎没有结构性失衡，最多只有边界块因 `block_size < 64` 少做少量有效列运算。
+
 ## 5. Triton 64-token 反向：`k2q` 反索引是关键
 
 ### 5.1 backward 不能只靠 `q2k`
@@ -152,9 +183,11 @@ k2q_idx, k2q_num = _invert_indices_for_backward(...)
 在 Triton 实现中：
 
 - `_attn_bwd_dkdv_kernel`
-  - grid over KV blocks
+  - `grid_kv = (Tkv / 64, 1, B * H)`
+  - 一个 program 固定拥有一个 KV block
 - `_attn_bwd_dq_kernel`
-  - grid over Q blocks
+  - `grid_q = (Tq / 64, 1, B * H)`
+  - 一个 program 固定拥有一个 Q block
 
 **源码位置**: [`triton_block_sparse_attn_backward`](https://github.com/hao-ai-lab/FastVideo/blob/970409962f358afd529b969a378174c849665837/fastvideo-kernel/python/fastvideo_kernel/triton_kernels/block_sparse_attn_triton.py#L746-L850)
 
@@ -165,6 +198,11 @@ k2q_idx, k2q_num = _invert_indices_for_backward(...)
 
 对应的稀疏邻接方向也不同。
 
+grid 这样拆开还有一个直接后果：
+
+- `dQ` kernel 继续沿着 `q2k` 方向工作，负载形态和 forward 很接近；
+- `dK/dV` kernel 改成沿着 `k2q` 方向工作，负载不再由固定 `topk` 决定，而由每个 KV block 被多少个 query block 指向决定。
+
 ### 5.3 64-token block 被拆成两个 32-token half
 
 反向里经常出现：
@@ -174,6 +212,26 @@ k2q_idx, k2q_num = _invert_indices_for_backward(...)
 - `kv_blocks * 2`
 
 原因是 backward 内部把 `64` token block 再拆成两个 `32` token half-block 来配合矩阵形状和流水方式。这个选择既影响 mask 写法，也影响 `variable_block_sizes` 的使用。
+
+更具体地说：
+
+- `dK/dV` 里 `q_blocks * 2` 表示每个 64-token Q block 被拆成两个 32-token 子块；
+- `dQ` 里 `kv_blocks * 2` 表示每个 64-token KV block 也拆成两个 32-token 子块；
+- `offs_in_block = half * 32 + arange(32)` 负责把 `variable_block_sizes[kv_idx]` 映射到 half-block 内的真实有效列。
+
+这样做之后，反向内层 GEMM 的形状变成 `32x64` 或 `64x32`，更适合该实现里的寄存器布局与流水。
+
+### 5.4 Triton 反向里真正出现不均衡的位置
+
+`dQ` 侧仍然相对规整，因为每个 Q block 还是沿着自己的 `q2k` 邻接表走，`q2k_num` 基本等于固定 `topk`。
+
+`dK/dV` 侧则不同。某个 KV block 被多少个 Q block 命中，取决于 coarse top-k 在全局图上的汇聚情况：
+
+- 稀疏图中心位置的 KV block，`k2q_num` 可能很大；
+- 冷门 KV block，`k2q_num` 可能很小，甚至为 0；
+- kernel 又把每个命中的 Q block 再拆成两个 32-token half-block，所以真实循环次数是 `2 * k2q_num`。
+
+因此 Triton 反向的主要失衡点不是 tile 大小，而是 `k2q_num` 的行间离散程度。
 
 ## 6. Hopper ThunderKittens CUDA：这才是 64-path 的高性能专用核
 
@@ -219,7 +277,49 @@ k2q_idx, k2q_num = _invert_indices_for_backward(...)
 - 访存效率来自 TMA
 - GEMM 吞吐来自 WGMMA / warpgroup MMA
 
-### 6.3 为什么 `block_size` 作为单独数组传入
+host 侧的 launch 也写得很直接：
+
+```text
+dim3 grid(q_seq_len / 64, qo_heads, batch)
+threads = 128
+dynamic_smem = 54000
+```
+
+也就是说，一个 CTA 固定对应：
+
+- `blockIdx.x`: 一个 64-token Q block
+- `blockIdx.y`: 一个 query/output head
+- `blockIdx.z`: 一个 batch
+
+而 `kv_head_idx = blockIdx.y / hr`，其中 `hr = qo_heads / kv_heads`。这就是 GQA/MQA 的 head 映射方式：多个 query head 可以共享同一个 KV head，但每个 CTA 仍然只负责一个 `(q_blk, qo_head, batch)` 输出 tile。
+
+### 6.3 CTA 内部线程组织
+
+forward kernel 用 `128` 线程，即 `4` 个 warp，也就是刚好 `1` 个 warpgroup。对应关系很清楚：
+
+- 线程块级别只服务一个输出 tile；
+- warpgroup 级别负责 `QK^T` 和 `PV` 的 WGMMA；
+- `threadIdx.x == 0` 负责发起 TMA load/store 和 semaphore 协调；
+- 在线 softmax 状态 `max_vec`、`norm_vec`、`o_reg` 常驻寄存器。
+
+这也是这个 kernel 能把 “一块 Q 对若干稀疏 KV block 的扫描” 压缩成单 CTA 流水的关键。它没有把一个 Q block 再切成多个 CTA，所以不会有 CTA 间归约；代价是 CTA 的运行时长完全由这行稀疏邻接长度决定。
+
+### 6.4 前向 CTA 负载为什么基本均衡
+
+forward CUDA 路径和 Triton 路径一样，都是按 `q2k` 行展开。每个 CTA 读取：
+
+- 一个固定大小的 `Q` tile；
+- 一条 `q2k_block_sparse_index` 邻接表；
+- 固定数量的稀疏迭代，通常就是同一个 `topk`。
+
+因此 CTA 之间最大的差异只来自：
+
+- 某些边界 KV block 的 `block_size < 64`；
+- 极少数 `topk` 被全局截断到 `kv_blocks` 的情况。
+
+在正常 VSA 设置下，forward CTA 的循环深度近似常数，所以 `grid.x * grid.y * grid.z` 上的算力分布是比较平的。
+
+### 6.5 为什么 `block_size` 作为单独数组传入
 
 前向里有：
 
@@ -229,7 +329,7 @@ right_fill(att_block, att_block, g.block_size[q2k_block_sparse_index_ptr[kv_idx]
 
 这和 Triton 版的 `variable_block_sizes` 完全同构：每个 KV block 的真实有效列数不同，所以最后一个边界块必须按真实宽度做裁剪。
 
-### 6.4 backward 同样走 `k2q` 邻接
+### 6.6 backward 同样走 `k2q` 邻接
 
 `bwd_attend_ker` 中读取的是：
 
@@ -242,6 +342,32 @@ right_fill(att_block, att_block, g.block_size[q2k_block_sparse_index_ptr[kv_idx]
 - backward 的 `dK/dV` 用 `k2q`
 
 这说明上层 index-native 抽象设计得足够干净，换后端并不需要改方法层。
+
+host 侧先用 `bwd_attend_prep_ker` 生成 `D = sum(O * dO)`，然后主 kernel 用：
+
+```text
+dim3 grid_bwd_2(kv_seq_len / 64, qo_heads, batch)
+threads = 128
+dynamic_smem = 72000
+```
+
+这时 CTA 的拥有者从 Q block 换成了 KV block：
+
+- `blockIdx.x`: 一个 64-token KV block
+- `blockIdx.y`: 一个 query/output head
+- `blockIdx.z`: 一个 batch
+
+CTA 一进来先读 `qo_blocks = *k2q_block_sparse_num_ptr`，如果 `qo_blocks <= 0` 直接返回。之后整条主循环都是沿 `k2q_block_sparse_index_ptr[qo_idx]` 扫描所有指向这个 KV block 的 Q block。
+
+### 6.7 CUDA 反向里 CTA 不均衡出现在哪里
+
+这个 CTA 设计避免了对 `dK/dV` 的跨 CTA 归约：一个 CTA 独占一个 KV block 的 `dK/dV` 累积，最后直接写回或 `store_add_async`。但代价也很直接：
+
+- 热门 KV block 的 CTA 要扫描很多 `qo_blocks`；
+- 冷门 KV block 的 CTA 很快结束；
+- 没有命中的 KV block 会在入口直接返回。
+
+因此 CUDA 反向最主要的失衡来源就是 `k2q_block_sparse_num` 的离散分布，而不是线程块形状本身。CTA 形状始终一样，变的是每个 CTA 要走多长的邻接表。
 
 ## 7. 256-token 路径：默认不是 CuTe，而是 Triton route-A
 
@@ -271,6 +397,17 @@ right_fill(att_block, att_block, g.block_size[q2k_block_sparse_index_ptr[kv_idx]
 - 最小化新 kernel 开发量；
 - 先保证算法路径可运行；
 - 在没有可选依赖时仍然有默认实现。
+
+这个展开不是单纯把一个逻辑边复制四次，而是复制成 `4 x 4` 的物理边子图。假设逻辑上 `Q_i -> K_j` 连通，那么 route-A 会生成：
+
+- `Q_{i,0..3} -> K_{j,0..3}`
+
+因此一条 256 级逻辑边会变成 16 条 64 级物理边。对应影响有两个：
+
+- 稀疏图在物理层面变稠，`q2k_num` 会按 4 倍 Q 展开和 4 倍 KV 展开同步放大；
+- 但每条物理边仍然交给已经成熟的 64x64 Triton kernel 处理，不需要再新写一套 256 block 专用稀疏 attention。
+
+最后一个逻辑 KV block 如果真实长度不足 256，则会被拆成最多四个 `[0,64]` 的子块长度。边界处理没有丢到 kernel 之外，而是直接体现在新的 `sizes_64` 上。
 
 ## 8. CuTe DSL / FA4 fastpath：256 路径真正的专用实现
 
@@ -314,6 +451,14 @@ child1 = clamp(size - 128, 0, 128)
 - `mask_mod`
 - `aux_tensors`
 
+FastVideo 在这一层并不直接暴露 CTA grid。它暴露的是：
+
+- 稀疏 block 索引；
+- full block / partial block 的划分；
+- 基于 `variable_block_sizes` 的运行时谓词。
+
+真正的 tile 调度、CTA 划分和流水策略都在 FA4/CuTe 内核内部。
+
 #### full block 与 partial block 分开描述
 
 它先把 KV block 分成：
@@ -348,13 +493,25 @@ return (valid > 0) & (kv_off < valid)
 
 ## 9. 测试怎么说明这些路径是认真的
 
-256 路径有专门的三方对照测试：
+64-token 路径的前向测试不仅比较数值，还显式覆盖了：
+
+- `S_q == S_kv`
+- `S_q != S_kv`
+- query 侧和 KV 侧各自独立的 `variable_block_sizes`
+
+这说明 `q`/`kv` 长度不对称和边界块长度不一致是被当成标准场景维护的，不是偶然支持。
+
+256 路径则有专门的三方对照测试：
 
 - torch reference
 - CuTe
 - Triton route-A
 
 **源码位置**: [`test_vsa256_forward_cross.py`](https://github.com/hao-ai-lab/FastVideo/blob/970409962f358afd529b969a378174c849665837/fastvideo-kernel/tests/test_vsa256_forward_cross.py#L1-L136)
+
+64-token 前向对照见：
+
+- [`test_vsa_forward.py`](https://github.com/hao-ai-lab/FastVideo/blob/970409962f358afd529b969a378174c849665837/fastvideo-kernel/tests/test_vsa_forward.py#L1-L220)
 
 这意味着 256 路径不是实验性死代码，而是有明确的数值对照基线。
 
@@ -368,19 +525,16 @@ return (valid > 0) & (kv_off < valid)
 
 ## 10. 小结
 
-如果把 VSA 的非 PyTorch实现按价值排序，我会这样看：
+这几条 backend 的分工可以直接按执行模型来记：
 
 1. **Triton sparse kernel**
-   - 是通用保底路径
-   - 也是理解索引执行模型的最好入口
+   - 用 `q2k/k2q` 索引表驱动 64x64 block-sparse attention
+   - forward 负载规则，反向主要在 `k2q_num` 上出现离散
 2. **ThunderKittens CUDA**
-   - 是 Hopper 上真正的高性能专用路径
-   - 展示了 VSA 如何把 block 稀疏映射到 TMA/WGMMA
+   - 用 `(q_blk, qo_head, batch)` 或 `(kv_blk, qo_head, batch)` 的 CTA 映射承载 Hopper `TMA + WGMMA`
+   - forward CTA 深度近似常数，backward CTA 深度由 `qo_blocks` 决定
 3. **CuTe DSL**
-   - 主要服务 256-token 路径
-   - 核心看点是 block-sparse tensor 表示与 `mask_mod`，而不是手写 kernel body
+   - FastVideo 侧只负责 block-sparse tensor、`mask_mod` 与 `variable_block_sizes` 的契约转换
+   - 物理 CTA/tile 调度留在 FA4/CuTe 内核内部
 
-而 256 route-A 则体现了另一个同样重要的工程原则：
-
-- 在没有专用 fastpath 时，先把算法跑通；
-- 再用新硬件和可选依赖逐步替换默认实现。
+256 route-A 则单独说明了一件事：逻辑 256 稀疏图可以通过 `4 x 4` 物理子图展开，复用已有 64-token backend，而不必同步维护一套新的 256-token 稀疏 kernel。
