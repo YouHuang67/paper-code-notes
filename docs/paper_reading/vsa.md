@@ -414,6 +414,14 @@ VSA 的优势不只来自 `K` 小，还来自 coarse 分支保留了一个低成
 - [框架接入、tile metadata 与门控](../code_analysis/fastvideo_vsa/01_framework_and_metadata.md)
 - [Triton coarse selector：fused block mean 与 Top-K mask](../code_analysis/fastvideo_vsa/02_fused_coarse_selector.md)
 - [Sparse backends：Triton / ThunderKittens CUDA / CuTe DSL](../code_analysis/fastvideo_vsa/03_sparse_backends.md)
+- [Kernel Execution Appendix：按源码执行顺序展开](../code_analysis/fastvideo_vsa/04_kernel_execution_appendix.md)
+
+其中最后这页专门展开：
+
+- `q2k/k2q` 索引压缩与反向翻转；
+- Triton sparse forward/backward 的 tile、寄存器状态和内层循环；
+- Hopper ThunderKittens CUDA 的 host grid、CTA 映射、TMA/WGMMA 流水和 `qo_blocks` 负载分布；
+- 256-token route-A 的 `4 x 4` 物理子图展开，以及 CuTe `mask_mod` 怎样处理 partial block。
 
 ## 8. 局限
 
