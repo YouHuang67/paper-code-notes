@@ -24,7 +24,7 @@ tags:
 - 为什么这种计算形态本身就适合跑快
 - 为什么 SGLang 的优化可以稳定落在这份形态上
 
-实现补充、部署形态和长代码路径请看 [效率附录](06_efficiency_appendix.md)。
+实现补充、部署形态和长代码路径请看 [DiT Runtime 与 Collectives](07_dit_runtime_and_collectives.md) 与 [效率附录](06_efficiency_appendix.md)。
 
 ## 1. 第一原则：先把系统压成一条主计算链
 
@@ -355,4 +355,4 @@ H3 在 SGLang 中有一组非常明确的 fp32 island：
 
 这五条里，前两条决定“它本来就比很多系统更适合高性能执行”，后三条决定“这种潜力真的能在 SGLang runtime 里被兑现出来”。
 
-实现补充、代码路径和部署形态见 [效率附录](06_efficiency_appendix.md)。
+实现补充、代码路径和部署形态见 [DiT Runtime 与 Collectives](07_dit_runtime_and_collectives.md) 与 [效率附录](06_efficiency_appendix.md)。

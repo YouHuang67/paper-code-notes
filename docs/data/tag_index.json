@@ -1949,5 +1949,17 @@
       "LLM Inference"
     ],
     "summary": "补充正文之外的实现细节：关键文件地图、denoise loop 状态组织、BCG text bucketing 与 H200/H100/5090 拓扑取舍"
+  },
+  {
+    "title": "MiniMax H3 - DiT Runtime 与 Collectives",
+    "path": "code_analysis/minimax_h3/07_dit_runtime_and_collectives.md",
+    "type": "代码分析",
+    "tags": [
+      "Video Generation",
+      "Diffusion Model",
+      "Unified Understanding",
+      "LLM Inference"
+    ],
+    "summary": "沿 SGLang native H3 热路径拆解 `_embed -> block -> attention core -> gather`：row-local staging、fused AdaLN/Attention/MLP、Ulysses/Ring 与 late gather 如何连成一条执行链"
   }
 ]
