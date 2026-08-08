@@ -55,6 +55,13 @@
   - [Triton Coarse Selector](fastvideo_vsa/02_fused_coarse_selector.md) - `fused_block_mean` 与 `fused_topk_mask` 的程序布局、数值路径与寄存器边界
   - [Sparse Backends](fastvideo_vsa/03_sparse_backends.md) - 64-token Triton/TK sparse attention、256 route-A 与 CuTe DSL block-sparse fastpath
   - [Kernel Execution Appendix](fastvideo_vsa/04_kernel_execution_appendix.md) - 按源码执行顺序展开 `q2k/k2q` 索引、Triton sparse loop、Hopper CTA 内部状态与 256 路径图展开
+- [MiniMax H3](minimax_h3/00_overview.md) - 统一多模态音视频生成主干：packed multimodal sequence、3D MM-RoPE、per-row AdaLN 与双 scheduler 推理链
+  - [模型结构](minimax_h3/01_model_architecture.md) - 单流 Omni Transformer、text refiner、共享 block stack 与双输出头
+  - [推理流程](minimax_h3/02_inference_pipeline.md) - Qwen3-VL presentation、layout packing、row timestep plan、双模态 denoise loop
+  - [优化与实现细节](minimax_h3/03_optimizations_and_details.md) - mixed precision、context parallel、anchor rows、双 scheduler 与可复现协议
+  - [如何嵌入 SGLang 体系](minimax_h3/04_sglang_integration.md) - H3 在 SGLang 中不是 generic diffusers fallback，而是 native pipeline / native DiT runtime / native packed-row contract
+  - [SGLang 中的效率主线](minimax_h3/05_efficiency_in_sglang.md) - 只抓 H3 最高价值的效率来源：单分支 packed DiT、persistent row buffer、fused AdaLN/QKNorm/RoPE、Ulysses/Ring 与 late gather
+  - [效率附录](minimax_h3/06_efficiency_appendix.md) - 承接正文外的实现补充：关键文件地图、denoise loop 状态、BCG prompt bucketing 与不同 GPU 拓扑的取舍
 - [DeepSeek V4](deepseek_v4/00_overview.md) - mHC + Hybrid Attention + MoE + TileLang 低精度推理实现
 - [DeepEP](deepep/00_overview.md) - MoE Expert-Parallel 通信库：基于 TMA + NCCL Gin 的全 GPU 端 all-to-all 实现
 - [ELF](elf/00_overview.md) - Embedded Language Flows: JAX/Flax DiT + Flow Matching + 共享权重 denoiser-decoder

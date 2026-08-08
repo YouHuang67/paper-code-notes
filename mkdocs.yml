@@ -215,6 +215,14 @@ nav:
         - Triton Coarse Selector: code_analysis/fastvideo_vsa/02_fused_coarse_selector.md
         - Sparse Backends: code_analysis/fastvideo_vsa/03_sparse_backends.md
         - Kernel Execution Appendix: code_analysis/fastvideo_vsa/04_kernel_execution_appendix.md
+      - MiniMax H3:
+        - 总览: code_analysis/minimax_h3/00_overview.md
+        - 模型结构: code_analysis/minimax_h3/01_model_architecture.md
+        - 推理流程: code_analysis/minimax_h3/02_inference_pipeline.md
+        - 优化与实现细节: code_analysis/minimax_h3/03_optimizations_and_details.md
+        - 如何嵌入 SGLang 体系: code_analysis/minimax_h3/04_sglang_integration.md
+        - SGLang 中的效率主线: code_analysis/minimax_h3/05_efficiency_in_sglang.md
+        - 效率附录: code_analysis/minimax_h3/06_efficiency_appendix.md
       - DeepSeek V4:
         - 总览: code_analysis/deepseek_v4/00_overview.md
         - 模型架构: code_analysis/deepseek_v4/01_model_architecture.md
@@ -257,6 +265,18 @@ nav:
       - kernel.py: code_analysis/deepseek_v4/src/kernel_py.md
     - FlashInfer Variable Block Sparse:
       - code_analysis/flashinfer_variable_block_sparse/src/index.md
+    - MiniMax H3:
+      - code_analysis/minimax_h3/src/index.md
+      - README.md: code_analysis/minimax_h3/src/readme_md.md
+      - transformer/config.json: code_analysis/minimax_h3/src/transformer_config_json.md
+      - transformer_minimax_h3.py: code_analysis/minimax_h3/src/transformer_minimax_h3_py.md
+      - modular_blocks_minimax_h3.py: code_analysis/minimax_h3/src/modular_blocks_minimax_h3_py.md
+      - before_denoise.py: code_analysis/minimax_h3/src/before_denoise_py.md
+      - encoders.py: code_analysis/minimax_h3/src/encoders_py.md
+      - denoise.py: code_analysis/minimax_h3/src/denoise_py.md
+      - scheduling_minimax_h3.py: code_analysis/minimax_h3/src/scheduling_minimax_h3_py.md
+      - autoencoder_kl_minimax_h3.py: code_analysis/minimax_h3/src/autoencoder_kl_minimax_h3_py.md
+      - autoencoder_kl_minimax_h3_audio.py: code_analysis/minimax_h3/src/autoencoder_kl_minimax_h3_audio_py.md
     - ELF:
       - 总览: code_analysis/elf/00_overview.md
       - 模型结构: code_analysis/elf/01_model.md

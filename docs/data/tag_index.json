@@ -1869,5 +1869,85 @@
       "CUTLASS"
     ],
     "summary": "MoE combine all-to-all：TMA 写入远程 buffer、三种 reduce 模式、Hybrid 流水线 scaleup+scaleout 解耦"
+  },
+  {
+    "title": "MiniMax H3 代码分析：总览",
+    "path": "code_analysis/minimax_h3/00_overview.md",
+    "type": "代码分析",
+    "tags": [
+      "Video Generation",
+      "Diffusion Model",
+      "Unified Understanding"
+    ],
+    "summary": "MiniMax H3 开源推理实现总览：packed multimodal sequence、单流 Omni Transformer、双模态 diffusion 与系统边界"
+  },
+  {
+    "title": "MiniMax H3 - 模型结构",
+    "path": "code_analysis/minimax_h3/01_model_architecture.md",
+    "type": "代码分析",
+    "tags": [
+      "Video Generation",
+      "Diffusion Model",
+      "Unified Understanding"
+    ],
+    "summary": "33B 单流主干结构详解：3D MM-RoPE、token refiner、per-(timestep, modality) AdaLN 与双输出头"
+  },
+  {
+    "title": "MiniMax H3 - 推理流程",
+    "path": "code_analysis/minimax_h3/02_inference_pipeline.md",
+    "type": "代码分析",
+    "tags": [
+      "Video Generation",
+      "Diffusion Model",
+      "Unified Understanding"
+    ],
+    "summary": "从 Qwen3-VL presentation 到 packed layout、row timestep plan、双 scheduler denoise loop 的完整执行链"
+  },
+  {
+    "title": "MiniMax H3 - 优化与实现细节",
+    "path": "code_analysis/minimax_h3/03_optimizations_and_details.md",
+    "type": "代码分析",
+    "tags": [
+      "Video Generation",
+      "Diffusion Model",
+      "Unified Understanding"
+    ],
+    "summary": "H3 推理的工程关键点：mixed precision、context parallel、anchor rows、双 scheduler 与复现协议"
+  },
+  {
+    "title": "MiniMax H3 - 如何嵌入 SGLang 体系",
+    "path": "code_analysis/minimax_h3/04_sglang_integration.md",
+    "type": "代码分析",
+    "tags": [
+      "Video Generation",
+      "Diffusion Model",
+      "Unified Understanding",
+      "LLM Inference"
+    ],
+    "summary": "H3 在 SGLang 中不是通用 diffusers fallback，而是 native pipeline：模型注册、分区权重、stage 链、scheduler contract 与 native DiT forward contract 全部专门实现"
+  },
+  {
+    "title": "MiniMax H3 - SGLang 中的效率主线",
+    "path": "code_analysis/minimax_h3/05_efficiency_in_sglang.md",
+    "type": "代码分析",
+    "tags": [
+      "Video Generation",
+      "Diffusion Model",
+      "Unified Understanding",
+      "LLM Inference"
+    ],
+    "summary": "按主线拆解 H3 的高效率来源：packed single-stream DiT、CFG-distilled 单分支、request-static 复用、persistent row buffer、fused AdaLN/QKNorm/RoPE、Ulysses/Ring 与 late gather"
+  },
+  {
+    "title": "MiniMax H3 - 效率附录",
+    "path": "code_analysis/minimax_h3/06_efficiency_appendix.md",
+    "type": "代码分析",
+    "tags": [
+      "Video Generation",
+      "Diffusion Model",
+      "Unified Understanding",
+      "LLM Inference"
+    ],
+    "summary": "补充正文之外的实现细节：关键文件地图、denoise loop 状态组织、BCG text bucketing 与 H200/H100/5090 拓扑取舍"
   }
 ]
