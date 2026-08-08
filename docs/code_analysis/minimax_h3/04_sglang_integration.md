@@ -5,22 +5,16 @@ tags:
   - Unified Understanding
   - LLM Inference
 ---
-# MiniMax H3 - 如何嵌入 SGLang 体系
+# MiniMax H3 - 如何嵌入 SGLang 体系：native pipeline / native DiT runtime / native packed-row contract
 
 **源码仓库**:
 
 - [MiniMax-AI/MiniMax-H3](https://github.com/MiniMax-AI/MiniMax-H3)
 - [sgl-project/sglang](https://github.com/sgl-project/sglang)
 
-这篇只回答一个问题：**H3 现在和 SGLang 的关系到底是什么**。重点不是外围 API、部署参数或请求协议，而是澄清 H3 在 SGLang 中是否已经拥有自己的原生执行链。
-
-结论先写在前面：
-
 - **H3 不是一个“外部 diffusers 模型，被 SGLang 顺手托管”的案例**
 - **它已经被 SGLang 做成了 native diffusion pipeline**
 - **后面所有高效率优化，都是基于这条 native pipeline 和 packed-row 执行契约展开的**
-
-如果你更关心“为什么它快”，正文请直接跳到 [SGLang 中的效率主线](05_efficiency_in_sglang.md)。这篇只负责把“嵌入边界”讲清楚。
 
 ## 1. 不是 generic diffusers fallback，而是 native model family
 
@@ -31,9 +25,7 @@ H3 在 SGLang 注册表里被直接识别成 `MiniMaxH3Pipeline`，而不是先�
 - [registry.py](https://github.com/sgl-project/sglang/blob/main/python/sglang/multimodal_gen/registry.py)
 - [minimax_h3_pipeline.py:L30-L35](https://github.com/sgl-project/sglang/blob/main/python/sglang/multimodal_gen/runtime/pipelines/minimax_h3_pipeline.py#L30-L35)
 
-这件事的意义是：服务端在模型选择阶段就承认 H3 需要一套专门 contract，而不是“通用视频 diffusion pipeline 的一个配置变体”。
-
-之所以必须这样，是因为 H3 的推理语义和常规 video diffusion 差异很大：
+这说明服务端在模型选择阶段就承认 H3 需要一套专门 contract，而不是“通用视频 diffusion pipeline 的一个配置变体”。原因在于 H3 的推理语义和常规 video diffusion 差异很大：
 
 - 它是 **视频 + 音频联合 denoise**
 - 它是 **CFG-distilled 单分支**
@@ -86,7 +78,7 @@ H3 在 SGLang 中被视作两个语义分区：
 
 这意味着：
 
-- `t2va` / `fl2va` 并不总是跑同一个统一子目录
+- `fl2va` 分区统一承载 `t2va` 与 `fl2va` 任务族
 - `ref2va` 也不是请求层随手开的一个条件开关
 
 SGLang 会在加载期把：
@@ -97,7 +89,7 @@ SGLang 会在加载期把：
 
 做严格一致性校验。
 
-这一步的重要性在于：H3 的公开 release 本身就是按任务族拆分的，SGLang 接入时保留了这个边界，没有把它强行抹平成“单 checkpoint 多任务”。
+H3 的公开 release 本身就是按任务族拆分的，SGLang 接入时保留了这个边界，没有把它强行抹平成“单 checkpoint 多任务”。
 
 ## 4. H3 在 SGLang 中是 monolithic whole-loop execution
 
@@ -176,8 +168,6 @@ H3 在 SGLang 里最关键的一层，不是 pipeline 类本身，而是 native 
 
 ## 7. 对“是否嵌入 SGLang”的最终判断
 
-如果严格用工程标准来回答这个问题，答案应该是：
-
 - **是，H3 已经深度嵌入到 SGLang 体系里**
 - 嵌入点不只是 serving 命令层
 - 也不只是下载 / 请求协议层
@@ -189,6 +179,4 @@ H3 在 SGLang 里最关键的一层，不是 pipeline 类本身，而是 native 
   - DiT forward contract
   - sequence-parallel runtime
 
-也因此，真正讨论 H3 “为什么快”，不能只看 `MiniMax-AI/MiniMax-H3` 或 `diffusers` 基线，而必须看这条 SGLang native runtime。
-
-正文主线见 [SGLang 中的效率主线](05_efficiency_in_sglang.md)。实现细节与补充材料见 [效率附录](06_efficiency_appendix.md)。
+也因此，真正讨论 H3 “为什么快”，不能只看 `MiniMax-AI/MiniMax-H3` 或 `diffusers` 基线，而必须看这条 SGLang native runtime。效率主线见 [MiniMax H3 在 SGLang 中的效率主线](05_efficiency_in_sglang.md)，状态机与热路径细节见 [Denoise Loop 状态机](08_denoise_loop_state_machine.md) 与 [DiT Runtime 与 Collectives](07_dit_runtime_and_collectives.md)。

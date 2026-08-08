@@ -16,16 +16,7 @@ tags:
 - [runtime/models/dits/minimax_h3.py](https://github.com/sgl-project/sglang/blob/main/python/sglang/multimodal_gen/runtime/models/dits/minimax_h3.py)
 - [denoise_loop.py](https://github.com/sgl-project/sglang/blob/main/python/sglang/multimodal_gen/runtime/pipelines_core/stages/model_specific_stages/minimax_h3/denoise_loop.py)
 
-前面的正文已经把结论说清楚了：H3 在 SGLang 里之所以快，核心在于 packed single-stream DiT、persistent row buffer、fused AdaLN/QKNorm/RoPE、packed varlen attention、Ulysses/Ring 和 late gather。
-
-但如果想像读 FlashAttention 一样，把“这些结论到底在代码里如何串成一条热路径”看透，还得单独盯住 `runtime/models/dits/minimax_h3.py`。
-
-这篇就只做一件事：**按执行顺序，把 H3 的 native DiT runtime 热路径梳理清楚**。
-
-建议先读：
-
-- [如何嵌入 SGLang 体系](04_sglang_integration.md)
-- [SGLang 中的效率主线](05_efficiency_in_sglang.md)
+这里按执行顺序展开 `runtime/models/dits/minimax_h3.py` 的 native H3 热路径，对应 [如何嵌入 SGLang 体系](04_sglang_integration.md) 与 [MiniMax H3 在 SGLang 中的效率主线](05_efficiency_in_sglang.md)。
 
 ## 1. 先抓住这个文件的职责边界
 
@@ -36,7 +27,7 @@ tags:
 3. 定义 block stack 内部的 fused dataflow
 4. 定义 SP/TP/Ring/Ulysses 下的 collectives 边界
 
-这意味着它不像 diffusers 那种“高层语义很清楚，具体性能看 backend”；这里的高层语义和性能路径是绑在一起的。
+这里的高层语义和性能路径是绑在一起的。
 
 如果把整个执行图抽象成一条主链，可以写成：
 
@@ -96,17 +87,7 @@ H3 的 `_embed()` 被 `@eager_on_graph(True)` 包起来，专门负责把当前 
 
 - [minimax_h3.py:L1314-L1463](https://github.com/sgl-project/sglang/blob/main/python/sglang/multimodal_gen/runtime/models/dits/minimax_h3.py#L1314-L1463)
 
-可以把它的语义写成：
-
-```text
-text rows
-video rows
-audio rows
-  -> scatter into one local [S_local, H] buffer
-  -> return embeddings + distinct timestep embeddings
-```
-
-这一步的重要性远大于“简单做个线性投影”，因为它决定了 block stack 是否能只处理：
+这一步决定了 block stack 是否能只处理：
 
 - 本 rank 的连续 row shard
 - 统一 width 的残差流
@@ -134,7 +115,7 @@ audio rows
 
 临时筛选本 rank 拥有哪些 row。
 
-这就是一个典型的“把 shape-dependent 控制流前移”的优化：
+这是把 shape-dependent 控制流前移：
 
 - serving 阶段先把 row ownership 解出来
 - block stack 热路径只负责读和写
@@ -147,12 +128,10 @@ audio rows
 
 - [minimax_h3.py:L1436-L1460](https://github.com/sgl-project/sglang/blob/main/python/sglang/multimodal_gen/runtime/models/dits/minimax_h3.py#L1436-L1460)
 
-这一步的直觉很简单：
-
 - patch projection 是所有视觉 / 音频 row 进入主残差流的唯一入口
 - 如果这里一开始就把误差放大，50 层 block 都会继承这份误差
 
-所以它宁可把真正重的 block stack 压 bf16，也把入口投影保成 fp32 island。
+所以它把真正重的 block stack 压 bf16，但把入口投影保成 fp32 island。
 
 ## 4. Request-static 条件是怎么被塞进热路径外的
 
@@ -180,7 +159,7 @@ audio rows
 
 - [minimax_h3.py:L1271-L1312](https://github.com/sgl-project/sglang/blob/main/python/sglang/multimodal_gen/runtime/models/dits/minimax_h3.py#L1271-L1312)
 
-这里最值得注意的不是“缓存了 RoPE”，而是：
+这里最关键的不是“缓存了 RoPE”，而是：
 
 - row split 的定义必须和 `forward()` 里的 sequence-parallel row split 完全同构
 
@@ -232,7 +211,7 @@ norm2
 
 - [minimax_h3.py:L739-L791](https://github.com/sgl-project/sglang/blob/main/python/sglang/multimodal_gen/runtime/models/dits/minimax_h3.py#L739-L791)
 
-因此它在运行时的真实角色更像：
+因此它在运行时更像：
 
 - 少量 distinct timestep 的 modulation table 生成器
 
@@ -318,9 +297,7 @@ SGLang 明确把 attention core 定义成：
 
 - [minimax_h3.py:L437-L504](https://github.com/sgl-project/sglang/blob/main/python/sglang/multimodal_gen/runtime/models/dits/minimax_h3.py#L437-L504)
 
-它为什么是唯一值得断开的地方？
-
-因为真正随请求 shape、row layout、SP topology 变化最大的就是：
+真正随请求 shape、row layout、SP topology 变化最大的就是：
 
 - `cu_seqlens`
 - `max_seqlen`
@@ -334,7 +311,7 @@ SGLang 明确把 attention core 定义成：
 - AdaLN
 - MLP
 
-这些反而更接近固定形状的 dense 计算。
+这些部分更接近固定形状的 dense 计算。
 
 ### 7.2 Ulysses 在这里做“sequence for heads”交换
 
@@ -352,7 +329,7 @@ SGLang 明确把 attention core 定义成：
 
 - [minimax_h3.py:L456-L500](https://github.com/sgl-project/sglang/blob/main/python/sglang/multimodal_gen/runtime/models/dits/minimax_h3.py#L456-L500)
 
-这一步非常像一个“attention 内部的局部 layout transform”。外部 block stack 始终认为自己处理的是 row shard；只有 attention 核心内部，短暂把 sequence partition 换成 head partition。
+外部 block stack 始终认为自己处理的是 row shard；只有 attention 核心内部，短暂把 sequence partition 换成 head partition。
 
 ### 7.3 Ring 再叠一层 row 外切分
 
@@ -391,7 +368,7 @@ SGLang 明确把 attention core 定义成：
 1. block stack 外层的并行单位是连续 row shard
 2. ring 是外层维，ulysses 是内层维
 
-因此整条 runtime 都围绕一个隐含不变量展开：
+因此整条 runtime 都围绕一个不变量展开：
 
 - **每个 rank 永远处理 packed sequence 的一个连续子区间**
 
@@ -401,7 +378,7 @@ SGLang 明确把 attention core 定义成：
 - `build_rope_cache()` 可以直接 slice local rows
 - final layer 也能先 row-local 出 logits 再 gather
 
-这就是 H3 runtime 能维持“前后几何一致”的基础。
+这是 H3 runtime 维持前后几何一致的基础。
 
 ## 9. Block stack 外的两个 gather：为什么都故意放晚
 
@@ -436,17 +413,17 @@ SGLang 明确把 attention core 定义成：
 
 - [minimax_h3.py:L1690-L1698](https://github.com/sgl-project/sglang/blob/main/python/sglang/multimodal_gen/runtime/models/dits/minimax_h3.py#L1690-L1698)
 
-这就是 H3 整个通信路径里最漂亮的一点：
+顺序是：
 
 - **row 先聚全**
 - **dead rows 先裁掉**
 - **列最后才聚全**
 
-它避免了很多实现里常见的“图省事，先 full gather 再裁剪”的浪费。
+它避免了“先 full gather 再裁剪”的浪费。
 
 ## 10. 回到 denoise loop：这个 runtime 为什么刚好适合 H3 的状态机
 
-前面这条 runtime 热路径之所以能稳定发挥作用，是因为 `denoise_loop.py` 给它喂的状态本来就长成它喜欢的样子：
+前面这条 runtime 热路径之所以能稳定发挥作用，是因为 `denoise_loop.py` 给它喂的状态满足同一份静态几何：
 
 - row layout 静态
 - text refinement 静态
@@ -499,14 +476,12 @@ for step in denoise_steps:
     audio_logits = tp_gather(audio_logits)
 ```
 
-这段伪代码的重点不在语法，而在你能一眼看到 H3 的核心策略：
-
 - 把动态性缩到 target row values
 - 把几何和条件做成静态输入
 - 把最重计算压到一套高度专门化的 block stack 上
 - 把 gather 尽量往后推
 
-## 12. 最后的判断
+## 12. 结论
 
 如果只盯住 `minimax_h3.py` 这一份 runtime 文件，H3 的高效率可以被更具体地描述成：
 
@@ -525,4 +500,3 @@ for step in denoise_steps:
 
 - **H3 把多模态生成改写成一条 packed single-stream dataflow**
 - **SGLang 再把这条 dataflow 实现成一条几乎处处围绕 row geometry 优化的 native runtime**
-

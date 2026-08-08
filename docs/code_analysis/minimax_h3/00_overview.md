@@ -123,16 +123,17 @@ RoPE 模块显式使用 `(t, h, w)` 三轴：[transformer_minimax_h3.py:L74-L98]
 
 ## 3. 文档拆分
 
-这次按 6 篇文档组织，正文和附录分层：
+文档按以下层次组织：
 
 - [总览](00_overview.md)
 - [模型结构](01_model_architecture.md)
 - [推理流程](02_inference_pipeline.md)
 - [优化与实现细节](03_optimizations_and_details.md)
 - [如何嵌入 SGLang 体系](04_sglang_integration.md)
-- [SGLang 中的效率主线](05_efficiency_in_sglang.md)
-- [效率附录](06_efficiency_appendix.md)
+- [MiniMax H3 在 SGLang 中的效率主线](05_efficiency_in_sglang.md)
 - [DiT Runtime 与 Collectives](07_dit_runtime_and_collectives.md)
+- [Denoise Loop 状态机](08_denoise_loop_state_machine.md)
+- [效率附录](06_efficiency_appendix.md)
 
 源码浏览页集中在：
 
@@ -155,10 +156,11 @@ RoPE 模块显式使用 `(t, h, w)` 三轴：[transformer_minimax_h3.py:L74-L98]
 1. [模型结构](01_model_architecture.md)：先建立 packed sequence + AdaLN + 单流 Transformer 的总心智模型
 2. [推理流程](02_inference_pipeline.md)：再看 `t2va` / `fl2va` / `ref2va` 如何分别走 layout、噪声和循环
 3. [优化与实现细节](03_optimizations_and_details.md)：补齐 open-source diffusers 路径的工程细节
-4. [如何嵌入 SGLang 体系](04_sglang_integration.md)：澄清 H3 在 SGLang 中不是 generic fallback，而是 native pipeline
-5. [SGLang 中的效率主线](05_efficiency_in_sglang.md)：只抓最核心的计算加速 / 通信优化 / 算子设计
+4. [如何嵌入 SGLang 体系](04_sglang_integration.md)：H3 在 SGLang 中不是 generic diffusers fallback，而是 native pipeline / native DiT runtime / native packed-row contract
+5. [MiniMax H3 在 SGLang 中的效率主线](05_efficiency_in_sglang.md)：只抓 H3 最高价值的效率来源：单分支 packed DiT、persistent row buffer、fused AdaLN/QKNorm/RoPE、Ulysses/Ring 与 late gather
 6. [DiT Runtime 与 Collectives](07_dit_runtime_and_collectives.md)：沿热路径细读 `sglang` native runtime，像读 FA 一样理解 `_embed -> block -> attention core -> gather`
-7. [效率附录](06_efficiency_appendix.md)：最后回看细节、拓扑和补充代码路径
+7. [Denoise Loop 状态机](08_denoise_loop_state_machine.md)：把 `MiniMaxH3DenoiseBranch`、静态/动态状态、target-row 增量更新与 timestep plan 单独拆开
+8. [效率附录](06_efficiency_appendix.md)：最后回看 BCG、拓扑和补充代码路径
 
 ## 小结
 

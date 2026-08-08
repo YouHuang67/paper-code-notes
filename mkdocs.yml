@@ -221,8 +221,9 @@ nav:
         - 推理流程: code_analysis/minimax_h3/02_inference_pipeline.md
         - 优化与实现细节: code_analysis/minimax_h3/03_optimizations_and_details.md
         - 如何嵌入 SGLang 体系: code_analysis/minimax_h3/04_sglang_integration.md
-        - SGLang 中的效率主线: code_analysis/minimax_h3/05_efficiency_in_sglang.md
+        - MiniMax H3 在 SGLang 中的效率主线: code_analysis/minimax_h3/05_efficiency_in_sglang.md
         - DiT Runtime 与 Collectives: code_analysis/minimax_h3/07_dit_runtime_and_collectives.md
+        - Denoise Loop 状态机: code_analysis/minimax_h3/08_denoise_loop_state_machine.md
         - 效率附录: code_analysis/minimax_h3/06_efficiency_appendix.md
       - DeepSeek V4:
         - 总览: code_analysis/deepseek_v4/00_overview.md

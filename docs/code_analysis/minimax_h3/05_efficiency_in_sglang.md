@@ -5,26 +5,15 @@ tags:
   - Unified Understanding
   - LLM Inference
 ---
-# MiniMax H3 - SGLang 中的效率主线
+# MiniMax H3 在 SGLang 中的效率主线：单分支 packed DiT、persistent row buffer、fused AdaLN/QKNorm/RoPE、Ulysses/Ring 与 late gather
 
 **源码仓库**:
 
 - [MiniMax-AI/MiniMax-H3](https://github.com/MiniMax-AI/MiniMax-H3)
 - [sgl-project/sglang](https://github.com/sgl-project/sglang)
 
-这篇只做一件事：把 H3 在 SGLang 中真正决定性能上限的因素梳理成一条清晰主线。
-
-我会刻意不在正文堆太多枝节，因为 H3 的关键并不在“某个零散 trick”，而在几层优化刚好互相咬合：
-
 1. **H3 先把问题改写成 packed single-stream 音视频 DiT**
 2. **SGLang 再围绕这份 packed contract 专门做 kernel、通信和缓存设计**
-
-所以最准确的问题不是“它用了哪个算子很快”，而是：
-
-- 为什么这种计算形态本身就适合跑快
-- 为什么 SGLang 的优化可以稳定落在这份形态上
-
-实现补充、部署形态和长代码路径请看 [DiT Runtime 与 Collectives](07_dit_runtime_and_collectives.md) 与 [效率附录](06_efficiency_appendix.md)。
 
 ## 1. 第一原则：先把系统压成一条主计算链
 
@@ -73,9 +62,7 @@ H3 的公开 checkpoint 是 CFG-distilled 单正分支，这一点在 SGLang pip
 - CFG 双次主干前向
 - CFG parallel 的额外同步和拼接
 
-从“总 FLOPs”这个最粗粒度指标看，这就是 H3 能够快起来的第一大削减项。
-
-如果主干每步还要跑两次，再多 kernel 融合也很难追平。
+从总 FLOPs 看，这是 H3 能够快起来的第一大削减项。
 
 ## 3. 第三原则：把热循环外能静态化的东西全部静态化
 
@@ -108,7 +95,7 @@ RoPE 也不在每步重建，而是针对本 rank 的 row shard 预先构好 cac
 
 - [minimax_h3.py:L1271-L1312](https://github.com/sgl-project/sglang/blob/main/python/sglang/multimodal_gen/runtime/models/dits/minimax_h3.py#L1271-L1312)
 
-这一步的收益不在数学复杂度，而在于：
+收益不在数学复杂度，而在于：
 
 - 让热循环里只保留真正随 timestep 改变的计算
 - 让后续 attention 侧更接近纯 tensor core / packed attention 热区
@@ -127,7 +114,7 @@ H3 的 scheduler adapter 数学很薄，真正重要的是 SGLang 先生成整�
 - [timestep preparation stage](https://github.com/sgl-project/sglang/blob/main/python/sglang/multimodal_gen/runtime/pipelines_core/stages/model_specific_stages/minimax_h3/stages/timestep_preparation.py)
 - [scheduler adapter](https://github.com/sgl-project/sglang/blob/main/python/sglang/multimodal_gen/runtime/models/schedulers/scheduling_minimax_h3_euler_ancestral.py)
 
-这说明 H3 的性能中心从来不在 scheduler，而在 block stack 本身。
+这说明 H3 的性能中心在 block stack，而不在 scheduler 本身。
 
 ## 4. 第四原则：persistent row buffer，而不是每步重建整条输入
 
@@ -145,7 +132,7 @@ H3 的 scheduler adapter 数学很薄，真正重要的是 SGLang 先生成整�
 - [denoise_loop.py:L163-L173](https://github.com/sgl-project/sglang/blob/main/python/sglang/multimodal_gen/runtime/pipelines_core/stages/model_specific_stages/minimax_h3/denoise_loop.py#L163-L173)
 - [denoise_loop.py:L241-L258](https://github.com/sgl-project/sglang/blob/main/python/sglang/multimodal_gen/runtime/pipelines_core/stages/model_specific_stages/minimax_h3/denoise_loop.py#L241-L258)
 
-它等价于把每个 step 的输入构造从：
+这相当于把每个 step 的输入构造从：
 
 - “重建整条 packed sequence”
 
@@ -159,7 +146,7 @@ H3 的 scheduler adapter 数学很薄，真正重要的是 SGLang 先生成整�
 - 更少全量 `index_copy_`
 - 更少无变化 condition rows 的重复流动
 
-H3 之所以能吃到这份收益，根本原因还是前面那条：它的 row layout 已经把静态锚点和动态 target 明确分开了。
+H3 能吃到这份收益，根本原因是它的 row layout 已经把静态锚点和动态 target 明确分开了。
 
 ## 5. 第五原则：算子不是泛泛 fused，而是围绕 H3 的 row contract 做融合
 
@@ -177,7 +164,7 @@ H3 attention 侧同时用了：
 - [minimax_h3.py:L271-L296](https://github.com/sgl-project/sglang/blob/main/python/sglang/multimodal_gen/runtime/models/dits/minimax_h3.py#L271-L296)
 - [minimax_h3.py:L653-L676](https://github.com/sgl-project/sglang/blob/main/python/sglang/multimodal_gen/runtime/models/dits/minimax_h3.py#L653-L676)
 
-这个融合的价值不是“函数调用少一点”，而是把：
+这个融合的价值在于把：
 
 - q/k RMSNorm
 - rotary application
@@ -208,11 +195,11 @@ MLP 的 `SiLU(gate) * up` 被做成了专门 fused path：
 - [minimax_h3.py:L258-L268](https://github.com/sgl-project/sglang/blob/main/python/sglang/multimodal_gen/runtime/models/dits/minimax_h3.py#L258-L268)
 - [minimax_h3.py:L732-L735](https://github.com/sgl-project/sglang/blob/main/python/sglang/multimodal_gen/runtime/models/dits/minimax_h3.py#L732-L735)
 
-单层收益不夸张，但 50 层累加后依然可观。
+单层收益有限，但 50 层累加后依然可观。
 
 ## 6. 第六原则：attention 的关键不是“用了 FA”，而是 packed varlen + Ulysses/Ring 共设计
 
-H3 在 SGLang 中的 attention 设计，最关键的不只是 FlashAttention 后端，而是它和 packed sequence、sequence parallel 的共设计。
+H3 在 SGLang 中的 attention 设计，关键不只是 FlashAttention 后端，而是它和 packed sequence、sequence parallel 的共设计。
 
 ### 6.1 attention 原生吃 packed varlen sequence
 
@@ -245,7 +232,7 @@ H3 packed sequence 很长，真正的瓶颈之一是 block stack 内部 activati
 - [attention core:L456-L500](https://github.com/sgl-project/sglang/blob/main/python/sglang/multimodal_gen/runtime/models/dits/minimax_h3.py#L456-L500)
 - [forward row split:L1554-L1581](https://github.com/sgl-project/sglang/blob/main/python/sglang/multimodal_gen/runtime/models/dits/minimax_h3.py#L1554-L1581)
 
-它的意义不是“多卡支持更丰富”，而是：
+它的意义在于：
 
 - 把长序列负担分掉
 - 同时避免每层都走更重的 TP 通信模式
@@ -259,11 +246,11 @@ H3 还允许 ring degree 叠在 Ulysses 外面。Ring 不分 heads，只分 rows
 - [attention core:L473-L489](https://github.com/sgl-project/sglang/blob/main/python/sglang/multimodal_gen/runtime/models/dits/minimax_h3.py#L473-L489)
 - [sequence-parallel 校验:L1069-L1101](https://github.com/sgl-project/sglang/blob/main/python/sglang/multimodal_gen/runtime/models/dits/minimax_h3.py#L1069-L1101)
 
-这让 H3 的 row contract 能继续扩展到更大拓扑，而不必完全重写注意力语义。
+这让 H3 的 row contract 能继续扩展到更大拓扑，而不必重写注意力语义。
 
-## 7. 第七原则：通信优化的重点不是“少通信”，而是“晚 gather、窄 gather”
+## 7. 第七原则：通信优化的重点是“晚 gather、窄 gather”
 
-H3/SGLang 的通信优化非常克制。它没有神奇地把 collectives 变没，而是尽量把通信放到更晚、更窄的时候做。
+H3/SGLang 的通信优化并不是消除 collectives，而是尽量把通信放到更晚、更窄的时候做。
 
 ### 7.1 block AdaLN 先批处理，再一次 gather
 
@@ -290,7 +277,7 @@ final layer 先算全 row 输出，但真正的 TP gather 发生在：
 - [final layer 注释:L1003-L1008](https://github.com/sgl-project/sglang/blob/main/python/sglang/multimodal_gen/runtime/models/dits/minimax_h3.py#L1003-L1008)
 - [forward gather 路径:L1690-L1698](https://github.com/sgl-project/sglang/blob/main/python/sglang/multimodal_gen/runtime/models/dits/minimax_h3.py#L1690-L1698)
 
-这一步之所以重要，是因为它避免在：
+这一步重要，是因为它避免在：
 
 - text rows
 - padding rows
@@ -298,13 +285,11 @@ final layer 先算全 row 输出，但真正的 TP gather 发生在：
 
 上浪费 TP 通信 payload。
 
-H3 在通信层最核心的思路，其实就是这一句：
-
 - **先把对外无用的 rows 裁掉，再做列聚合**
 
 ## 8. 第八原则：breakable CUDA graph 只在最动态的地方断开
 
-H3 在 SGLang 中不是“彻底 eager”，也不是“全量强 capture”。它把 breakable CUDA graph 的断点收得很窄：
+H3 在 SGLang 中把 breakable CUDA graph 的断点收得很窄：
 
 - projection、AdaLN、MLP 尽量保持图内
 - 真正动态的 packed attention core 和 SP collectives 放在 eager break
@@ -314,7 +299,7 @@ H3 在 SGLang 中不是“彻底 eager”，也不是“全量强 capture”。�
 - [attention core 注释:L449-L454](https://github.com/sgl-project/sglang/blob/main/python/sglang/multimodal_gen/runtime/models/dits/minimax_h3.py#L449-L454)
 - [eager_on_graph 包装:L504](https://github.com/sgl-project/sglang/blob/main/python/sglang/multimodal_gen/runtime/models/dits/minimax_h3.py#L504)
 
-这非常符合 H3 的结构特征：
+这符合 H3 的结构特征：
 
 - attention 的 shape / row partition / collective 语义最动态
 - 其余 block 路径则相对稳定
@@ -336,16 +321,16 @@ H3 在 SGLang 中有一组非常明确的 fp32 island：
 - [post-load 校验:L1190-L1200 左右](https://github.com/sgl-project/sglang/blob/main/python/sglang/multimodal_gen/runtime/models/dits/minimax_h3.py)
 - [模块定义:L1125-L1159](https://github.com/sgl-project/sglang/blob/main/python/sglang/multimodal_gen/runtime/models/dits/minimax_h3.py#L1125-L1159)
 
-它说明一件事：H3 的性能路径不是“粗暴全部压 BF16/FP8”，而是：
+这说明 H3 的性能路径不是“粗暴全部压 BF16/FP8”，而是：
 
 - 大部分 block stack 走 BF16 + fused path
 - 少数数值敏感点保 fp32
 
 这让它既能快，也更容易维持稳定输出契约。
 
-## 10. 把主线收束成一句话
+## 10. 结论：最高价值的效率来源
 
-如果把前面所有内容压缩成最核心的判断，H3 在 SGLang 中之所以高效，关键不是某一个 kernel，而是以下 5 件事同时成立：
+H3 在 SGLang 中的最高价值效率来源可以压成 5 点：
 
 1. **模型层先做对了问题改写**：把联合音视频生成折叠成 packed single-stream DiT。
 2. **主干层避免结构性浪费**：CFG-distilled 单分支让每步只跑一次大模型。
@@ -353,6 +338,4 @@ H3 在 SGLang 中有一组非常明确的 fp32 island：
 4. **内核与通信围绕 row contract 专门化**：indexed AdaLN、fused qknorm+rope、packed varlen attention、Ulysses/Ring SP、late gather。
 5. **loop 层避免全量重建输入**：persistent row buffer 只重写 target suffix，而不是每步重拼整条序列。
 
-这五条里，前两条决定“它本来就比很多系统更适合高性能执行”，后三条决定“这种潜力真的能在 SGLang runtime 里被兑现出来”。
-
-实现补充、代码路径和部署形态见 [DiT Runtime 与 Collectives](07_dit_runtime_and_collectives.md) 与 [效率附录](06_efficiency_appendix.md)。
+这五条都围绕同一份 packed-row contract 配套。状态机细节见 [Denoise Loop 状态机](08_denoise_loop_state_machine.md)，runtime 热路径见 [DiT Runtime 与 Collectives](07_dit_runtime_and_collectives.md)，其余补充见 [效率附录](06_efficiency_appendix.md)。

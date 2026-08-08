@@ -7,14 +7,13 @@ tags:
 ---
 # MiniMax H3 - 效率附录
 
-这篇附录收纳正文刻意压缩掉的补充材料：
+附录收纳正文外的补充材料：
 
 - H3 native pipeline 的关键文件地图
-- denoise loop 的 row-state 细节
 - breakable CUDA graph prompt padding 的具体策略
 - 部署拓扑为什么会分化成 `Ulysses4` / `TP2+Ulysses2` / `offload+TP2`
 
-主线请先读 [SGLang 中的效率主线](05_efficiency_in_sglang.md)。
+denoise loop 的 row-state 细节见 [Denoise Loop 状态机](08_denoise_loop_state_machine.md)。
 
 ## 1. 文件地图：真正与性能最相关的是哪些文件
 
@@ -52,40 +51,7 @@ tags:
 - 让不同 prompt 长度在可控范围内复用 graph signature
 - 又不破坏主 packed sequence 的 row partition 与数值路径
 
-## 2. denoise loop 为什么能做到“只重写 target rows”
-
-`MiniMaxH3DenoiseBranch` 构造时就把 row 角色分清了：
-
-- `img_cond_seq_idx`
-- `img_target_seq_idx`
-- `audio_target_seq_idx`
-- `audio_ref_seq_idx`
-
-**源码位置**:
-
-- [denoise_loop.py:L147-L166](https://github.com/sgl-project/sglang/blob/main/python/sglang/multimodal_gen/runtime/pipelines_core/stages/model_specific_stages/minimax_h3/denoise_loop.py#L147-L166)
-
-然后它持有两块 persistent buffer：
-
-- `x_buffer`
-- `audio_x_buffer`
-
-第一次把全量 rows 写进去：
-
-- [denoise_loop.py:L241-L248](https://github.com/sgl-project/sglang/blob/main/python/sglang/multimodal_gen/runtime/pipelines_core/stages/model_specific_stages/minimax_h3/denoise_loop.py#L241-L248)
-
-之后只重写 target suffix：
-
-- [denoise_loop.py:L249-L258](https://github.com/sgl-project/sglang/blob/main/python/sglang/multimodal_gen/runtime/pipelines_core/stages/model_specific_stages/minimax_h3/denoise_loop.py#L249-L258)
-
-这个设计隐含两个前提：
-
-1. condition/reference rows 在整次生成中是 pinned anchor
-2. packed layout 把 target rows 放成可连续更新的后缀
-
-所以它其实不只是“写 buffer 少了点”，而是 **layout 设计和 loop 设计彼此配套**。
-
-## 3. `local_embedding_layout` 为什么值钱
+## 2. `local_embedding_layout` 为什么值钱
 
 如果没有 `local_embedding_layout`，`_embed()` 每步都要重新做：
 
@@ -111,7 +77,7 @@ tags:
 
 这样 `_embed()` 热路径就从“边算布局边 scatter”，变成“直接按既定布局写局部 shard”。
 
-## 4. 为什么 H3 要专门处理 QKV checkpoint layout
+## 3. 为什么 H3 要专门处理 QKV checkpoint layout
 
 H3 的 attention checkpoint 把 qkv 融在一起保存，而 TP 下三个逻辑矩阵其实必须独立分片。SGLang 因此没有直接复用普通 `ColumnParallelLinear` 的默认切法，而是显式实现了：
 
@@ -129,7 +95,7 @@ H3 的 attention checkpoint 把 qkv 融在一起保存，而 TP 下三个逻辑�
 - 它让 TP 下的 qkv 逻辑和 checkpoint 物理布局真正对齐
 - 否则后面所有 fused path 都站不稳
 
-## 5. 为什么 prompt bucket padding 只 pad text，不 pad 主 sequence
+## 4. 为什么 prompt bucket padding 只 pad text，不 pad 主 sequence
 
 H3 的 breakable CUDA graph padder 做了一件很克制的事：
 
@@ -153,7 +119,7 @@ H3 的 breakable CUDA graph padder 做了一件很克制的事：
 
 这也是为什么 H3 的 BCG 不是“盲目提高命中率”，而是优先守住主计算路径稳定性。
 
-## 6. 为什么 topology 会分化成 H200 / H100 / 5090 三条路
+## 5. 为什么 topology 会分化成 H200 / H100 / 5090 三条路
 
 ### 6.1 4xH200：resident + Ulysses4
 
@@ -173,7 +139,7 @@ H100 80GB 更像是一个平衡点：
 - 引入 TP2 能分掉部分列宽和参数驻留压力
 - 再保留 Ulysses2 去处理长序列 activation
 
-这不是某种抽象最佳实践，而是 H3 这类“大 block stack + packed 长序列”模型在 80GB 级别显存上的自然折中。
+这是 H3 这类“大 block stack + packed 长序列”模型在 80GB 级别显存上的自然折中。
 
 ### 6.3 2xRTX5090：offload + TP2
 
@@ -185,7 +151,7 @@ H100 80GB 更像是一个平衡点：
 
 H3 能在这类环境下仍然保持可用，依赖的正是它把最重热区集中在 DiT block stack 上，便于围绕 blocks 做驻留与传输调度。
 
-## 7. 为什么 H3 当前的 speed path 明确不依赖默认 `torch.compile`
+## 6. 为什么 H3 当前的 speed path 明确不依赖默认 `torch.compile`
 
 SGLang 对 H3 的速度路径给出了非常明确的约束：
 
@@ -209,7 +175,7 @@ SGLang 对 H3 的速度路径给出了非常明确的约束：
 
 而不是把焦点放在 compile。
 
-## 8. 一张总表：核心收益分别来自哪里
+## 7. 一张总表：核心收益分别来自哪里
 
 | 层次 | 关键机制 | 主要收益 |
 |------|----------|----------|
@@ -221,4 +187,3 @@ SGLang 对 H3 的速度路径给出了非常明确的约束：
 | attention | packed varlen + Ulysses/Ring | 降 activation 压力，保持长序列可扩展 |
 | 通信 | batched AdaLN gather + late gather | 压低 collective payload |
 | graph | 窄边界 BCG + text-only bucketing | 兼顾动态图与 graph 复用 |
-
