@@ -12,20 +12,19 @@ tags:
 - [MiniMax-AI/MiniMax-H3](https://github.com/MiniMax-AI/MiniMax-H3)
 - [sgl-project/sglang](https://github.com/sgl-project/sglang)
 
-- **H3 不是一个“外部 diffusers 模型，被 SGLang 顺手托管”的案例**
-- **它已经被 SGLang 做成了 native diffusion pipeline**
+- **SGLang 将 H3 实现为 native diffusion pipeline**
 - **后面所有高效率优化，都是基于这条 native pipeline 和 packed-row 执行契约展开的**
 
-## 1. 不是 generic diffusers fallback，而是 native model family
+## 1. Native model family
 
-H3 在 SGLang 注册表里被直接识别成 `MiniMaxH3Pipeline`，而不是先尝试通用 diffusers 路径再降级处理。
+H3 在 SGLang 注册表中被直接识别为 `MiniMaxH3Pipeline`。
 
 **源码位置**:
 
 - [registry.py](https://github.com/sgl-project/sglang/blob/main/python/sglang/multimodal_gen/registry.py)
 - [minimax_h3_pipeline.py:L30-L35](https://github.com/sgl-project/sglang/blob/main/python/sglang/multimodal_gen/runtime/pipelines/minimax_h3_pipeline.py#L30-L35)
 
-这说明服务端在模型选择阶段就承认 H3 需要一套专门 contract，而不是“通用视频 diffusion pipeline 的一个配置变体”。原因在于 H3 的推理语义和常规 video diffusion 差异很大：
+这说明服务端在模型选择阶段即为 H3 提供专门 contract。H3 的推理语义与常规 video diffusion 存在较大差异：
 
 - 它是 **视频 + 音频联合 denoise**
 - 它是 **CFG-distilled 单分支**
@@ -34,7 +33,7 @@ H3 在 SGLang 注册表里被直接识别成 `MiniMaxH3Pipeline`，而不是先�
 
 如果不在注册层就切到 H3 专用 pipeline，后续的调度、缓存和分布式切分都无法对齐。
 
-## 2. `MiniMaxH3Pipeline` 不是空壳，而是 H3 自己的 stage 链
+## 2. `MiniMaxH3Pipeline` 的原生 stage 链
 
 `MiniMaxH3Pipeline` 明确声明了自己的必需组件和 stage 组织方式。
 
@@ -62,9 +61,9 @@ H3 在 SGLang 注册表里被直接识别成 `MiniMaxH3Pipeline`，而不是先�
 - `unet()`
 - `scheduler.step()`
 
-不是一回事。H3 在 SGLang 中的执行单位不是一个 generic scheduler loop，而是一条 **从 request lowering 到 packed denoise loop 的原生 stage pipeline**。
+H3 在 SGLang 中以一条 **从 request lowering 到 packed denoise loop 的原生 stage pipeline** 为执行单位。
 
-## 3. `model_variant` 不是部署参数，而是权重分区契约
+## 3. `model_variant` 是权重分区契约
 
 H3 在 SGLang 中被视作两个语义分区：
 
@@ -79,7 +78,7 @@ H3 在 SGLang 中被视作两个语义分区：
 这意味着：
 
 - `fl2va` 分区统一承载 `t2va` 与 `fl2va` 任务族
-- `ref2va` 也不是请求层随手开的一个条件开关
+- `ref2va` 对应独立的任务分区
 
 SGLang 会在加载期把：
 
@@ -100,7 +99,7 @@ H3 pipeline 明确禁止 disaggregation，只允许 monolithic 角色。
 - [minimax_h3_pipeline.py:L94-L99](https://github.com/sgl-project/sglang/blob/main/python/sglang/multimodal_gen/runtime/pipelines/minimax_h3_pipeline.py#L94-L99)
 - [pipeline config:L75-L89](https://github.com/sgl-project/sglang/blob/main/python/sglang/multimodal_gen/configs/pipeline_configs/minimax_h3.py#L75-L89)
 
-这说明 H3 当前在 SGLang 中的高效路径，不是靠把不同阶段拆给不同 worker，而是靠：
+这说明 H3 当前在 SGLang 中通过以下方式获得高效路径：
 
 - 单 pipeline 内部的 request-static 预计算
 - 单机 / 单拓扑内的 packed-sequence 高效执行
@@ -112,7 +111,7 @@ H3 pipeline 明确禁止 disaggregation，只允许 monolithic 角色。
 - sequence parallel / tensor parallel
 - persistent row buffer
 
-而不是传统文本模型那种 prefill/decode 解耦。
+这与传统文本模型的 prefill/decode 解耦模式不同。
 
 ## 5. SGLang 配置层已经把 H3 的推理边界钉死了
 
@@ -140,15 +139,15 @@ H3 pipeline 明确禁止 disaggregation，只允许 monolithic 角色。
 - H3 不走默认 compile speed path
 - H3 的 attention backend 必须理解 packed varlen sequence
 
-这已经不是“框架里多了一个模型适配器”，而是 **框架专门承认了一种新的计算 contract**。
+这表明 **框架专门承认了一种新的计算 contract**。
 
 ## 6. 真正关键的嵌入点：native DiT runtime
 
-H3 在 SGLang 里最关键的一层，不是 pipeline 类本身，而是 native DiT 实现：
+H3 在 SGLang 中的关键层是 native DiT 实现：
 
 - [runtime/models/dits/minimax_h3.py](https://github.com/sgl-project/sglang/blob/main/python/sglang/multimodal_gen/runtime/models/dits/minimax_h3.py)
 
-它接收的不是通用 `hidden_states + timestep + encoder_hidden_states` 这类 diffusers 风格输入，而是一套 H3 自己的 packed contract：
+它接收 H3 自己的一套 packed contract：
 
 - `x`
 - `audio_x`
@@ -164,7 +163,7 @@ H3 在 SGLang 里最关键的一层，不是 pipeline 类本身，而是 native 
 - [minimax_h3.py:L97-L123](https://github.com/sgl-project/sglang/blob/main/python/sglang/multimodal_gen/runtime/models/dits/minimax_h3.py#L97-L123)
 - [minimax_h3.py:L1465-L1537](https://github.com/sgl-project/sglang/blob/main/python/sglang/multimodal_gen/runtime/models/dits/minimax_h3.py#L1465-L1537)
 
-这说明 H3 在 SGLang 中不是“沿用某个通用 DiT forward 签名”，而是 **连 forward contract 都是原生化的**。
+这说明 H3 在 SGLang 中连 forward contract 都是原生化的。
 
 ## 7. 对“是否嵌入 SGLang”的最终判断
 

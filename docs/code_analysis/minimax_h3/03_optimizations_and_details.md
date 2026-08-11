@@ -8,7 +8,7 @@ tags:
 
 本文集中解释那些不属于“主算法框架”，但真正决定实现是否可运行、可复现、可扩展的工程细节。
 
-## 1. mixed precision 不是全局 bf16，而是精细分层
+## 1. 精细分层的 mixed precision
 
 `MiniMaxH3Transformer3DModel` 明确列出了 `_keep_in_fp32_modules`：[transformer_minimax_h3.py:L434-L449](src/transformer_minimax_h3_py.md#__codelineno-0-434)
 
@@ -21,14 +21,14 @@ tags:
 
 其它主干大部分则在 `bfloat16`。
 
-这个拆法说明作者并不是简单追求“所有东西都低精度”，而是明确保留了几类敏感模块：
+这个拆法为几类敏感模块明确保留了更高精度：
 
 - 输入投影
 - 时间步 embedding
 - 输出头
 - RoPE 频率表
 
-它们共同特点是：**精度误差会系统性地污染整条 denoising 轨迹**，尤其 `time_embedder` 与 `rope`，误差不是局部噪声，而会被所有 block 反复读取。
+它们共同特点是：**精度误差会系统性地污染整条 denoising 轨迹**，尤其 `time_embedder` 与 `rope`；误差会被所有 block 反复读取。
 
 ## 2. AdaLN 分支可以被视作大参数量但轻运行时附加成本
 
@@ -44,7 +44,7 @@ README 提到主干约 33B，其中约 13B 在 AdaLN 相关分支。这个说法
 
 见 [transformer_minimax_h3.py:L122-L129](src/transformer_minimax_h3_py.md#__codelineno-0-122) 与 [transformer_minimax_h3.py:L636-L643](src/transformer_minimax_h3_py.md#__codelineno-0-636)。
 
-所以 AdaLN 的参数量虽然大，但其运行方式更接近 **table lookup + broadcast modulation**，而不是为每个 row 重算一套控制网络。
+所以 AdaLN 的参数量虽然大，其运行方式仍更接近 **table lookup + broadcast modulation**。
 
 ## 3. packed sequence 的最大好处是“统一计算图”，最大代价是 attention 长度
 
@@ -79,7 +79,7 @@ $$
 
 ## 5. 当前实现的一个隐藏优化点：同一步只传 distinct timesteps
 
-Transformer `forward` 并不是给每个 row 传一个完整 timestep 向量，而是：
+Transformer `forward` 通过以下方式传递每个 row 的 timestep：
 
 - 传 `timestep: (num_timesteps,)`
 - 再传 `timestep_indices: (seq_len,)`
@@ -140,7 +140,7 @@ H3 的做法更直接：
 
 `_cp_plan` 是这份实现里很容易被忽略，但很重要的一段：[transformer_minimax_h3.py:L450-L479](src/transformer_minimax_h3_py.md#__codelineno-0-450)。
 
-它说明 sequence parallel 不是从 `forward` 输入处就切，而是：
+sequence parallel 在后续阶段按以下方式切分：
 
 - 先把全 sequence buffer 组好
 - 到 `transformer_blocks.0` 再开始按 sequence 维切
@@ -154,9 +154,9 @@ H3 的做法更直接：
 
 所以它选了“sequence 先建完整，再在 block stack 内并行”的策略。
 
-## 9. `ref2va` 的时钟推进不是细节，而是语义设计
+## 9. `ref2va` 的时钟推进承载语义
 
-`build_ref2va_packed_sequence(...)` 里最深的一个设计，其实不是张量操作，而是这个约束：
+`build_ref2va_packed_sequence(...)` 中最关键的设计是这项约束：
 
 > reference order advances the shared audio/video rotary clock
 
@@ -164,7 +164,7 @@ H3 的做法更直接：
 
 这表示：
 
-- reference 的顺序不是一个无关紧要的列表顺序
+- reference 的顺序参与 rotary clock 的语义定义
 - 它直接影响后续 target rows 的绝对 rotary time origin
 
 换句话说，在 H3 的建模观里，多参考输入不只是“一个集合”，而是 **一段被排版过的多模态上下文叙事**。
@@ -179,7 +179,7 @@ H3 的做法更直接：
 
 见 [encoders.py:L102-L136](src/encoders_py.md#__codelineno-0-102)。
 
-这说明作者很明确地把“官方结果可复现”作为接口设计目标，而不是单纯追求更高随机性或更理想的理论形式。
+这说明作者将“官方结果可复现”作为接口设计目标。
 
 同样，噪声 draw order 也被固定下来：[before_denoise.py:L847-L850](src/before_denoise_py.md#__codelineno-0-847)。
 
@@ -196,7 +196,7 @@ H3 的做法更直接：
 - **双模态 row 数量差异**
   - target video rows 和 target audio rows 的粒度不同，需要 per-row timestep plan 和双 scheduler 协调
 - **VAE / text encoder / main transformer 的异构组合**
-  - 不是单模型前向，而是 Qwen3-VL + video VAE + audio VAE + H3 transformer + dual decoder 的系统调用
+  - 由 Qwen3-VL、video VAE、audio VAE、H3 transformer 与 dual decoder 构成的系统调用
 
 这也说明后续如果继续深入，可以重点沿三个方向补充：
 
@@ -206,10 +206,10 @@ H3 的做法更直接：
 
 ## 小结
 
-MiniMax H3 当前开源实现里的“优化”不是某个极端 kernel trick，而是系统层的三类工程决策：
+MiniMax H3 当前开源实现的“优化”由系统层的三类工程决策构成：
 
 - **结构层**：单流 packed sequence + row-level AdaLN
 - **数值层**：分层 mixed precision + distinct timestep 复用 + 双 scheduler
 - **部署层**：context parallel、anchor row 冻结、backend-dispatch、可复现编码协议
 
-它和 FlashAttention 一类工作最大的共同点，是都在做“把看似自然的高层数学对象，重排成更适合硬件与系统执行的形式”；只是 H3 重排的对象不是单个 attention kernel，而是整个多模态生成流程。
+它与 FlashAttention 一类工作都在将高层数学对象重排为更适合硬件与系统执行的形式。H3 重排的对象覆盖整个多模态生成流程。

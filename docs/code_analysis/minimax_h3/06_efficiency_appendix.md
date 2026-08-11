@@ -90,7 +90,7 @@ H3 的 attention checkpoint 把 qkv 融在一起保存，而 TP 下三个逻辑�
 - [minimax_h3.py:L532-L545](https://github.com/sgl-project/sglang/blob/main/python/sglang/multimodal_gen/runtime/models/dits/minimax_h3.py#L532-L545)
 - [minimax_h3.py:L585-L614](https://github.com/sgl-project/sglang/blob/main/python/sglang/multimodal_gen/runtime/models/dits/minimax_h3.py#L585-L614)
 
-这一步本身不是运行时热区，但它非常关键，因为：
+这一步不处于运行时热区，但仍然非常关键，因为：
 
 - 它让 TP 下的 qkv 逻辑和 checkpoint 物理布局真正对齐
 - 否则后面所有 fused path 都站不稳
@@ -117,13 +117,13 @@ H3 的 breakable CUDA graph padder 做了一件很克制的事：
 - 只 pad 最需要 bucket 化的文本维
 - 主 row 几何保持在既有 64-row alignment 组里
 
-这也是为什么 H3 的 BCG 不是“盲目提高命中率”，而是优先守住主计算路径稳定性。
+因此，H3 的 BCG 优先保证主计算路径稳定性。
 
 ## 5. 为什么 topology 会分化成 H200 / H100 / 5090 三条路
 
 ### 6.1 4xH200：resident + Ulysses4
 
-H200 的关键不是“更快的 kernel”，而是它允许 H3 把整条 BF16/FP32 pipeline 常驻，同时只靠 Ulysses4 把长序列 activation 分掉。
+H200 允许 H3 常驻整条 BF16/FP32 pipeline，并仅靠 Ulysses4 分摊长序列 activation。
 
 结果是：
 
@@ -173,7 +173,7 @@ SGLang 对 H3 的速度路径给出了非常明确的约束：
 - packed varlen attention
 - SP/TP late gather
 
-而不是把焦点放在 compile。
+分析焦点应落在实际执行路径。
 
 ## 7. 一张总表：核心收益分别来自哪里
 

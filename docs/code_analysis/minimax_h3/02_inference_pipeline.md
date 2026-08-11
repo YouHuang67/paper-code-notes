@@ -8,7 +8,7 @@ tags:
 
 本文沿 `encoders.py -> before_denoise.py -> denoise.py -> scheduling_minimax_h3.py` 展开 MiniMax H3 的实际推理链。
 
-重点不是 API 用法，而是三种工作流 `t2va` / `fl2va` / `ref2va` 如何被压成同一套执行框架。
+本文聚焦三种工作流 `t2va` / `fl2va` / `ref2va` 如何被压成同一套执行框架。
 
 ## 1. 顶层流水线其实是 5 个 block
 
@@ -31,9 +31,9 @@ before_encode
 - `ref2va`
   - 有 image / video / audio reference
 
-也就是说，H3 不是三套完全独立的 pipeline，而是 **同一 modular pipeline 的三种 layout 策略**。
+也就是说，H3 以 **同一 modular pipeline 的三种 layout 策略** 覆盖这三类工作流。
 
-## 2. 第一步不是编码，而是先把输入重写成 H3 自己的 presentation
+## 2. 先将输入重写成 H3 的 presentation
 
 ### 2.1 文本条件来自 Qwen3-VL 第 50 层
 
@@ -41,8 +41,7 @@ before_encode
 
 这一步很关键，因为它说明：
 
-- H3 不是拿 Qwen3-VL 的最终 logits 之类产物
-- 它拿的是一个中间层特征
+- H3 使用 Qwen3-VL 的中间层特征
 - 条件作用本质上是“拿大型多模态模型做高层语义表征器”
 
 ### 2.2 `t2va` 最简单，直接把 prompt 原样 tokenize
@@ -66,7 +65,7 @@ before_encode
 - 这段 span 在 `text_token_tags` 中被标为 `video_tag`
 - 所以即使它来自“text encoder side”，主干里仍按视频 modality 调制
 
-这说明 H3 的“文本条件”并不是纯文本，而是 **Qwen3-VL presentation 产生的 packed multimodal prompt sequence**。
+这说明 H3 的“文本条件”是 **Qwen3-VL presentation 产生的 packed multimodal prompt sequence**。
 
 ### 2.4 `ref2va` 会给不同参考模态加不同标签
 
@@ -80,7 +79,7 @@ before_encode
 
 ## 3. 条件 VAE 编码：视觉条件要采样，音频条件取 posterior mean
 
-### 3.1 视觉条件 latent 不是 deterministic encode
+### 3.1 视觉条件 latent 采用确定性种子的 posterior 采样
 
 `encode_vae_condition(...)` 的流程是：[encoders.py:L102-L136](src/encoders_py.md#__codelineno-0-102)
 
@@ -90,11 +89,11 @@ before_encode
 4. 再强制 round 到 float16
 5. 用 `latents_mean/std` 做标准化
 
-这很值得注意，因为很多人会默认“condition latent 就是 encoder mean”。但 H3 的 released recipe 明确不是这样。
+这很值得注意：H3 的 released recipe 为 condition latent 使用 posterior 采样。
 
 ### 3.2 音频条件 latent 则是 deterministic 的
 
-`MiniMaxH3Ref2VAReferenceEncoderStep` 对音频参考使用 posterior `mode()` 而不是 `sample()`：[encoders.py:L652-L781](src/encoders_py.md#__codelineno-0-652)。
+`MiniMaxH3Ref2VAReferenceEncoderStep` 对音频参考使用 posterior `mode()`：[encoders.py:L652-L781](src/encoders_py.md#__codelineno-0-652)。
 
 并且两个声道被当作 mono VAE 的两个 batch item 独立编码，最后 reshape 成 channel-major row layout。
 
@@ -135,7 +134,7 @@ before_encode
 - 每个 latent frame 在 rotary 时间轴上不等间隔
 - 第一帧和后续 4 帧的跨度不同
 
-因此视频 RoPE 不是简单的 `t = 0, 1, 2, ...`，而是显式复用了 VAE 的时域压缩结构。
+因此，视频 RoPE 显式复用了 VAE 的时域压缩结构。
 
 ## 7. `t2va/fl2va` 的 packed layout
 
@@ -181,7 +180,7 @@ before_encode
 
 这保证了参考视频画面和参考音频在 packed sequence 中天然时序对齐。
 
-## 9. 帧数和输出尺寸不是“随便给”，而是先对齐到 VAE 约束
+## 9. 帧数和输出尺寸需先对齐 VAE 约束
 
 `MiniMaxH3PrepareLayoutStep.__call__` 会做几个重要修正：[before_denoise.py:L373-L451](src/before_denoise_py.md#__codelineno-0-373)
 
@@ -204,7 +203,7 @@ before_encode
 - 再画视频噪声 tensor
 - 最后画音频噪声 rows
 
-这不是实现细枝末节，而是 reproducibility 协议的一部分。只要 draw order 变了，同一个 generator seed 的结果就会变。
+这属于 reproducibility 协议的一部分。只要 draw order 变了，同一个 generator seed 的结果就会变。
 
 ## 11. Denoise loop：每一步其实只做一次主干前向
 
@@ -269,7 +268,7 @@ $$
 x_0 = x_t + \sigma v
 $$
 
-而不是很多 flow-match 实现里的：
+常见 flow-match 实现则使用：
 
 $$
 x_0 = x_t - \sigma v
@@ -304,6 +303,5 @@ MiniMax H3 的推理复杂度主要不在 denoising math，而在“如何把 mu
 
 这也是它和很多传统视频扩散 pipeline 最大的差异：
 
-- 不是外挂一堆 cross-attn condition
-- 而是先把条件排版成统一序列
+- 条件先被排版成统一序列
 - 再让一套主干和两条 scheduler 去完成联合生成

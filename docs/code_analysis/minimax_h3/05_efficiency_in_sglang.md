@@ -66,7 +66,7 @@ H3 的公开 checkpoint 是 CFG-distilled 单正分支，这一点在 SGLang pip
 
 ## 3. 第三原则：把热循环外能静态化的东西全部静态化
 
-一旦整条生成过程围绕同一个 block stack 展开，最值钱的优化就不是再造一个 scheduler，而是尽可能缩小每个 denoise step 的“新增工作”。
+一旦整条生成过程围绕同一个 block stack 展开，最有价值的优化是尽可能缩小每个 denoise step 的“新增工作”。
 
 H3 在 SGLang 中最重要的运行时思想，是把 request-static 状态尽量移出热循环：
 
@@ -116,7 +116,7 @@ H3 的 scheduler adapter 数学很薄，真正重要的是 SGLang 先生成整�
 
 这说明 H3 的性能中心在 block stack，而不在 scheduler 本身。
 
-## 4. 第四原则：persistent row buffer，而不是每步重建整条输入
+## 4. 第四原则：persistent row buffer 复用整条输入
 
 这是 H3 在 SGLang 中最核心、也最容易被忽略的优化之一。
 
@@ -148,9 +148,9 @@ H3 的 scheduler adapter 数学很薄，真正重要的是 SGLang 先生成整�
 
 H3 能吃到这份收益，根本原因是它的 row layout 已经把静态锚点和动态 target 明确分开了。
 
-## 5. 第五原则：算子不是泛泛 fused，而是围绕 H3 的 row contract 做融合
+## 5. 第五原则：围绕 H3 的 row contract 融合算子
 
-H3 在 SGLang 里的 kernel 设计不是“把常见算子都 fusion 一遍”，而是围绕最热、最重复、最符合 row-wise 语义的部分做融合。
+H3 在 SGLang 中围绕最热、最重复且最符合 row-wise 语义的部分融合 kernel。
 
 ### 5.1 QK norm + RoPE 直接融到 attention 前端
 
@@ -173,7 +173,7 @@ H3 attention 侧同时用了：
 
 ### 5.2 AdaLN modulation 走 indexed Triton kernel
 
-H3 的 AdaLN 不是 batch 维统一一个 scale/shift，而是行级别按 `combined_indices` 选择不同 modulation 参数。因此 SGLang 没走普通 `index_select + elementwise` 路，而是用了：
+H3 的 AdaLN 在行级别按 `combined_indices` 选择不同的 modulation 参数。因此 SGLang 采用：
 
 - `indexed_scale_shift_bf16_`
 - `indexed_gate_bf16_`
@@ -197,7 +197,7 @@ MLP 的 `SiLU(gate) * up` 被做成了专门 fused path：
 
 单层收益有限，但 50 层累加后依然可观。
 
-## 6. 第六原则：attention 的关键不是“用了 FA”，而是 packed varlen + Ulysses/Ring 共设计
+## 6. 第六原则：packed varlen 与 Ulysses/Ring 的 attention 共设计
 
 H3 在 SGLang 中的 attention 设计，关键不只是 FlashAttention 后端，而是它和 packed sequence、sequence parallel 的共设计。
 
@@ -218,11 +218,11 @@ H3 要求 attention backend 支持：
 - `max_seqlen`
 - packed multimodal row layout
 
-而不是先把不同模态 pad 成更大的 dense tensor。这个选择直接减少了无效 attention 计算和无效搬运。
+该设计避免将不同模态 pad 成更大的 dense tensor，直接减少无效 attention 计算和无效搬运。
 
 ### 6.2 Ulysses SP 用来换掉长序列 activation 压力
 
-H3 packed sequence 很长，真正的瓶颈之一是 block stack 内部 activation 占用。SGLang 的做法不是只靠 TP，而是让 attention 内部支持 Ulysses：
+H3 packed sequence 很长，block stack 内部 activation 占用是主要瓶颈之一。SGLang 让 attention 内部支持 Ulysses：
 
 - 行切分在外
 - attention 内部 sequence/head all-to-all
@@ -250,7 +250,7 @@ H3 还允许 ring degree 叠在 Ulysses 外面。Ring 不分 heads，只分 rows
 
 ## 7. 第七原则：通信优化的重点是“晚 gather、窄 gather”
 
-H3/SGLang 的通信优化并不是消除 collectives，而是尽量把通信放到更晚、更窄的时候做。
+H3/SGLang 的通信优化将 collectives 尽量延后，并缩小其数据范围。
 
 ### 7.1 block AdaLN 先批处理，再一次 gather
 
@@ -306,7 +306,7 @@ H3 在 SGLang 中把 breakable CUDA graph 的断点收得很窄：
 
 于是它既保留了动态图弹性，也尽量不把整层 block 都踢出图外。
 
-## 9. 第九原则：精度策略不是全低精度，而是把关键路径留在 fp32 island
+## 9. 第九原则：关键路径保留在 fp32 island
 
 H3 在 SGLang 中有一组非常明确的 fp32 island：
 
@@ -321,7 +321,7 @@ H3 在 SGLang 中有一组非常明确的 fp32 island：
 - [post-load 校验:L1190-L1200 左右](https://github.com/sgl-project/sglang/blob/main/python/sglang/multimodal_gen/runtime/models/dits/minimax_h3.py)
 - [模块定义:L1125-L1159](https://github.com/sgl-project/sglang/blob/main/python/sglang/multimodal_gen/runtime/models/dits/minimax_h3.py#L1125-L1159)
 
-这说明 H3 的性能路径不是“粗暴全部压 BF16/FP8”，而是：
+这说明 H3 的性能路径遵循以下精度策略：
 
 - 大部分 block stack 走 BF16 + fused path
 - 少数数值敏感点保 fp32
@@ -336,6 +336,6 @@ H3 在 SGLang 中的最高价值效率来源可以压成 5 点：
 2. **主干层避免结构性浪费**：CFG-distilled 单分支让每步只跑一次大模型。
 3. **运行时层最大化 request-static 复用**：text / rope / schedule / row layout 都尽量移出热循环。
 4. **内核与通信围绕 row contract 专门化**：indexed AdaLN、fused qknorm+rope、packed varlen attention、Ulysses/Ring SP、late gather。
-5. **loop 层避免全量重建输入**：persistent row buffer 只重写 target suffix，而不是每步重拼整条序列。
+5. **loop 层避免全量重建输入**：persistent row buffer 仅重写 target suffix。
 
 这五条都围绕同一份 packed-row contract 配套。状态机细节见 [Denoise Loop 状态机](08_denoise_loop_state_machine.md)，runtime 热路径见 [DiT Runtime 与 Collectives](07_dit_runtime_and_collectives.md)，其余补充见 [效率附录](06_efficiency_appendix.md)。

@@ -20,7 +20,7 @@ tags:
 
 ## 1. 先抓住这个文件的职责边界
 
-`minimax_h3.py` 并不是一个“普通模型定义文件”。它同时承担了 4 层职责：
+`minimax_h3.py` 同时承担 4 层职责：
 
 1. 定义 H3 native DiT 的 forward contract
 2. 定义 row-local embedding 的构造方式
@@ -43,7 +43,7 @@ packed rows
 
 这条链里最贵的是中间的 50 层 block stack，但真正把它跑快的，是前后的数据组织和后面的 gather 时机。
 
-## 2. Forward contract：它吃的不是“普通 DiT 输入”
+## 2. Forward contract：H3 的 packed 输入
 
 H3 的 native DiT `forward()` 一上来先拒绝任何不在白名单里的 kwarg。
 
@@ -52,13 +52,13 @@ H3 的 native DiT `forward()` 一上来先拒绝任何不在白名单里的 kwar
 - [minimax_h3.py:L97-L123](https://github.com/sgl-project/sglang/blob/main/python/sglang/multimodal_gen/runtime/models/dits/minimax_h3.py#L97-L123)
 - [minimax_h3.py:L1465-L1480](https://github.com/sgl-project/sglang/blob/main/python/sglang/multimodal_gen/runtime/models/dits/minimax_h3.py#L1465-L1480)
 
-它要求的输入，不是典型的：
+典型 DiT 输入通常包含：
 
 - `hidden_states`
 - `encoder_hidden_states`
 - `timestep`
 
-而是 H3 自己的 packed contract：
+H3 则使用自己的 packed contract：
 
 - `x`
 - `audio_x`
@@ -73,11 +73,11 @@ H3 的 native DiT `forward()` 一上来先拒绝任何不在白名单里的 kwar
 
 这套 contract 本质上说明了一件事：
 
-- **H3 的运行时核心对象不是张量 batch，而是一条被严格标注过的 packed row sequence**
+- **H3 的运行时核心对象是一条被严格标注过的 packed row sequence**
 
 一旦这个对象成立，后面几乎所有优化才会自然成立。
 
-## 3. 第一步不是进 block，而是把 row-local embedding 摆好
+## 3. 先准备 row-local embedding
 
 ### 3.1 `_embed()` 是真正的输入 staging 区
 
@@ -92,7 +92,7 @@ H3 的 `_embed()` 被 `@eager_on_graph(True)` 包起来，专门负责把当前 
 - 本 rank 的连续 row shard
 - 统一 width 的残差流
 
-### 3.2 它优先使用 `local_embedding_layout`，不是临时扫描位置
+### 3.2 优先使用 `local_embedding_layout` 预计算位置
 
 如果 `local_embedding_layout` 存在，`_embed()` 直接按预先算好的：
 
@@ -107,7 +107,7 @@ H3 的 `_embed()` 被 `@eager_on_graph(True)` 包起来，专门负责把当前 
 - [minimax_h3.py:L1374-L1428](https://github.com/sgl-project/sglang/blob/main/python/sglang/multimodal_gen/runtime/models/dits/minimax_h3.py#L1374-L1428)
 - [minimax_h3.py:L1436-L1460](https://github.com/sgl-project/sglang/blob/main/python/sglang/multimodal_gen/runtime/models/dits/minimax_h3.py#L1436-L1460)
 
-而不是每一步再通过：
+由此避免每一步通过以下操作：
 
 - `nonzero`
 - `pos >= row_start`
@@ -149,7 +149,7 @@ H3 的 `_embed()` 被 `@eager_on_graph(True)` 包起来，专门负责把当前 
 - request-static
 - not step-static
 
-而不是每步都重算的动态条件。
+它属于 request-static 条件，无需逐步重算。
 
 ### 4.2 RoPE cache 也是按 rank row shard 先做好
 
@@ -159,13 +159,13 @@ H3 的 `_embed()` 被 `@eager_on_graph(True)` 包起来，专门负责把当前 
 
 - [minimax_h3.py:L1271-L1312](https://github.com/sgl-project/sglang/blob/main/python/sglang/multimodal_gen/runtime/models/dits/minimax_h3.py#L1271-L1312)
 
-这里最关键的不是“缓存了 RoPE”，而是：
+这里的关键在于：
 
 - row split 的定义必须和 `forward()` 里的 sequence-parallel row split 完全同构
 
 否则 cache 就会对错行。
 
-所以 H3 的 request-static cache 不是独立小优化，而是和 SP row geometry 绑死的。
+所以 H3 的 request-static cache 与 SP row geometry 紧密绑定。
 
 ## 5. Block 内部 dataflow：为什么说 H3 的块很像“薄控制层 + 厚共享算子”
 
@@ -194,7 +194,7 @@ norm2
 - modulation 走 indexed fused kernel
 - attention 走 packed varlen + SP-aware backend
 
-### 5.2 AdaLN 不是“每个 row 一套小网络”，而是 table-like broadcast
+### 5.2 AdaLN 的 table-like broadcast
 
 `MiniMaxH3AdalnProj` 的输入是 `adaln_input = silu(t_emb)`，输出是：
 
@@ -215,9 +215,7 @@ norm2
 
 - 少量 distinct timestep 的 modulation table 生成器
 
-而不是：
-
-- 对每个 token 都独立前向的条件网络
+它以少量 distinct timestep 的 modulation table 服务所有 row。
 
 ### 5.3 为什么 indexed modulation 值得专门写 kernel
 
@@ -255,7 +253,7 @@ H3 的 attention 先用 `MergedColumnParallelLinear` 做 fused qkv projection，
 - [minimax_h3.py:L532-L545](https://github.com/sgl-project/sglang/blob/main/python/sglang/multimodal_gen/runtime/models/dits/minimax_h3.py#L532-L545)
 - [minimax_h3.py:L585-L614](https://github.com/sgl-project/sglang/blob/main/python/sglang/multimodal_gen/runtime/models/dits/minimax_h3.py#L585-L614)
 
-这说明 H3 的 TP 不是“先写个线性层再让框架自动切”，而是从 checkpoint layout 起就主动保证：
+这说明 H3 的 TP 从 checkpoint layout 开始就主动保证：
 
 - q / k / v 的逻辑矩阵分片方式正确
 
@@ -341,13 +339,13 @@ SGLang 明确把 attention core 定义成：
 
 - [minimax_h3.py:L473-L489](https://github.com/sgl-project/sglang/blob/main/python/sglang/multimodal_gen/runtime/models/dits/minimax_h3.py#L473-L489)
 
-这里最关键的不是 Ring “支持跨节点”，而是它保持了 H3 的统一语义：
+这里的关键在于 Ring 保持了 H3 的统一语义：
 
 - 外部仍然是一条 packed sequence
 - `max_seqlen` 仍然对应该请求真实 `used` row count
 - ring 只是把这条 sequence 的 KV 外层切开，再用 online softmax 合并
 
-因此 Ring 是 row geometry 的扩展，不是模型语义的重写。
+因此，Ring 扩展了 row geometry，同时保持模型语义不变。
 
 ## 8. Sequence Parallel 几何：为什么 forward 里要显式推导 `row_start/row_stop`
 
@@ -398,7 +396,7 @@ SGLang 明确把 attention core 定义成：
 
 - 当前 TP shard 的输出宽度
 
-所以它不是“最大张量的最重 gather”，而是一个已经被列切分过的 gather。
+因此，这是一个已经被列切分过的 gather。
 
 ### 9.2 再裁掉 dead rows，最后才做 TP gather
 
@@ -436,7 +434,7 @@ SGLang 明确把 attention core 定义成：
 - [denoise_loop.py:L193-L230](https://github.com/sgl-project/sglang/blob/main/python/sglang/multimodal_gen/runtime/pipelines_core/stages/model_specific_stages/minimax_h3/denoise_loop.py#L193-L230)
 - [denoise_loop.py:L232-L260](https://github.com/sgl-project/sglang/blob/main/python/sglang/multimodal_gen/runtime/pipelines_core/stages/model_specific_stages/minimax_h3/denoise_loop.py#L232-L260)
 
-所以从系统角度看，H3/SGLang 不是“有个快模型，再有个快 loop”，而是：
+因此，从系统角度看，H3/SGLang 由以下部分共同构成：
 
 - loop 把动态性收缩到 target row values
 - runtime 把静态几何和静态条件最大化复用
@@ -485,10 +483,9 @@ for step in denoise_steps:
 
 如果只盯住 `minimax_h3.py` 这一份 runtime 文件，H3 的高效率可以被更具体地描述成：
 
-- **它不是“一个大 DiT + 几个优化”**
-- **而是一套围绕 packed row geometry 精心组织的执行路径**
+- **它是一套围绕 packed row geometry 精心组织的执行路径**
 
-其中真正最关键的不是某一个 kernel，而是 3 个层次同时成立：
+其中最关键的是以下 3 个层次同时成立：
 
 1. `_embed()` 把 rank-local row shard 整理成 block stack 最喜欢的连续形状
 2. block stack 内部把 modulation、attention 和 MLP 压成高度规整的热区

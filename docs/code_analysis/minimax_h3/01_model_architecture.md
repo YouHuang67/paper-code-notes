@@ -37,11 +37,11 @@ $$
 56 \times 128 = 7168 > 5376
 $$
 
-也就是说 attention 的 `inner_dim` 明显大于 residual stream 的 `hidden_size`。这不是标准 LLaMA 那种“heads * dim = model dim”，而是更接近 **先把 QKV 提到更高的 head space，再投影回主残差流**。
+也就是说 attention 的 `inner_dim` 明显大于 residual stream 的 `hidden_size`。其结构是 **先将 QKV 提到更高的 head space，再投影回主残差流**。
 
 源码说明也明确指出了这点：[transformer_minimax_h3.py:L393-L430](src/transformer_minimax_h3_py.md#__codelineno-0-393)。
 
-## 2. 主干不是 encoder-decoder，而是 packed single-stream Transformer
+## 2. Packed single-stream Transformer 主干
 
 `MiniMaxH3Transformer3DModel` 的总说明是整份代码最重要的段落：[transformer_minimax_h3.py:L374-L391](src/transformer_minimax_h3_py.md#__codelineno-0-374)。
 
@@ -52,7 +52,7 @@ $$
 - attention 是 full self-attention
 - 没有 cross-attention，也没有分模态 block
 
-因此它不是：
+其结构具备以下特征：
 
 - 文本 encoder + 视频 DiT decoder
 - 音频分支 / 视频分支双塔
@@ -101,7 +101,7 @@ $$
 
 其中 `m` 是 modality，`W_m` 只在入口处区分模态，进入主干后就不再区分。
 
-## 4. 文本不是直接拿来用，而是先过两层 token refiner
+## 4. 文本先经过两层 token refiner
 
 MiniMax H3 没有把 `Qwen3-VL` hidden state 原封不动送进主干，而是先做一个 2 层 refiner：[transformer_minimax_h3.py:L248-L314](src/transformer_minimax_h3_py.md#__codelineno-0-248)。
 
@@ -140,7 +140,7 @@ Qwen3-VL hidden_states[50]
 - `scale_mlp`
 - `gate_mlp`
 
-而且它不是只按 timestep 索引，而是按：
+索引同时考虑：
 
 $$
 \text{adaln\_index} = \text{timestep\_index} \times 3 + \text{token\_tag}
@@ -193,7 +193,7 @@ $$
 h'' = h' + g_{ffn} \odot \mathrm{FFN}(\tilde{h}_{ffn})
 $$
 
-因此模态差异不是通过不同 block 实现，而是通过 **同 block 内不同调制参数** 实现。
+因此，模态差异由 **同一 block 内的不同调制参数** 表达。
 
 ## 7. Attention 层的三个重要性质
 
@@ -235,7 +235,7 @@ RoPE 只作用在前 `2 * 3 * rope_freq_dim = 96` 个通道上，其余 head cha
 
 `MiniMaxH3RotaryPosEmbed` 只有一套 `inv_freq`，然后把 `(t,h,w)` 三轴的频率拼起来：[transformer_minimax_h3.py:L74-L98](src/transformer_minimax_h3_py.md#__codelineno-0-74)。
 
-它的含义不是“把图像 flatten 成一维再做位置编码”，而是：
+它先保留图像的多维坐标，再按以下方式编码位置：
 
 - 时间轴自己有频率
 - 高度轴自己有频率
@@ -251,7 +251,7 @@ RoPE 只作用在前 `2 * 3 * rope_freq_dim = 96` 个通道上，其余 head cha
 - `proj_out`：输出视频 row velocity
 - `audio_proj_out`：输出音频 row velocity
 
-注意这里不是只对视频 row / 音频 row 单独跑 head，而是：
+这里会在同一注意力计算中处理视频 row 和音频 row：
 
 1. 对完整 packed sequence 做同一层 `norm_out`
 2. 两个 head 都跑一遍完整序列

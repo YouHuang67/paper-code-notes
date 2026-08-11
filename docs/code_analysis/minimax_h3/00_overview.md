@@ -22,7 +22,7 @@ tags:
 - `autoencoder_kl_minimax_h3.py`
 - `autoencoder_kl_minimax_h3_audio.py`
 
-这组代码的核心不是“再做一个跨模态 encoder-decoder”，而是把整次生成统一改写成一个 **单流 packed multimodal diffusion sequence**：
+这组代码将整次生成统一改写成一个 **单流 packed multimodal diffusion sequence**：
 
 - 文本条件由 `Qwen3-VL` 第 50 层隐藏状态提供
 - 图像 / 视频 / 音频先进入各自 VAE latent 空间
@@ -62,11 +62,11 @@ decoders.py + VAE
 - `H3-Base`：768p 音视频联合生成，开源核心就是这部分
 - `H3-Regenerate-2K`：2K 再生成模块，未开源
 
-所以这次能深入分析的“推理代码”，本质上是 **H3-Base 在 diffusers 侧的本地推理实现**，不是完整线上系统。
+所以这次深入分析的“推理代码”对应 **H3-Base 在 diffusers 侧的本地推理实现**；完整线上系统不在当前开源范围内。
 
 ## 2. 这份实现最重要的四个判断
 
-### 2.1 不是 cross-attention 架构，而是单流 full attention
+### 2.1 单流 full attention 架构
 
 `MiniMaxH3Transformer3DModel` 的说明写得非常直接：[transformer_minimax_h3.py:L374-L387](src/transformer_minimax_h3_py.md#__codelineno-0-374)
 
@@ -75,9 +75,9 @@ decoders.py + VAE
 - 没有 modality-specific attention / FFN block
 - modality 差异只留在输入投影、AdaLN 分支和输出头
 
-这意味着 MiniMax H3 的统一多模态不是“双塔交互”式，而是 **先把所有条件压成统一 token 时空坐标，再交给一个大 Transformer 直接建模**。
+MiniMax H3 先将全部条件压成统一的 token 时空坐标，再交给一个大 Transformer 直接建模。
 
-### 2.2 统一的不是原始像素，而是统一的 latent token 序列
+### 2.2 以 latent token 序列统一模态
 
 `README.md` 和 `transformer/config.json` 给出的形状关系是：
 
@@ -97,11 +97,11 @@ decoders.py + VAE
 
 关键实现见 [transformer_minimax_h3.py:L505-L555](src/transformer_minimax_h3_py.md#__codelineno-0-505) 与 [transformer_minimax_h3.py:L622-L634](src/transformer_minimax_h3_py.md#__codelineno-0-622)。
 
-### 2.3 统一位置编码不是 1D，而是 3D MM-RoPE
+### 2.3 使用 3D MM-RoPE 统一位置编码
 
 RoPE 模块显式使用 `(t, h, w)` 三轴：[transformer_minimax_h3.py:L74-L98](src/transformer_minimax_h3_py.md#__codelineno-0-74)。
 
-更关键的是，`before_denoise.py` 并不是简单给每个 row 一个递增位置，而是：
+更关键的是，`before_denoise.py` 会按以下规则为每个 row 分配位置：
 
 - 文本 token 只占用时间轴
 - 视频 row 拥有完整 `(t, h, w)`
@@ -114,7 +114,7 @@ RoPE 模块显式使用 `(t, h, w)` 三轴：[transformer_minimax_h3.py:L74-L98]
 
 `README.md` 明说训练和未来推理支持 native sparse attention，但初始开源版只放 full attention。`MiniMaxH3AttnProcessor` 当前直接调用 `dispatch_attention_fn(...)`，没有专用稀疏索引结构：[transformer_minimax_h3.py:L158-L207](src/transformer_minimax_h3_py.md#__codelineno-0-158)。
 
-因此当前要分析的重点不是“稀疏 kernel 细节”，而是：
+因此，当前分析聚焦于：
 
 - packed sequence 如何降低多模块拼装成本
 - per-row timestep / modality AdaLN 如何统一噪声级别不同的 token
@@ -156,7 +156,7 @@ RoPE 模块显式使用 `(t, h, w)` 三轴：[transformer_minimax_h3.py:L74-L98]
 1. [模型结构](01_model_architecture.md)：先建立 packed sequence + AdaLN + 单流 Transformer 的总心智模型
 2. [推理流程](02_inference_pipeline.md)：再看 `t2va` / `fl2va` / `ref2va` 如何分别走 layout、噪声和循环
 3. [优化与实现细节](03_optimizations_and_details.md)：补齐 open-source diffusers 路径的工程细节
-4. [如何嵌入 SGLang 体系](04_sglang_integration.md)：H3 在 SGLang 中不是 generic diffusers fallback，而是 native pipeline / native DiT runtime / native packed-row contract
+4. [如何嵌入 SGLang 体系](04_sglang_integration.md)：H3 在 SGLang 中采用 native pipeline、native DiT runtime 和 native packed-row contract
 5. [MiniMax H3 在 SGLang 中的效率主线](05_efficiency_in_sglang.md)：只抓 H3 最高价值的效率来源：单分支 packed DiT、persistent row buffer、fused AdaLN/QKNorm/RoPE、Ulysses/Ring 与 late gather
 6. [DiT Runtime 与 Collectives](07_dit_runtime_and_collectives.md)：沿热路径细读 `sglang` native runtime，像读 FA 一样理解 `_embed -> block -> attention core -> gather`
 7. [Denoise Loop 状态机](08_denoise_loop_state_machine.md)：把 `MiniMaxH3DenoiseBranch`、静态/动态状态、target-row 增量更新与 timestep plan 单独拆开
@@ -164,7 +164,7 @@ RoPE 模块显式使用 `(t, h, w)` 三轴：[transformer_minimax_h3.py:L74-L98]
 
 ## 小结
 
-MiniMax H3 这份开源推理实现最值得拆的不是某个单点 trick，而是它把统一多模态生成压成了一个非常干净的执行范式：
+MiniMax H3 这份开源推理实现的关键在于，它将统一多模态生成压成了一个非常干净的执行范式：
 
 - **统一输入形式**：所有条件都转成 row 序列
 - **统一位置系统**：所有 row 都落在 `(t, h, w)` 坐标中

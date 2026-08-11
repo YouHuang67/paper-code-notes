@@ -91,7 +91,7 @@ branch 会持有两块持久缓冲区：
 
 - [denoise_loop.py:L163-L173](https://github.com/sgl-project/sglang/blob/main/python/sglang/multimodal_gen/runtime/pipelines_core/stages/model_specific_stages/minimax_h3/denoise_loop.py#L163-L173)
 
-这两块 buffer 生命周期覆盖整个 denoise loop，而不是每个 step 重新分配。
+这两块 buffer 在整个 denoise loop 中持续复用。
 
 ### 3.3 构造时就把 rank-local 布局算完
 
@@ -126,7 +126,7 @@ branch 还会一次性求出：
 1. condition/reference rows 在整轮生成期间是 pinned anchor
 2. target rows 的物理位置在 packed layout 里已经固定
 
-所以每个 step 变的不是输入几何，而只是 target rows 当前值。
+所以每个 step 只更新 target rows 的当前值，输入几何保持不变。
 
 ## 5. `prepare_timestep_plan()` 把每步的 timestep 语义先展开
 
@@ -143,7 +143,7 @@ branch 还会一次性求出：
 
 - [denoise_loop.py:L262-L315](https://github.com/sgl-project/sglang/blob/main/python/sglang/multimodal_gen/runtime/pipelines_core/stages/model_specific_stages/minimax_h3/denoise_loop.py#L262-L315)
 
-因此 H3 的每步条件控制不是一个标量 timestep，而是一份 packed-row timestep layout。
+因此，H3 的每步条件控制采用 packed-row timestep layout。
 
 ### 5.2 `unique_timesteps` / `inverse_indices` / `block_combined_indices`
 
@@ -242,7 +242,7 @@ condition/reference rows 完全不参与这个更新。
 
 ## 9. 结论
 
-H3 的 denoise loop 高效，不是因为 scheduler 数学本身特殊，而是因为它把整轮推理变成了一个很窄的状态机：
+H3 的 denoise loop 通过将整轮推理收敛为一个很窄的状态机来实现高效执行：
 
 - 静态部分在 loop 外一次性求好
 - 锚点 rows 在首步固定
