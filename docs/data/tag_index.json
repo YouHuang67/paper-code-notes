@@ -1973,5 +1973,60 @@
       "LLM Inference"
     ],
     "summary": "单独拆解 H3 denoise loop 的静态/动态状态：branch 布局、persistent row buffer、row 级 timestep plan、pattern cache 与 target-row Euler 更新"
+  },
+  {
+    "title": "DeepGEMM - 总览",
+    "path": "code_analysis/deepgemm/00_overview.md",
+    "type": "代码分析",
+    "tags": [
+      "CUDA",
+      "CUTLASS",
+      "LLM Inference"
+    ],
+    "summary": "Hopper/Blackwell JIT GEMM 总览：分层内核、SM90/SM100 流水、grouped GEMM 接入标准 MoE"
+  },
+  {
+    "title": "DeepGEMM - 分层内核架构",
+    "path": "code_analysis/deepgemm/01_layered_architecture.md",
+    "type": "代码分析",
+    "tags": [
+      "CUDA",
+      "CUTLASS",
+      "LLM Inference"
+    ],
+    "summary": "layout / scheduler / mma / epilogue / impl 分层与 persistent CTA 角色分工"
+  },
+  {
+    "title": "DeepGEMM - SM90 到 SM100 流水",
+    "path": "code_analysis/deepgemm/02_sm90_sm100_pipeline.md",
+    "type": "代码分析",
+    "tags": [
+      "CUDA",
+      "CUTLASS",
+      "LLM Inference"
+    ],
+    "summary": "WGMMA warpgroup 协议、UMMA/TMEM staging、TMA 单 SM 与 2SM 装载"
+  },
+  {
+    "title": "DeepGEMM - grouped GEMM 与标准 MoE 契约",
+    "path": "code_analysis/deepgemm/03_grouped_gemm_moe_contract.md",
+    "type": "代码分析",
+    "tags": [
+      "CUDA",
+      "CUTLASS",
+      "LLM Inference"
+    ],
+    "summary": "contiguous/masked 布局、FP8/BF16 分叉、SGLang permute–GEMM–SwiGLU–finalize"
+  },
+  {
+    "title": "DeepGEMM - Mega MoE 与 paged MQA",
+    "path": "code_analysis/deepgemm/04_mega_moe_and_paged_mqa.md",
+    "type": "代码分析",
+    "tags": [
+      "CUDA",
+      "CUTLASS",
+      "LLM Inference"
+    ],
+    "summary": "共享 expert token 池与 metadata 驱动的 paged MQA logits 流水"
   }
 ]

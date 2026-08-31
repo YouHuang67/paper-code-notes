@@ -66,4 +66,9 @@
   - [效率附录](minimax_h3/06_efficiency_appendix.md) - 承接正文外的实现补充：关键文件地图、BCG prompt bucketing 与不同 GPU 拓扑的取舍
 - [DeepSeek V4](deepseek_v4/00_overview.md) - mHC + Hybrid Attention + MoE + TileLang 低精度推理实现
 - [DeepEP](deepep/00_overview.md) - MoE Expert-Parallel 通信库：基于 TMA + NCCL Gin 的全 GPU 端 all-to-all 实现
+- [DeepGEMM](deepgemm/00_overview.md) - Hopper/Blackwell JIT GEMM：分层内核、SM90/SM100 流水、grouped GEMM 接入标准 MoE
+  - [分层内核架构](deepgemm/01_layered_architecture.md) - layout / scheduler / mma / epilogue / impl 与 persistent 角色分工
+  - [SM90 到 SM100 流水](deepgemm/02_sm90_sm100_pipeline.md) - WGMMA、UMMA/TMEM、TMA multicast 与 2SM
+  - [grouped GEMM 与标准 MoE 契约](deepgemm/03_grouped_gemm_moe_contract.md) - contiguous/masked、FP8/BF16 分叉、permute–SwiGLU–finalize
+  - [Mega MoE 与 paged MQA](deepgemm/04_mega_moe_and_paged_mqa.md) - 共享 token 池与 metadata 驱动的 indexer 流水
 - [ELF](elf/00_overview.md) - Embedded Language Flows: JAX/Flax DiT + Flow Matching + 共享权重 denoiser-decoder

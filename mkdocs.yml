@@ -235,6 +235,12 @@ nav:
         - 通信拓扑与 NCCL Gin 后端: code_analysis/deepep/01_topology_and_backend.md
         - Dispatch 内核: code_analysis/deepep/02_dispatch.md
         - Combine 内核: code_analysis/deepep/03_combine.md
+      - DeepGEMM:
+        - 总览: code_analysis/deepgemm/00_overview.md
+        - 分层内核架构: code_analysis/deepgemm/01_layered_architecture.md
+        - SM90 到 SM100 流水: code_analysis/deepgemm/02_sm90_sm100_pipeline.md
+        - grouped GEMM 与标准 MoE 契约: code_analysis/deepgemm/03_grouped_gemm_moe_contract.md
+        - Mega MoE 与 paged MQA: code_analysis/deepgemm/04_mega_moe_and_paged_mqa.md
   - 源码浏览:
     - source_browsing_index.md
     - Flash Attention V2:
@@ -257,6 +263,21 @@ nav:
         - mask.h: code_analysis/flash_attention_v2/src/mask_h.md
         - dropout.h: code_analysis/flash_attention_v2/src/dropout_h.md
         - rotary.h: code_analysis/flash_attention_v2/src/rotary_h.md
+    - DeepGEMM:
+      - code_analysis/deepgemm/src/index.md
+      - types.hpp: code_analysis/deepgemm/src/types_hpp.md
+      - scheduler/gemm.cuh: code_analysis/deepgemm/src/gemm_cuh.md
+      - common/tma_copy.cuh: code_analysis/deepgemm/src/tma_copy_cuh.md
+      - mma/sm90.cuh: code_analysis/deepgemm/src/mma_sm90_cuh.md
+      - mma/sm100.cuh: code_analysis/deepgemm/src/mma_sm100_cuh.md
+      - sm90_fp8_gemm_1d2d.cuh: code_analysis/deepgemm/src/sm90_fp8_gemm_1d2d_cuh.md
+      - sm90_bf16_gemm.cuh: code_analysis/deepgemm/src/sm90_bf16_gemm_cuh.md
+      - sm100_fp8_fp4_gemm_1d1d.cuh: code_analysis/deepgemm/src/sm100_fp8_fp4_gemm_1d1d_cuh.md
+      - gemm.hpp: code_analysis/deepgemm/src/gemm_hpp.md
+      - heuristics/sm90.hpp: code_analysis/deepgemm/src/heuristics_sm90_hpp.md
+      - generators.py: code_analysis/deepgemm/src/generators_py.md
+      - layout/mega_moe.cuh: code_analysis/deepgemm/src/mega_moe_cuh.md
+      - paged_mqa_logits.cuh: code_analysis/deepgemm/src/paged_mqa_logits_cuh.md
     - DeepSeek V4:
       - code_analysis/deepseek_v4/src/index.md
       - README.md: code_analysis/deepseek_v4/src/readme_md.md

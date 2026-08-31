@@ -13,4 +13,5 @@ tags:
 | [Flash Attention V2](code_analysis/flash_attention_v2/src/index.md) | CuTe + CUTLASS 2.x | 14 | [代码分析](code_analysis/flash_attention_v2/00_overview.md) |
 | [FlashInfer Variable Block Sparse](code_analysis/flashinfer_variable_block_sparse/src/index.md) | PyTorch + JIT + FA2 Paged Prefill | 24 | [代码分析](code_analysis/flashinfer_variable_block_sparse/00_overview.md) |
 | [DeepSeek V4](code_analysis/deepseek_v4/src/index.md) | PyTorch + TileLang | 6 | [代码分析](code_analysis/deepseek_v4/00_overview.md) |
+| [DeepGEMM](code_analysis/deepgemm/src/index.md) | CUDA JIT + CuTe | 13 | [代码分析](code_analysis/deepgemm/00_overview.md) |
 | [MiniMax H3](code_analysis/minimax_h3/src/index.md) | Diffusers + Qwen3-VL + 双 VAE | 10 | [代码分析](code_analysis/minimax_h3/00_overview.md) |
