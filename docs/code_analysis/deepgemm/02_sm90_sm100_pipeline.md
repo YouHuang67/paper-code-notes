@@ -6,7 +6,7 @@ tags:
 ---
 # DeepGEMM 代码分析：SM90 到 SM100 流水
 
-上一节把内核收成 layout / scheduler / mma / epilogue / impl。本节说明两代架构在 **mma 描述符、TMA 装载原语、中间累积位置、epilogue 是否独立** 上如何换件。grouped GEMM 的调用面在下一节使用这里的 tile 与 SF 语义。
+上一节把内核收成 layout / scheduler / mma / epilogue / impl。本节说明两代架构在 **mma 描述符、TMA 装载原语、中间累积位置、epilogue 独立性** 上如何换件。grouped GEMM 的调用面在下一节使用这里的 tile 与 SF 语义。
 
 ## 1. SM90：warpgroup 是计算原子
 
@@ -49,7 +49,7 @@ impl 侧 UMMA 形状是 `UMMA_M = 128 * kNumMulticast`、`UMMA_K = 32`、`BLOCK_
 
 [`tma_copy.cuh:L27-L56`](src/tma_copy_cuh.md#__codelineno-0-27)
 
-SM90 grouped 前向用 scheduler 的 `is_tma_multicast_valid` 在运行时把 multicast 降成 1。SM100 grouped 启发式把 `cluster_n` 固定为 1 或 2（\(N\) 方向 tile 数与 \(N_{\mathrm{SM}}\) 都为偶数时取 2）；2-CTA 保持固定 cluster，scheduler 省略奇数组成组修正。
+SM90 grouped 前向用 scheduler 的 `is_tma_multicast_valid` 在运行时把 multicast 降成 1。SM100 grouped 启发式把 `cluster_n` 固定为 1 或 2（\(N\) 方向 tile 数与 \(N_{\mathrm{SM}}\) 都为偶数时取 2）。奇数组成组修正见 [01](01_layered_architecture.md) 的 SM90 swizzle。
 
 ## 4. TMEM 成为独立生产-消费阶段
 
@@ -57,12 +57,10 @@ SM100 1D1D 为累积、SFA、SFB 规划 TMEM 列数，并给 epilogue 单独的 
 
 epilogue 等 `tmem_full_barriers[accum_stage_idx]`，从 `accum_stage_idx * UMMA_N` 读 TMEM，写入 smem CD 后再 TMA store，最后 arrive `tmem_empty_barriers`。矩阵乘结果先沉到 TMEM，由独立线程集分段搬运。
 
-## 5. 对 grouped MoE 前向的直接后果
+## 5. 换件之后，grouped 前向怎么选核
 
-SM90 grouped FP8：`Kernel1D2D`，`BLOCK_K=128`；SF 为 FP32 且 LHS 须 MN-major；contiguous 的 \(BLOCK_M\) 取 `get_mk_alignment_for_contiguous_layout()`（默认 128）；\(BLOCK_N\) 走启发式格子，1D2D 上界 192；累加在寄存器，再 BF16 TMA store。
+01 的分层在两代硬件上换了四件：GMMA→UMMA 描述符、单 SM / multicast / 2SM TMA、寄存器累积→TMEM staging、epilogue 成为独立消费者。
 
-SM100 grouped FP8/FP4：`Kernel1D1D`，`BLOCK_K=128`；SF 为 packed UE8M0 `int`；\(BLOCK_M\) 同源，理论值可随 `expected_m` 从 240 以 16 步进下调；\(BLOCK_N\) 固定 128 且 `swap_ab=true`；累加经 TMEM staging 由 epilogue 写回 BF16。
+对 M-grouped 前向，这四件决定 Host 分发：SM90 FP8 走 `Kernel1D2D`（`BLOCK_K=128`，FP32 SF）；SM100 FP8/FP4 走 `Kernel1D1D`（packed UE8M0）；BF16 走 `KernelNoSF`（`BLOCK_K=64`）。tile 格子、alignment 与两次 GEMM 的精度顺序见 [03](03_grouped_gemm_moe_contract.md)。
 
-Host 在 [`gemm.hpp`](src/gemm_hpp.md) 按 `arch_major` 与 SF dtype 把 `m_grouped_fp8_fp4_gemm_nt_contiguous` 分到 `sm90_*_1d2d` 或 `sm100_*_1d1d`。[`gemm.hpp:L193-L205`](src/gemm_hpp.md#__codelineno-0-193)
-
-BF16 走 `KernelNoSF`，无 SF 流水；SM90 上 `BLOCK_K = 128 / sizeof(bf16) = 64`。分叉细节与 MoE 两次 GEMM 的精度顺序见 [03](03_grouped_gemm_moe_contract.md)。
+同一套「生产者 / UMMA / 后处理」角色拆分，在 paged MQA 里扩成四类 warp（Q TMA、KV TMA、UMMA、reduce），见 [04](04_mega_moe_and_paged_mqa.md)。

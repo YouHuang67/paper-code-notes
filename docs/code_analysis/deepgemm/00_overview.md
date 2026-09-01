@@ -27,11 +27,9 @@ DeepGEMM 是面向 Hopper（SM90）与 Blackwell（SM100）的运行时 JIT tens
 D = C + A B^{\mathsf{T}}
 \]
 
-累加器为 FP32。库本身不负责转置、cast、permute、SwiGLU 与 router 加权；这些步骤由调用方在核外完成。
+累加器为 FP32。标准 MoE 路径上，转置、cast、permute、SwiGLU 与 router 加权由调用方在核外完成。
 
-对标准 MoE，一次 launch 覆盖 \(G\) 个同形状 expert：只沿 \(M\) 分组，\(N\) 与 \(K\) 固定。contiguous 把各 expert 的 token 沿 \(M\) 拼成一条对齐带；masked 保留前缀维 \(G\)，用 `masked_m[G]` 标有效行。SGLang 在核外做 permute / scatter，两次 grouped GEMM（\(W_{13}\) 与 \(W_2\)）共用同一份行索引，SwiGLU 与 finalize 发生在 BF16 交接之后。
-
-Mega MoE 与 paged MQA 走专用路径：把 routed token 池或 paged KV 先收成规则任务流，再交给同一类 TMA / UMMA 原语。标准 MoE 适配走 grouped GEMM 契约。
+一次 grouped launch 覆盖 \(G\) 个同形状 expert：只沿 \(M\) 分组，\(N\) 与 \(K\) 固定。两次 GEMM、精度顺序与 dispatcher 接入见 [03](03_grouped_gemm_moe_contract.md)。Mega MoE / paged MQA 见 [04](04_mega_moe_and_paged_mqa.md)。
 
 ## 记号
 
@@ -51,15 +49,14 @@ Mega MoE 与 paged MQA 走专用路径：把 routed token 池或 paged KV 先收
 - `Kernel1D1D`：SM100 FP8/FP4 与部分 K-grouped 路径
 - `KernelNoSF`：BF16 路径，无 SF 张量，`BLOCK_K = 64`
 
-## 吞吐从哪里来
+## 各文职责
 
-一次 grouped 前向把下列机制叠在同一 CTA 上：
+四篇正文对应 `dev-kit` 四份 DeepGEMM 报告，按「执行语言 → 两代流水 → MoE 契约 → 专用布局」读。每篇只建立下一篇要用的对象。
 
-- persistent 抢 tile：CTA \(x\) 第 \(\mathrm{iter}\) 轮领取 \(\mathrm{next}=(\mathrm{iter}+1)\cdot N_{\mathrm{SM}}+\mathrm{blockIdx.x}\)
-- TMA 按 stage 装 A/B（FP8 另装 SF），math warp 做 WGMMA/UMMA，整段 \(K\) 累进 FP32
-- 写回前 `__float22bfloat162_rn`（grouped 前向 \(D\) 为 BF16）
-- contiguous 把 \(BLOCK_M\) 锁成进程内 `get_mk_alignment_for_contiguous_layout()`（SM90 默认 128）
-- 形状进入 JIT 键；CUDA graph 捕获前必须热编译对应 `(M,N,K,G,layout,dtype)`
+- [01 分层内核架构](01_layered_architecture.md)：layout / scheduler / mma / epilogue / impl 各做什么几何变换。输出：persistent tile 流与角色分工。
+- [02 SM90 到 SM100 流水](02_sm90_sm100_pipeline.md)：同一分层在两代硬件上换哪四件（描述符、TMA、累积位置、epilogue）。输出：grouped 前向为何选 1D2D / 1D1D / NoSF。
+- [03 grouped GEMM 与标准 MoE 契约](03_grouped_gemm_moe_contract.md)：M-grouped 调用面、FP8/BF16 三条分叉、SGLang permute–GEMM–SwiGLU–finalize。这是标准 MoE 适配的主文。
+- [04 Mega MoE 与 paged MQA](04_mega_moe_and_paged_mqa.md)：换任务几何（token 池、`(q_atom, kv_split)`）后仍用 01/02 的执行语言。标准 MoE 读完 03 即可接入。
 
 ## 代码架构
 
@@ -79,23 +76,6 @@ deep_gemm/
 ```
 
 `GemmType` 与 `KernelType` 定义见 [`types.hpp`](src/types_hpp.md#__codelineno-0-18)。
-
-## 标准 MoE 在库边界上的形状
-
-expert 前向是两段线性：\(h W_{13}^{\mathsf{T}}\) 得 gate/up，SwiGLU 后 \(h' W_2^{\mathsf{T}}\) 回到隐藏维。DeepGEMM 只看见
-
-- \(A\)：按 expert 排好的激活（contiguous `[M,K]` 或 masked `[G,M_{\max},K]`）
-- \(B\)：堆叠权重 `[G,N,K]`（NT 下与 \(A\) 做 \(A B^{\mathsf{T}}\)）
-- `grouped_layout` 或 `masked_m`：行到 expert 的索引
-
-同一份索引喂两次 kernel，中间激活与量化在核外。细节在 [03 grouped GEMM 与标准 MoE 契约](03_grouped_gemm_moe_contract.md)。
-
-## 文档导航
-
-- [01 分层内核架构](01_layered_architecture.md)：layout / scheduler / mma / epilogue / impl，以及 persistent 角色分工
-- [02 SM90 到 SM100 流水](02_sm90_sm100_pipeline.md)：WGMMA 协议、UMMA/TMEM、TMA 单 SM 与 2SM
-- [03 grouped GEMM 与标准 MoE 契约](03_grouped_gemm_moe_contract.md)：contiguous / masked / psum、FP8 与 BF16 分叉、SGLang permute–GEMM–SwiGLU–finalize
-- [04 Mega MoE 与 paged MQA](04_mega_moe_and_paged_mqa.md)：共享 token 池与元数据驱动的 indexer 流水（标准 MoE 之外的专用路径）
 
 ## 源码浏览
 

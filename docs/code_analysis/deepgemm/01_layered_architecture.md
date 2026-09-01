@@ -6,7 +6,7 @@ tags:
 ---
 # DeepGEMM 代码分析：分层内核架构
 
-上一节给出统一数学对象 \(D=C+AB^{\mathsf{T}}\) 与 MoE 边界。本节说明内核如何按几何角色拆层；下一节用同一分层解释 SM90 与 SM100 流水差在哪一层。
+上一节给出统一数学对象 \(D=C+AB^{\mathsf{T}}\) 与记号。本节说明内核如何按几何角色拆层；下一节用同一分层解释 SM90 与 SM100 流水差在哪一层。
 
 DeepGEMM 的内核按五层拆开，各做一种几何变换，在 impl 汇合：
 
@@ -16,13 +16,13 @@ DeepGEMM 的内核按五层拆开，各做一种几何变换，在 impl 汇合�
 - **epilogue**：TMEM / accum 写回最终张量
 - **impl**：用具体架构的 barrier 与角色把上述层接成流水
 
-模板参数是这些层的笛卡尔积：major、CTA tile、SF 粒度、swizzle、warp 角色数、multicast、`GemmType`、epilogue 类型。
+模板参数是这些层的笛卡尔积：A/B major、K 向 SF 粒度、CTA tile、smem swizzle、warp 角色数、multicast、`GemmType`、epilogue 类型。impl 文件编码的是执行架构。
 
 **源码位置**: [`sm100_fp8_fp4_gemm_1d1d_impl`](https://github.com/deepseek-ai/DeepGEMM/blob/88965b0/deep_gemm/include/deep_gemm/impls/sm100_fp8_fp4_gemm_1d1d.cuh#L19-L40)
 
 ## 1. impl 先暴露角色，再暴露数学
 
-[`sm100_fp8_fp4_gemm_1d1d.cuh`](src/sm100_fp8_fp4_gemm_1d1d_cuh.md) 把线程分成非 epilogue 与 epilogue 两套 launch bound。shared memory 按 stage 切成 CD store、A tile、B tile、SFA/SFB，再用 `PatternVisitor` 把裸偏移收成「第 \(i\) 个 stage 的视图」。barrier 同样按职责切：TMA 生产/消费、带 SF 的装载、TMEM 交给 epilogue。
+[`sm100_fp8_fp4_gemm_1d1d.cuh`](src/sm100_fp8_fp4_gemm_1d1d_cuh.md) 把线程分成非 epilogue 与 epilogue 两套 launch bound。shared memory 按 stage 切成 CD store、A tile、B tile、SFA/SFB，再用 `PatternVisitor` 把裸偏移收成「第 \(i\) 个 stage 的视图」。barrier 同样按职责切：TMA full/empty、带 SF 的 `with_sf_full`、TMEM 交给 epilogue 的 full/empty。[`sm100_fp8_fp4_gemm_1d1d.cuh:L150-L157`](src/sm100_fp8_fp4_gemm_1d1d_cuh.md#__codelineno-0-150)
 
 ```cpp
 auto smem_cd = utils::PatternVisitor([&](const uint32_t& i) {
@@ -33,6 +33,7 @@ auto smem_a  = utils::PatternVisitor([&](const uint32_t& i) {
 });
 auto full_barriers          = utils::PatternVisitor([=](const uint32_t& i) { return barrier_start_ptr + (i); });
 auto empty_barriers         = utils::PatternVisitor([=](const uint32_t& i) { return barrier_start_ptr + (kNumStages + i); });
+auto with_sf_full_barriers  = utils::PatternVisitor([=](const uint32_t& i) { return barrier_start_ptr + (kNumStages * 2 + i); });
 auto tmem_full_barriers     = utils::PatternVisitor([=](const uint32_t& i) { return barrier_start_ptr + (kNumStages * 3 + i); });
 ```
 
@@ -50,7 +51,7 @@ SM90 FP8 1D2D 用同一模式，只是 SF 为 FP32、无独立 TMEM barrier：sm
 
 领取下一 tile。[`gemm.cuh:L171-L172`](src/gemm_cuh.md#__codelineno-0-171)
 
-swizzle 把 tile 编成对 L2 与 TMA multicast 友好的组：主轴按 8 或 16 个 1D block 成组，组内走次轴。SM90 在组大小为奇数时拆出不能 multicast 的尾巴；SM100 的 2-CTA 不能动态关掉 multicast，因此不走这段修正。[`gemm.cuh:L95-L131`](src/gemm_cuh.md#__codelineno-0-95)
+swizzle 把 tile 编成对 L2 与 TMA multicast 友好的组：主轴按 8 或 16 个 1D block 成组，组内走次轴。奇数组成组修正只编译进 SM90（`#if __CUDA_ARCH__ < 1000`）；SM100 2-CTA 保持固定 cluster。[`gemm.cuh:L95-L131`](src/gemm_cuh.md#__codelineno-0-95)
 
 `get_global_idx` 把块坐标译成 TMA 用的全局偏移。contiguous 用 `grouped_layout[m_{\mathrm{blk}}\cdot BLOCK_M]` 当 expert id；padding 行为 \(-1\)，`max(0,\cdot)` 把负 id 收成 0 偏移，配合 `is_computation_valid` 丢掉 padding 行上的 MMA。[`gemm.cuh:L133-L160`](src/gemm_cuh.md#__codelineno-0-133)、[`gemm.cuh:L282-L295`](src/gemm_cuh.md#__codelineno-0-282)
 
@@ -68,7 +69,7 @@ SM100 1D1D 把 TMA warp、UMMA warp、epilogue warp 分得更开：TMA 只生产
 
 `mma/sm90.cuh` 把 smem 指针编成 `cute::GmmaDescriptor`（start address、layout type、leading/stride byte offset）。`mma/sm100.cuh` 的主语换成 `cute::UMMA::SmemDescriptor`：version、swizzle layout type、base32、MN/K major。[`sm100.cuh:L14-L80`](src/mma_sm100_cuh.md#__codelineno-0-14)
 
-K-major 时 swizzle 必须等于 `BLOCK_K * sizeof(dtype)`，且每个 block 在 K 轴上只有一个 swizzle atom。impl 不再重复这些几何约束。
+K-major 时 swizzle 等于 `BLOCK_K * sizeof(dtype)`，且每个 block 在 K 轴上只有一个 swizzle atom。这些约束留在 mma 层。
 
 ## 5. 分层的收益落在 impl 的交界
 

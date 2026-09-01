@@ -6,21 +6,15 @@ tags:
 ---
 # DeepGEMM 代码分析：grouped GEMM 与标准 MoE 契约
 
-前两节给出 persistent 流水与 SM90/SM100 换件。本节把同一套 kernel 读成 MoE 调用面：先固定 grouped GEMM 的几何与 FP8/BF16 分叉，再把标准 MoE（permute → GEMM1 → SwiGLU → GEMM2 → finalize）接到这条边界上。Mega MoE 融合核不在本节。
+01/02 给出 persistent tile 流与 1D2D / 1D1D / NoSF 的选型。本节把同一套 kernel 读成 MoE 调用面：先固定 M-grouped 几何与 FP8/BF16 三条分叉，再把标准 MoE（permute → GEMM1 → SwiGLU → GEMM2 → finalize）接到这条边界上。Mega MoE 见 [04](04_mega_moe_and_paged_mqa.md)。
 
 记号沿用 [总览](00_overview.md)。证据：DeepGEMM `88965b0`，SGLang `62c505a`。
 
 ## 1. 机制：一次 launch、整段 \(K\)、三条分叉
 
-吞吐对象是一组同形状 expert 的
+吞吐对象是一组同形状 expert 的 NT GEMM \(D=C+AB^{\mathsf{T}}\)（定义见总览）。M-grouped 前向：\(N,K\) 固定，\(M\) 按组变。contiguous 下 \(A\in\mathbb{R}^{M\times K}\)，\(B\in\mathbb{R}^{G\times N\times K}\)，\(D\in\mathbb{R}^{M\times N}\)，\(A\) 沿 \(M\) 按 expert 分段。masked 下 \(A,D\) 带前缀维 \(G\)，组 \(g\) 的有效行 \(m_g\le M_{\max}\)。可选 \(C\) 与 \(D\) 同形。同一 CTA 走完整 \(K\)，FP32 累加后 identity store 为 BF16。K-grouped（权重反传）\(M,N\) 固定、\(K\) 按组变；FP8 每段 \(K\) 整除 128，1D1D 写 FP32 `TMA_REDUCE_ADD`。
 
-\[
-D = C + A B^{\mathsf{T}}
-\]
-
-M-grouped 前向：\(N,K\) 固定，\(M\) 按组变。contiguous 下 \(A\in\mathbb{R}^{M\times K}\)，\(B\in\mathbb{R}^{G\times N\times K}\)，\(D\in\mathbb{R}^{M\times N}\)，\(A\) 沿 \(M\) 按 expert 分段。masked 下 \(A,D\) 带前缀维 \(G\)，组 \(g\) 的有效行 \(m_g\le M_{\max}\)。可选 \(C\) 与 \(D\) 同形。同一 CTA 走完整 \(K\)，FP32 累加后 identity store 为 BF16。K-grouped（权重反传）\(M,N\) 固定、\(K\) 按组变，1D1D 写 FP32 `TMA_REDUCE_ADD`。
-
-grid 等于 \(N_{\mathrm{SM}}\)。contiguous 的组号来自 `grouped_layout[m_{\mathrm{blk}}\cdot BLOCK_M]`，因此 \(BLOCK_M\) 必须等于 `get_mk_alignment_for_contiguous_layout()`。
+grid 等于 \(N_{\mathrm{SM}}\)，领取公式见 [01](01_layered_architecture.md)。contiguous 的组号来自 `grouped_layout[m_{\mathrm{blk}}\cdot BLOCK_M]`，因此 \(BLOCK_M\) 必须等于 `get_mk_alignment_for_contiguous_layout()`。
 
 同一 scheduler 上有两条 grouped 前向：FP8 为 SM90 `Kernel1D2D`（SM100 `Kernel1D1D`）并携带 SF；BF16 为 `KernelNoSF`。相对 FP8 grouped 前向，BF16 只改三处。
 
@@ -28,13 +22,13 @@ grid 等于 \(N_{\mathrm{SM}}\)。contiguous 的组号来自 `grouped_layout[m_{
 
 NoSF 的 smem 只有 D/A/B 与 barrier，`smem_sfa_per_stage = 0`。Host 入口 `m_grouped_bf16_gemm_nt_contiguous` 不调用 `transform_sf_pair_into_required_layout`。[`sm90_bf16_gemm.hpp`](https://github.com/deepseek-ai/DeepGEMM/blob/88965b0/csrc/jit_kernels/impls/sm90_bf16_gemm.hpp) 填 `KernelType::KernelNoSF`，并断言 \(K\) 整除 64。
 
-FP8 的 SF 要把 MN 扩到 TMA 16 字节对齐（ensure_zero_padding）：packed UE8M0 的 torch 路径先 `zeros` 再拷入有效区；CUDA pack 对越界 K 写 0，且只 store `global_mn_idx < mn`。BF16 入口无 SF 参数，Host 不调用 `transform_sf_pair_into_required_layout`。contiguous 激活对齐尾仍由生成器写成 \(A=0\)、`grouped_layout=-1`，与 SF 对齐是两套契约。
+FP8 的 SF 要把 MN 扩到 TMA 16 字节对齐（ensure_zero_padding）：packed UE8M0 的 torch 路径先 `zeros` 再拷入有效区；CUDA pack 对越界 K 写 0，且只 store `global_mn_idx < mn`。K-grouped Host 注释为 `Transform SF with padding`。contiguous 激活对齐尾仍由生成器写成 \(A=0\)、`grouped_layout=-1`，与 SF 对齐是两套契约。
 
-`use_psum_layout` 在 BF16 与 `m_grouped_fp8_fp4_gemm_nt_contiguous` 上都默认由调用方传入；SGLang wrapper 使用逐行 `m_indices`。
+`use_psum_layout` 在 BF16 与 `m_grouped_fp8_fp4_gemm_nt_contiguous` 上默认 `false`；SGLang wrapper 使用逐行 `m_indices`。
 
 ### 1.2 官方 `block_n` 格子与格子外的 16
 
-SM90 `get_layout_candidates`：`step = lcm(16, block_n_multiple_of)`，`start = step`，`end` 为 NoSF 256 / 1D2D 192 / 1D1D 160，再 `for (i = start; i <= end; i += step)`。contiguous / psum 的 \(BLOCK_M\) 只有 alignment。候选还要求 \(BLOCK_M\) 与 \(BLOCK_N\) 至少一个 \(\le 128\)（alignment 为 128 时 NoSF 可取 `block_n=256`）。排序量是 \(\max(\text{L1 cycles},\text{L2 cycles})/\text{wave\_efficiency}\)。
+SM90 `get_layout_candidates`：`step = lcm(16, block_n_multiple_of)`，`start = step`，`end` 为 NoSF 256 / 1D2D 192 / 1D1D 160，再 `for (i = start; i <= end; i += step)`。contiguous / psum 的 \(BLOCK_M\) 只有 alignment。候选还要求 \(BLOCK_M\) 与 \(BLOCK_N\) 至少一个 \(\le 128\)（alignment 为 128 时 NoSF 可取 `block_n=256`）。排序量是 \(\max(\text{L1 cycles},\text{L2 cycles})/\text{wave\_efficiency}\)：分母是最后一波 SM 占用，分子是字节流折成的片上/片外周期。
 
 [`sm90.hpp:L38-L60`](src/heuristics_sm90_hpp.md#__codelineno-0-38)
 
@@ -42,13 +36,13 @@ SM90 `get_layout_candidates`：`step = lcm(16, block_n_multiple_of)`，`start = 
 
 ### 1.3 入口是两套符号
 
-SGLang 按 `w13_weight.dtype` 分流。FP8/FP4 走 `grouped_gemm_nt_f8f8bf16_contig` → `deep_gemm.m_grouped_fp8_gemm_nt_contiguous`（C++ 短名等于 `m_grouped_fp8_fp4_*`）。BF16 走 `grouped_gemm_nt_bf16_contig` → `m_grouped_bf16_gemm_nt_contiguous`。`fp8_m_grouped_gemm_nt_masked` / `bf16_m_grouped_gemm_nt_masked` 标了 `TODO: remove these later`。Serving 现行名是 `grouped_gemm_nt_f8f8bf16_contig` 与 `grouped_gemm_nt_bf16_contig`。
+SGLang 按 `w13_weight.dtype` 分流。FP8/FP4 走 `grouped_gemm_nt_f8f8bf16_contig` → `deep_gemm.m_grouped_fp8_gemm_nt_contiguous`（C++ 短名等于 `m_grouped_fp8_fp4_*`）。BF16 走 `grouped_gemm_nt_bf16_contig` → `m_grouped_bf16_gemm_nt_contiguous`。`fp8_m_grouped_gemm_nt_masked` / `bf16_m_grouped_gemm_nt_masked` 标了 `TODO: remove these later`。`deep_gemm.legacy.*_tl` 模块头写明可能弃用。Serving 现行名是 `grouped_gemm_nt_f8f8bf16_contig` 与 `grouped_gemm_nt_bf16_contig`。
 
 ## 2. 约束：调用面几何与类型
 
-Host 在 [`gemm.hpp`](src/gemm_hpp.md) 断言下列对象。第三节用同一套索引喂两次 GEMM。
+Host 在 [`gemm.hpp`](src/gemm_hpp.md) 按 `arch_major` 与 SF dtype 把 `m_grouped_fp8_fp4_gemm_nt_contiguous` 分到 `sm90_*_1d2d` 或 `sm100_*_1d1d`。[`gemm.hpp:L193-L205`](src/gemm_hpp.md#__codelineno-0-193)
 
-NT 为 \(D=C+AB^{\mathsf{T}}\)。SM90 FP8 要求 A、B 都是 K-major。Grouped 前向 \(D\) 为 BF16，`with_accumulation = false`。FP8 的 LHS SF 必须 MN-major，并经 ensure_zero_padding。BF16 入口无 SF 参数。\(G\) 个 expert 共享同一 \((N,K)\)。
+SM90 FP8 要求 A、B 都是 K-major。Grouped 前向 \(D\) 为 BF16，`with_accumulation = false`。FP8 的 LHS SF 必须 MN-major，并经 ensure_zero_padding。BF16 入口无 SF 参数。\(G\) 个 expert 共享同一 \((N,K)\)。
 
 布局语义：
 
@@ -97,7 +91,7 @@ contiguous BF16 路径无量化与 post-quant，两次 `grouped_gemm_nt_bf16_con
 
 masked 路径把张量形状换成 `[G, M_{\max}, ·]`，两次 `grouped_gemm_nt_f8f8bf16_masked` / `_bf16_masked`，SwiGLU 走 `_varlen_deep_gemm_silu_mul_quant` 或 `silu_and_mul_masked_fwd`。FP4 expert 把 `recipe_a=(1,128)`、`recipe_b=(1,32)` 传进 DeepGEMM。
 
-同一份 `m_indices` / `masked_m` 必须喂两次 kernel，否则 GEMM2 会读错 expert 的 \(W_2\)。
+两次 kernel 共用同一份 `m_indices` / `masked_m`，GEMM2 才能对准对应 expert 的 \(W_2\)。
 
 ### 3.3 finalize：按 token 的 FP32 顺序加权
 
@@ -117,7 +111,7 @@ JIT 键含 `BLOCK_*`、`kNumStages`、`compiled_dims`、`KernelType`。捕获 CU
 
 ## 4. 结论
 
-grouped GEMM 把 MoE 前向收成「同形状、变 \(M\)」的一次 GPU 启动。吞吐来自 TMA 与 WGMMA/UMMA 多 stage 重叠、角色拆分、\(N_{\mathrm{SM}}\) 常驻抢 tile、contiguous 把 \(BLOCK_M\) 锁成组对齐、FP32 整段 \(K\) 累加、按形状 JIT。BF16 NoSF 用 \(BLOCK_K=64\) 去掉 SF 流水。
+每次 grouped 前向把同形状、变 \(M\) 的 expert 收成一次 GPU 启动。吞吐来自 TMA 与 WGMMA/UMMA 多 stage 重叠、角色拆分、\(N_{\mathrm{SM}}\) 常驻抢 tile、contiguous 把 \(BLOCK_M\) 锁成组对齐、FP32 整段 \(K\) 累加、按形状 JIT。BF16 NoSF 用 \(BLOCK_K=64\) 去掉 SF 流水。
 
 框架契约：
 
@@ -127,7 +121,7 @@ grouped GEMM 把 MoE 前向收成「同形状、变 \(M\)」的一次 GPU 启动
 - finalize 按 token 做 FP32 顺序加权
 - CUDA graph 前完成对应 dtype 的 workspace 与 JIT
 
-Serving 入口是 `grouped_gemm_nt_f8f8bf16_contig` 与 `grouped_gemm_nt_bf16_contig`（及对应 masked 符号）。permute / SwiGLU / finalize 在核外；下一节的 Mega MoE 把 EP 与两层 MLP 收进同一 kernel，那是另一条产品路径。
+Serving 入口是 `grouped_gemm_nt_f8f8bf16_contig` 与 `grouped_gemm_nt_bf16_contig`（及对应 masked 符号）。permute / SwiGLU / finalize 在核外。Mega MoE 见 [04](04_mega_moe_and_paged_mqa.md)。
 
 ## 附录：源码摘录
 
@@ -178,7 +172,7 @@ full_barrier.arrive_and_expect_tx(
 
 [`sm90_fp8_gemm_1d2d.cuh:L194-L205`](src/sm90_fp8_gemm_1d2d_cuh.md#__codelineno-0-194)
 
-math 侧在 `is_computation_valid` 为真时发 WGMMA，再用 `scale_a * scale_b` 提升。NoSF 无这一乘。
+math 侧在 `is_computation_valid` 为真时发 WGMMA，再用 `scale_a * scale_b` 提升。FP8 WGMMA 为 \(64\times N\times 32\) `F32E4M3E4M3`；BF16 为 \(64\times N\times 16\) `F32BF16BF16`。NoSF 无 scale 乘。
 
 ### C. SGLang 两次 contiguous GEMM
 
@@ -191,3 +185,5 @@ deep_gemm_wrapper.grouped_gemm_nt_f8f8bf16_contig(
 ```
 
 [deep_gemm.py L206-L293](https://github.com/sgl-project/sglang/blob/62c505a/python/sglang/srt/layers/moe/moe_runner/deep_gemm.py#L206-L293)
+
+finalize 按 token 扫 \(k_{\mathrm{top}}\)，FP32 累加后一次 store，见 [kernels.py L681-L719](https://github.com/sgl-project/sglang/blob/62c505a/python/sglang/srt/layers/moe/ep_moe/kernels.py#L681-L719)。
