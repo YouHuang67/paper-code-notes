@@ -268,16 +268,23 @@ nav:
       - types.hpp: code_analysis/deepgemm/src/types_hpp.md
       - scheduler/gemm.cuh: code_analysis/deepgemm/src/gemm_cuh.md
       - common/tma_copy.cuh: code_analysis/deepgemm/src/tma_copy_cuh.md
+      - common/sm90_utils.cuh: code_analysis/deepgemm/src/sm90_utils_cuh.md
+      - ptx/wgmma.cuh: code_analysis/deepgemm/src/ptx_wgmma_cuh.md
       - mma/sm90.cuh: code_analysis/deepgemm/src/mma_sm90_cuh.md
       - mma/sm100.cuh: code_analysis/deepgemm/src/mma_sm100_cuh.md
       - sm90_fp8_gemm_1d2d.cuh: code_analysis/deepgemm/src/sm90_fp8_gemm_1d2d_cuh.md
       - sm90_bf16_gemm.cuh: code_analysis/deepgemm/src/sm90_bf16_gemm_cuh.md
+      - sm90_bf16_gemm.hpp: code_analysis/deepgemm/src/sm90_bf16_gemm_hpp.md
       - sm100_fp8_fp4_gemm_1d1d.cuh: code_analysis/deepgemm/src/sm100_fp8_fp4_gemm_1d1d_cuh.md
       - gemm.hpp: code_analysis/deepgemm/src/gemm_hpp.md
       - heuristics/sm90.hpp: code_analysis/deepgemm/src/heuristics_sm90_hpp.md
+      - heuristics/sm100.hpp: code_analysis/deepgemm/src/heuristics_sm100_hpp.md
+      - heuristics/runtime.hpp: code_analysis/deepgemm/src/heuristics_runtime_hpp.md
       - generators.py: code_analysis/deepgemm/src/generators_py.md
       - layout/mega_moe.cuh: code_analysis/deepgemm/src/mega_moe_cuh.md
+      - sm100_fp8_fp4_mega_moe.cuh: code_analysis/deepgemm/src/sm100_fp8_fp4_mega_moe_cuh.md
       - paged_mqa_logits.cuh: code_analysis/deepgemm/src/paged_mqa_logits_cuh.md
+      - sm100_fp4_paged_mqa_logits.cuh: code_analysis/deepgemm/src/sm100_fp4_paged_mqa_logits_cuh.md
     - DeepSeek V4:
       - code_analysis/deepseek_v4/src/index.md
       - README.md: code_analysis/deepseek_v4/src/readme_md.md

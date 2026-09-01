@@ -8,7 +8,7 @@ tags:
 
 **原始文件**: `deep_gemm/include/deep_gemm/layout/mega_moe.cuh`
 
-**仓库**: [deepseek-ai/DeepGEMM](https://github.com/deepseek-ai/DeepGEMM)
+**仓库**: [deep_gemm/include/deep_gemm/layout/mega_moe.cuh](https://github.com/deepseek-ai/DeepGEMM/blob/88965b0/deep_gemm/include/deep_gemm/layout/mega_moe.cuh)
 
 ```cpp linenums="1"
 #pragma once

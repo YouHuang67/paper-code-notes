@@ -8,7 +8,7 @@ tags:
 
 **原始文件**: `deep_gemm/include/deep_gemm/impls/sm100_fp8_fp4_gemm_1d1d.cuh`
 
-**仓库**: [deepseek-ai/DeepGEMM](https://github.com/deepseek-ai/DeepGEMM)
+**仓库**: [deep_gemm/include/deep_gemm/impls/sm100_fp8_fp4_gemm_1d1d.cuh](https://github.com/deepseek-ai/DeepGEMM/blob/88965b0/deep_gemm/include/deep_gemm/impls/sm100_fp8_fp4_gemm_1d1d.cuh)
 
 ```cpp linenums="1"
 #pragma once

@@ -8,7 +8,7 @@ tags:
 
 **原始文件**: `deep_gemm/include/deep_gemm/common/types.hpp`
 
-**仓库**: [deepseek-ai/DeepGEMM](https://github.com/deepseek-ai/DeepGEMM)
+**仓库**: [deep_gemm/include/deep_gemm/common/types.hpp](https://github.com/deepseek-ai/DeepGEMM/blob/88965b0/deep_gemm/include/deep_gemm/common/types.hpp)
 
 ```cpp linenums="1"
 #pragma once

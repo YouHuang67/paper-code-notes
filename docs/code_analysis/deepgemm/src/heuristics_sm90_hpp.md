@@ -8,7 +8,7 @@ tags:
 
 **原始文件**: `csrc/jit_kernels/heuristics/sm90.hpp`
 
-**仓库**: [deepseek-ai/DeepGEMM](https://github.com/deepseek-ai/DeepGEMM)
+**仓库**: [csrc/jit_kernels/heuristics/sm90.hpp](https://github.com/deepseek-ai/DeepGEMM/blob/88965b0/csrc/jit_kernels/heuristics/sm90.hpp)
 
 ```cpp linenums="1"
 #pragma once

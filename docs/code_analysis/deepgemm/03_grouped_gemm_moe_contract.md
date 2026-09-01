@@ -8,7 +8,7 @@ tags:
 
 01/02 给出 persistent tile 流与 1D2D / 1D1D / NoSF 的选型。本节把同一套 kernel 读成 MoE 调用面：先固定 M-grouped 几何与 FP8/BF16 三条分叉，再把标准 MoE（permute → GEMM1 → SwiGLU → GEMM2 → finalize）接到这条边界上。Mega MoE 见 [04](04_mega_moe_and_paged_mqa.md)。
 
-记号沿用 [总览](00_overview.md)。证据：DeepGEMM `88965b0`，SGLang `62c505a`。
+记号沿用 [总览](00_overview.md)。对照 DeepGEMM [`88965b0`](https://github.com/deepseek-ai/DeepGEMM/commit/88965b0)，SGLang 适配为 [`62c505a`](https://github.com/sgl-project/sglang/tree/62c505a)。
 
 ## 1. 机制：一次 launch、整段 \(K\)、三条分叉
 
@@ -20,7 +20,9 @@ grid 等于 \(N_{\mathrm{SM}}\)，领取公式见 [01](01_layered_architecture.m
 
 ### 1.1 无 SF，因而无 ensure_zero_padding
 
-NoSF 的 smem 只有 D/A/B 与 barrier，`smem_sfa_per_stage = 0`。Host 入口 `m_grouped_bf16_gemm_nt_contiguous` 不调用 `transform_sf_pair_into_required_layout`。[`sm90_bf16_gemm.hpp`](https://github.com/deepseek-ai/DeepGEMM/blob/88965b0/csrc/jit_kernels/impls/sm90_bf16_gemm.hpp) 填 `KernelType::KernelNoSF`，并断言 \(K\) 整除 64。
+NoSF 的 smem 只有 D/A/B 与 barrier，`smem_sfa_per_stage = 0`。Host 入口 `m_grouped_bf16_gemm_nt_contiguous` 不调用 `transform_sf_pair_into_required_layout`。`sm90_m_grouped_bf16_gemm_contiguous` 填 `KernelType::KernelNoSF`，并断言 \(K\) 整除 64。
+
+**源码位置**: [`sm90_m_grouped_bf16_gemm_contiguous`](https://github.com/deepseek-ai/DeepGEMM/blob/88965b0/csrc/jit_kernels/impls/sm90_bf16_gemm.hpp#L132-L164) · [sm90_bf16_gemm.hpp:L132-L164](src/sm90_bf16_gemm_hpp.md#__codelineno-0-132)
 
 FP8 的 SF 要把 MN 扩到 TMA 16 字节对齐（ensure_zero_padding）：packed UE8M0 的 torch 路径先 `zeros` 再拷入有效区；CUDA pack 对越界 K 写 0，且只 store `global_mn_idx < mn`。K-grouped Host 注释为 `Transform SF with padding`。contiguous 激活对齐尾仍由生成器写成 \(A=0\)、`grouped_layout=-1`，与 SF 对齐是两套契约。
 
@@ -30,9 +32,11 @@ FP8 的 SF 要把 MN 扩到 TMA 16 字节对齐（ensure_zero_padding）：packe
 
 SM90 `get_layout_candidates`：`step = lcm(16, block_n_multiple_of)`，`start = step`，`end` 为 NoSF 256 / 1D2D 192 / 1D1D 160，再 `for (i = start; i <= end; i += step)`。contiguous / psum 的 \(BLOCK_M\) 只有 alignment。候选还要求 \(BLOCK_M\) 与 \(BLOCK_N\) 至少一个 \(\le 128\)（alignment 为 128 时 NoSF 可取 `block_n=256`）。排序量是 \(\max(\text{L1 cycles},\text{L2 cycles})/\text{wave\_efficiency}\)：分母是最后一波 SM 占用，分子是字节流折成的片上/片外周期。
 
-[`sm90.hpp:L38-L60`](src/heuristics_sm90_hpp.md#__codelineno-0-38)
+**源码位置**: [sm90.hpp:L38-L60](https://github.com/deepseek-ai/DeepGEMM/blob/88965b0/csrc/jit_kernels/heuristics/sm90.hpp#L38-L60) · [站内 L38](src/heuristics_sm90_hpp.md#__codelineno-0-38)
 
-`block_n=16` 作为独立项只在 1D1D 且 \(D\) 为 FP32 时出现：先把 `start` 改成 24（躲开 FP32 写回 bank conflict），再 `push_back(16)`。SM100 非 grouped 同样在 32-step 格子外可加入 16。SM100 grouped 固定 `block_n=128`、`swap_ab=true`。[`sm100.hpp:L31-L42`](https://github.com/deepseek-ai/DeepGEMM/blob/88965b0/csrc/jit_kernels/heuristics/sm100.hpp#L31-L42)
+`block_n=16` 作为独立项只在 1D1D 且 \(D\) 为 FP32 时出现：先把 `start` 改成 24（躲开 FP32 写回 bank conflict），再 `push_back(16)`。SM100 非 grouped 同样在 32-step 格子外可加入 16。SM100 grouped 固定 `block_n=128`、`swap_ab=true`。
+
+**源码位置**: [sm100.hpp:L31-L42](https://github.com/deepseek-ai/DeepGEMM/blob/88965b0/csrc/jit_kernels/heuristics/sm100.hpp#L31-L42) · [站内 L31](src/heuristics_sm100_hpp.md#__codelineno-0-31)
 
 ### 1.3 入口是两套符号
 
@@ -40,7 +44,9 @@ SGLang 按 `w13_weight.dtype` 分流。FP8/FP4 走 `grouped_gemm_nt_f8f8bf16_con
 
 ## 2. 约束：调用面几何与类型
 
-Host 在 [`gemm.hpp`](src/gemm_hpp.md) 按 `arch_major` 与 SF dtype 把 `m_grouped_fp8_fp4_gemm_nt_contiguous` 分到 `sm90_*_1d2d` 或 `sm100_*_1d1d`。[`gemm.hpp:L193-L205`](src/gemm_hpp.md#__codelineno-0-193)
+Host 在 [`gemm.hpp`](https://github.com/deepseek-ai/DeepGEMM/blob/88965b0/csrc/apis/gemm.hpp) 按 `arch_major` 与 SF dtype 把 `m_grouped_fp8_fp4_gemm_nt_contiguous` 分到 `sm90_*_1d2d` 或 `sm100_*_1d1d`。
+
+**源码位置**: [gemm.hpp:L193-L205](https://github.com/deepseek-ai/DeepGEMM/blob/88965b0/csrc/apis/gemm.hpp#L193-L205) · [站内 L193](src/gemm_hpp.md#__codelineno-0-193)
 
 SM90 FP8 要求 A、B 都是 K-major。Grouped 前向 \(D\) 为 BF16，`with_accumulation = false`。FP8 的 LHS SF 必须 MN-major，并经 ensure_zero_padding。BF16 入口无 SF 参数。\(G\) 个 expert 共享同一 \((N,K)\)。
 
@@ -50,11 +56,15 @@ SM90 FP8 要求 A、B 都是 K-major。Grouped 前向 \(D\) 为 BF16，`with_acc
 - contiguous psum：`grouped_layout[G]`；组 \(g\) 有效结束行
 - masked：`masked_m[G]`，\(A\) 为 `[G,M_{\max},K]`；组 \(g\) 的 \(m_g\)
 
-对齐值必须等于进程内 `get_mk_alignment_for_contiguous_layout()`，与 \(BLOCK_M\) 同一来源。SM90 默认 128；SM100 可用 `expected_m` 把理论 alignment 从 240 以 MMA step 16 下调，且不小于 32。[`runtime.hpp:L47-L57`](https://github.com/deepseek-ai/DeepGEMM/blob/88965b0/csrc/jit_kernels/heuristics/runtime.hpp#L47-L57)
+对齐值必须等于进程内 `get_mk_alignment_for_contiguous_layout()`，与 \(BLOCK_M\) 同一来源。SM90 默认 128；SM100 可用 `expected_m` 把理论 alignment 从 240 以 MMA step 16 下调，且不小于 32。
 
-`expected_m` 还进入启发式。\(m_g=1\) 时该组仍占一个 \(BLOCK_M\) tile，math 用 `is_computation_valid` 丢掉 padding。生成器把对齐尾写成 \(A=0\)、逐行 layout 为 \(-1\)。[`generators.py:L294-L321`](src/generators_py.md#__codelineno-0-294)
+**源码位置**: [`get_theoretical_mk_alignment_for_contiguous_layout`](https://github.com/deepseek-ai/DeepGEMM/blob/88965b0/csrc/jit_kernels/heuristics/runtime.hpp#L47-L57) · [runtime.hpp:L47-L57](src/heuristics_runtime_hpp.md#__codelineno-0-47)
 
-**源码位置**: [`m_grouped_fp8_fp4_gemm_nt_contiguous`](https://github.com/deepseek-ai/DeepGEMM/blob/88965b0/csrc/apis/gemm.hpp#L143-L170)
+`expected_m` 还进入启发式。\(m_g=1\) 时该组仍占一个 \(BLOCK_M\) tile，math 用 `is_computation_valid` 丢掉 padding。生成器把对齐尾写成 \(A=0\)、逐行 layout 为 \(-1\)。
+
+**源码位置**: [`generate_m_grouped_contiguous`](https://github.com/deepseek-ai/DeepGEMM/blob/88965b0/tests/generators.py#L294-L321) · [generators.py:L294-L321](src/generators_py.md#__codelineno-0-294)
+
+**源码位置**: [`m_grouped_fp8_fp4_gemm_nt_contiguous`](https://github.com/deepseek-ai/DeepGEMM/blob/88965b0/csrc/apis/gemm.hpp#L143-L170) · [gemm.hpp:L143-L170](src/gemm_hpp.md#__codelineno-0-143)
 
 ## 3. 标准 MoE 接入契约
 
@@ -127,7 +137,7 @@ Serving 入口是 `grouped_gemm_nt_f8f8bf16_contig` 与 `grouped_gemm_nt_bf16_co
 
 ### A. 类型与 persistent 领取
 
-[`types.hpp`](src/types_hpp.md)：
+[`types.hpp`](https://github.com/deepseek-ai/DeepGEMM/blob/88965b0/deep_gemm/include/deep_gemm/common/types.hpp#L18-L39) · [站内 L18](src/types_hpp.md#__codelineno-0-18)：
 
 ```cpp
 enum class GemmType {
@@ -155,7 +165,7 @@ const auto peer_group_idx = grouped_layout[(m_block_idx ^ 1) * BLOCK_M];
 return group_idx == peer_group_idx;
 ```
 
-[`gemm.cuh:L171-L172`](src/gemm_cuh.md#__codelineno-0-171)、[`gemm.cuh:L273-L275`](src/gemm_cuh.md#__codelineno-0-273)
+**源码位置**: [gemm.cuh:L171-L172](https://github.com/deepseek-ai/DeepGEMM/blob/88965b0/deep_gemm/include/deep_gemm/scheduler/gemm.cuh#L171-L172) · [站内 L171](src/gemm_cuh.md#__codelineno-0-171)；[gemm.cuh:L273-L275](https://github.com/deepseek-ai/DeepGEMM/blob/88965b0/deep_gemm/include/deep_gemm/scheduler/gemm.cuh#L273-L275) · [站内 L273](src/gemm_cuh.md#__codelineno-0-273)
 
 ### B. FP8 1D2D 生产者与 scale 提升
 
@@ -170,7 +180,7 @@ full_barrier.arrive_and_expect_tx(
     SMEM_A_SIZE_PER_STAGE + SMEM_B_SIZE_PER_STAGE + SMEM_SFA_SIZE_PER_STAGE);
 ```
 
-[`sm90_fp8_gemm_1d2d.cuh:L194-L205`](src/sm90_fp8_gemm_1d2d_cuh.md#__codelineno-0-194)
+**源码位置**: [sm90_fp8_gemm_1d2d.cuh:L194-L205](https://github.com/deepseek-ai/DeepGEMM/blob/88965b0/deep_gemm/include/deep_gemm/impls/sm90_fp8_gemm_1d2d.cuh#L194-L205) · [站内 L194](src/sm90_fp8_gemm_1d2d_cuh.md#__codelineno-0-194)
 
 math 侧在 `is_computation_valid` 为真时发 WGMMA，再用 `scale_a * scale_b` 提升。FP8 WGMMA 为 \(64\times N\times 32\) `F32E4M3E4M3`；BF16 为 \(64\times N\times 16\) `F32BF16BF16`。NoSF 无 scale 乘。
 
@@ -184,6 +194,8 @@ deep_gemm_wrapper.grouped_gemm_nt_f8f8bf16_contig(
     (down_input_fp8, down_input_scale), w2_weight_fp8, down_output, m_indices, ...)
 ```
 
-[deep_gemm.py L206-L293](https://github.com/sgl-project/sglang/blob/62c505a/python/sglang/srt/layers/moe/moe_runner/deep_gemm.py#L206-L293)
+**源码位置**: [`grouped_gemm_nt_f8f8bf16_contig`](https://github.com/sgl-project/sglang/blob/62c505a/python/sglang/srt/layers/moe/moe_runner/deep_gemm.py#L206-L293)
 
-finalize 按 token 扫 \(k_{\mathrm{top}}\)，FP32 累加后一次 store，见 [kernels.py L681-L719](https://github.com/sgl-project/sglang/blob/62c505a/python/sglang/srt/layers/moe/ep_moe/kernels.py#L681-L719)。
+finalize 按 token 扫 \(k_{\mathrm{top}}\)，FP32 累加后一次 store。
+
+**源码位置**: [`post_reorder_triton_kernel`](https://github.com/sgl-project/sglang/blob/62c505a/python/sglang/srt/layers/moe/ep_moe/kernels.py#L681-L719)

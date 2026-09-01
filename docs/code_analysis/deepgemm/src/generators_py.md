@@ -8,7 +8,7 @@ tags:
 
 **原始文件**: `tests/generators.py`
 
-**仓库**: [deepseek-ai/DeepGEMM](https://github.com/deepseek-ai/DeepGEMM)
+**仓库**: [tests/generators.py](https://github.com/deepseek-ai/DeepGEMM/blob/88965b0/tests/generators.py)
 
 ```python linenums="1"
 import enum
