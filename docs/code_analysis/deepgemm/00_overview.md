@@ -10,7 +10,7 @@ tags:
 
 **团队**: DeepSeek
 
-**分析范围**: DeepGEMM 的分层内核（[`deep_gemm/include/deep_gemm/`](https://github.com/deepseek-ai/DeepGEMM/tree/88965b0/deep_gemm/include/deep_gemm)）与 grouped Host 入口（[`csrc/apis/gemm.hpp`](https://github.com/deepseek-ai/DeepGEMM/blob/88965b0/csrc/apis/gemm.hpp)）。[03](03_grouped_gemm_moe_contract.md) 另对照 SGLang 提交 [`62c505a`](https://github.com/sgl-project/sglang/tree/62c505a) 的 `MoeRunnerBackend.DEEP_GEMM`，说明标准 MoE 如何接到 grouped GEMM。正文交叉引用同时给出 GitHub 行锚点与站内 [源码浏览](src/index.md)（行号与官方文件一致）。
+**分析范围**: [`deep_gemm/include/deep_gemm/`](https://github.com/deepseek-ai/DeepGEMM/tree/88965b0/deep_gemm/include/deep_gemm) 与 [`csrc/apis/gemm.hpp`](https://github.com/deepseek-ai/DeepGEMM/blob/88965b0/csrc/apis/gemm.hpp)。[03](03_grouped_gemm_moe_contract.md) 另对照 SGLang [`62c505a`](https://github.com/sgl-project/sglang/tree/62c505a) 的 `MoeRunnerBackend.DEEP_GEMM`。行级引用同时指向 GitHub blob 与 [源码浏览](src/index.md)。
 
 相关背景：
 
@@ -38,16 +38,18 @@ D = C + A B^{\mathsf{T}}
 - \(G\)：expert 数（组数）
 - \(K\)：隐藏维（GEMM 的内积维）
 - \(N_{\mathrm{ffn}}\)：单路 FFN 中间宽；gate 与 up 沿输出维拼接后 \(N = 2N_{\mathrm{ffn}}\)
+- \(N_{\mathrm{SM}}\)：GPU 上的 SM 数；persistent grid 大小等于 \(N_{\mathrm{SM}}\)
+- \((BLOCK_M, BLOCK_N, BLOCK_K)\)：CTA tile 在 \(M,N,K\) 三向的边长
 - \(m_g\)：组 \(g\) 的有效 token 数
 - \(M\)：contiguous 下 \(\sum_g \mathrm{align}(m_g, BLOCK_M)\)；masked 下为每组上限 \(M_{\max}\)
 - \(k_{\mathrm{top}}\)：top-\(k\) 路由数
-- CTA：CUDA thread block；grid 大小等于 \(N_{\mathrm{SM}}\)
+- CTA：CUDA thread block
 - TMA：Tensor Memory Accelerator
 - WGMMA / UMMA：Hopper warpgroup MMA / Blackwell tensor-core MMA
 - SF：scaling factor。SM90 FP8 为 FP32；SM100 为 packed UE8M0（4 个 scale 打进一个 `int`）
 - `Kernel1D2D`：SM90 grouped FP8 前向（`BLOCK_K = 128`，带 SF）
 - `Kernel1D1D`：SM100 FP8/FP4 与部分 K-grouped 路径
-- `KernelNoSF`：BF16 路径，无 SF 张量，`BLOCK_K = 64`
+- `KernelNoSF`：BF16 路径（无 SF 张量，`BLOCK_K = 64`）
 
 ## 各文职责
 
@@ -75,24 +77,4 @@ deep_gemm/
     └── jit_kernels/heuristics/         # BLOCK_* 候选与占用率排序
 ```
 
-`GemmType` 与 `KernelType` 定义见 [`types.hpp`](https://github.com/deepseek-ai/DeepGEMM/blob/88965b0/deep_gemm/include/deep_gemm/common/types.hpp#L18-L39) · [types.hpp:L18-L39](src/types_hpp.md#__codelineno-0-18)。
-
-## 源码浏览
-
-站内副本与官方文件对照见 [src/index.md](src/index.md)。每条同时链到 GitHub 具体文件：
-
-- [types.hpp](https://github.com/deepseek-ai/DeepGEMM/blob/88965b0/deep_gemm/include/deep_gemm/common/types.hpp) · [站内](src/types_hpp.md)：`GemmType` / `KernelType`
-- [scheduler/gemm.cuh](https://github.com/deepseek-ai/DeepGEMM/blob/88965b0/deep_gemm/include/deep_gemm/scheduler/gemm.cuh) · [站内](src/gemm_cuh.md)：persistent scheduler
-- [common/tma_copy.cuh](https://github.com/deepseek-ai/DeepGEMM/blob/88965b0/deep_gemm/include/deep_gemm/common/tma_copy.cuh) · [站内](src/tma_copy_cuh.md)：TMA 2D/3D、multicast / 2SM
-- [common/sm90_utils.cuh](https://github.com/deepseek-ai/DeepGEMM/blob/88965b0/deep_gemm/include/deep_gemm/common/sm90_utils.cuh) · [站内](src/sm90_utils_cuh.md)：WGMMA 包装
-- [ptx/wgmma.cuh](https://github.com/deepseek-ai/DeepGEMM/blob/88965b0/deep_gemm/include/deep_gemm/ptx/wgmma.cuh) · [站内](src/ptx_wgmma_cuh.md)：1D2D 实际调用的 `ptx::warpgroup_*`
-- [mma/sm90.cuh](https://github.com/deepseek-ai/DeepGEMM/blob/88965b0/deep_gemm/include/deep_gemm/mma/sm90.cuh) · [站内](src/mma_sm90_cuh.md) / [mma/sm100.cuh](https://github.com/deepseek-ai/DeepGEMM/blob/88965b0/deep_gemm/include/deep_gemm/mma/sm100.cuh) · [站内](src/mma_sm100_cuh.md)：描述符构造
-- [sm90_fp8_gemm_1d2d.cuh](https://github.com/deepseek-ai/DeepGEMM/blob/88965b0/deep_gemm/include/deep_gemm/impls/sm90_fp8_gemm_1d2d.cuh) · [站内](src/sm90_fp8_gemm_1d2d_cuh.md)：SM90 grouped FP8 前向
-- [sm90_bf16_gemm.cuh](https://github.com/deepseek-ai/DeepGEMM/blob/88965b0/deep_gemm/include/deep_gemm/impls/sm90_bf16_gemm.cuh) · [站内](src/sm90_bf16_gemm_cuh.md)：SM90 BF16 NoSF 内核
-- [sm90_bf16_gemm.hpp](https://github.com/deepseek-ai/DeepGEMM/blob/88965b0/csrc/jit_kernels/impls/sm90_bf16_gemm.hpp) · [站内](src/sm90_bf16_gemm_hpp.md)：SM90 BF16 Host JIT
-- [sm100_fp8_fp4_gemm_1d1d.cuh](https://github.com/deepseek-ai/DeepGEMM/blob/88965b0/deep_gemm/include/deep_gemm/impls/sm100_fp8_fp4_gemm_1d1d.cuh) · [站内](src/sm100_fp8_fp4_gemm_1d1d_cuh.md)：SM100 1D1D
-- [gemm.hpp](https://github.com/deepseek-ai/DeepGEMM/blob/88965b0/csrc/apis/gemm.hpp) · [站内](src/gemm_hpp.md)：Host grouped API
-- [heuristics/sm90.hpp](https://github.com/deepseek-ai/DeepGEMM/blob/88965b0/csrc/jit_kernels/heuristics/sm90.hpp) · [站内](src/heuristics_sm90_hpp.md) / [sm100.hpp](https://github.com/deepseek-ai/DeepGEMM/blob/88965b0/csrc/jit_kernels/heuristics/sm100.hpp) · [站内](src/heuristics_sm100_hpp.md) / [runtime.hpp](https://github.com/deepseek-ai/DeepGEMM/blob/88965b0/csrc/jit_kernels/heuristics/runtime.hpp) · [站内](src/heuristics_runtime_hpp.md)
-- [tests/generators.py](https://github.com/deepseek-ai/DeepGEMM/blob/88965b0/tests/generators.py) · [站内](src/generators_py.md)：contiguous / masked 生成器
-- [layout/mega_moe.cuh](https://github.com/deepseek-ai/DeepGEMM/blob/88965b0/deep_gemm/include/deep_gemm/layout/mega_moe.cuh) · [站内](src/mega_moe_cuh.md) / [sm100_fp8_fp4_mega_moe.cuh](https://github.com/deepseek-ai/DeepGEMM/blob/88965b0/deep_gemm/include/deep_gemm/impls/sm100_fp8_fp4_mega_moe.cuh) · [站内](src/sm100_fp8_fp4_mega_moe_cuh.md)
-- [paged_mqa_logits.cuh](https://github.com/deepseek-ai/DeepGEMM/blob/88965b0/deep_gemm/include/deep_gemm/scheduler/paged_mqa_logits.cuh) · [站内](src/paged_mqa_logits_cuh.md) / [sm100_fp4_paged_mqa_logits.cuh](https://github.com/deepseek-ai/DeepGEMM/blob/88965b0/deep_gemm/include/deep_gemm/impls/sm100_fp4_paged_mqa_logits.cuh) · [站内](src/sm100_fp4_paged_mqa_logits_cuh.md)
+`GemmType` 与 `KernelType` 定义见 [`types.hpp`](https://github.com/deepseek-ai/DeepGEMM/blob/88965b0/deep_gemm/include/deep_gemm/common/types.hpp#L18-L39) · [types.hpp:L18-L39](src/types_hpp.md#__codelineno-0-18)。完整文件对照与 GitHub blob 见 [源码浏览](src/index.md)。

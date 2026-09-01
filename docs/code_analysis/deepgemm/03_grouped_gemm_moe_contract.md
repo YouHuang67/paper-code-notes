@@ -12,15 +12,15 @@ tags:
 
 ## 1. 机制：一次 launch、整段 \(K\)、三条分叉
 
-吞吐对象是一组同形状 expert 的 NT GEMM \(D=C+AB^{\mathsf{T}}\)（定义见总览）。M-grouped 前向：\(N,K\) 固定，\(M\) 按组变。contiguous 下 \(A\in\mathbb{R}^{M\times K}\)，\(B\in\mathbb{R}^{G\times N\times K}\)，\(D\in\mathbb{R}^{M\times N}\)，\(A\) 沿 \(M\) 按 expert 分段。masked 下 \(A,D\) 带前缀维 \(G\)，组 \(g\) 的有效行 \(m_g\le M_{\max}\)。可选 \(C\) 与 \(D\) 同形。同一 CTA 走完整 \(K\)，FP32 累加后 identity store 为 BF16。K-grouped（权重反传）\(M,N\) 固定、\(K\) 按组变；FP8 每段 \(K\) 整除 128，1D1D 写 FP32 `TMA_REDUCE_ADD`。
+吞吐对象是一组同形状 expert 的 NT GEMM（定义见[总览](00_overview.md)）。M-grouped 前向：\(N,K\) 固定，\(M\) 按组变。contiguous 下 \(A\in\mathbb{R}^{M\times K}\)，\(B\in\mathbb{R}^{G\times N\times K}\)，\(D\in\mathbb{R}^{M\times N}\)，\(A\) 沿 \(M\) 按 expert 分段。masked 下 \(A,D\) 带前缀维 \(G\)，组 \(g\) 的有效行 \(m_g\le M_{\max}\)。可选 \(C\) 与 \(D\) 同形。同一 CTA 走完整 \(K\)，FP32 累加后 identity store 为 BF16。K-grouped（权重反传）\(M,N\) 固定、\(K\) 按组变；FP8 每段 \(K\) 整除 128，1D1D 写 FP32 `TMA_REDUCE_ADD`。
 
 grid 等于 \(N_{\mathrm{SM}}\)，领取公式见 [01](01_layered_architecture.md)。contiguous 的组号来自 `grouped_layout[m_{\mathrm{blk}}\cdot BLOCK_M]`，因此 \(BLOCK_M\) 必须等于 `get_mk_alignment_for_contiguous_layout()`。
 
-同一 scheduler 上有两条 grouped 前向：FP8 为 SM90 `Kernel1D2D`（SM100 `Kernel1D1D`）并携带 SF；BF16 为 `KernelNoSF`。相对 FP8 grouped 前向，BF16 只改三处。
+同一 scheduler 上，FP8 grouped 前向为 SM90 `Kernel1D2D`（SM100 `Kernel1D1D`）并携带 SF；BF16 为 `KernelNoSF`。BF16 由下列三项确定。
 
-### 1.1 无 SF，因而无 ensure_zero_padding
+### 1.1 KernelNoSF：D/A/B smem，无 SF 张量
 
-NoSF 的 smem 只有 D/A/B 与 barrier，`smem_sfa_per_stage = 0`。Host 入口 `m_grouped_bf16_gemm_nt_contiguous` 不调用 `transform_sf_pair_into_required_layout`。`sm90_m_grouped_bf16_gemm_contiguous` 填 `KernelType::KernelNoSF`，并断言 \(K\) 整除 64。
+NoSF 的 smem 为 D/A/B 与 barrier，`smem_sfa_per_stage = 0`。Host 入口 `m_grouped_bf16_gemm_nt_contiguous` 只接收 A/B/D 与 `grouped_layout`。`sm90_m_grouped_bf16_gemm_contiguous` 填 `KernelType::KernelNoSF`，并断言 \(K\) 整除 64。
 
 **源码位置**: [`sm90_m_grouped_bf16_gemm_contiguous`](https://github.com/deepseek-ai/DeepGEMM/blob/88965b0/csrc/jit_kernels/impls/sm90_bf16_gemm.hpp#L132-L164) · [sm90_bf16_gemm.hpp:L132-L164](src/sm90_bf16_gemm_hpp.md#__codelineno-0-132)
 
@@ -28,7 +28,7 @@ FP8 的 SF 要把 MN 扩到 TMA 16 字节对齐（ensure_zero_padding）：packe
 
 `use_psum_layout` 在 BF16 与 `m_grouped_fp8_fp4_gemm_nt_contiguous` 上默认 `false`；SGLang wrapper 使用逐行 `m_indices`。
 
-### 1.2 官方 `block_n` 格子与格子外的 16
+### 1.2 `block_n` 格子与强制项 16
 
 SM90 `get_layout_candidates`：`step = lcm(16, block_n_multiple_of)`，`start = step`，`end` 为 NoSF 256 / 1D2D 192 / 1D1D 160，再 `for (i = start; i <= end; i += step)`。contiguous / psum 的 \(BLOCK_M\) 只有 alignment。候选还要求 \(BLOCK_M\) 与 \(BLOCK_N\) 至少一个 \(\le 128\)（alignment 为 128 时 NoSF 可取 `block_n=256`）。排序量是 \(\max(\text{L1 cycles},\text{L2 cycles})/\text{wave\_efficiency}\)：分母是最后一波 SM 占用，分子是字节流折成的片上/片外周期。
 
@@ -48,7 +48,7 @@ Host 在 [`gemm.hpp`](https://github.com/deepseek-ai/DeepGEMM/blob/88965b0/csrc/
 
 **源码位置**: [gemm.hpp:L193-L205](https://github.com/deepseek-ai/DeepGEMM/blob/88965b0/csrc/apis/gemm.hpp#L193-L205) · [站内 L193](src/gemm_hpp.md#__codelineno-0-193)
 
-SM90 FP8 要求 A、B 都是 K-major。Grouped 前向 \(D\) 为 BF16，`with_accumulation = false`。FP8 的 LHS SF 必须 MN-major，并经 ensure_zero_padding。BF16 入口无 SF 参数。\(G\) 个 expert 共享同一 \((N,K)\)。
+SM90 FP8 要求 A、B 都是 K-major。Grouped 前向 \(D\) 为 BF16，`with_accumulation = false`。FP8 的 LHS SF 必须 MN-major，并经 ensure_zero_padding。BF16 入口的参数表不含 SF。\(G\) 个 expert 共享同一 \((N,K)\)。
 
 布局语义：
 
@@ -72,7 +72,7 @@ SM90 FP8 要求 A、B 都是 K-major。Grouped 前向 \(D\) 为 BF16，`with_acc
 
 标准 MoE 一层的数据流：
 
-1. Router 给出 `topk_ids`、`topk_weights`，形状 `[T, k_{\mathrm{top}}]`。
+1. Router 给出 `topk_ids`、`topk_weights`，形状 `[T, k_{\mathrm{top}}]`，其中 \(T\) 为 token 数。
 2. **pre-permute**：把 token 排成 kernel 布局，并（FP8 路径）量化 hidden。
 3. **GEMM1**：\(W_{\mathrm{gate}},W_{\mathrm{up}}\) 在 \(N\) 维拼成 \(W_{13}\)，一次 grouped GEMM 得到 `gateup_output`。
 4. **SwiGLU**：gate/up 在 FP32 完成 SiLU 与乘法，再 round 到 BF16；FP8 路径随后做 per-token group 量化。
@@ -81,7 +81,7 @@ SM90 FP8 要求 A、B 都是 K-major。Grouped 前向 \(D\) 为 BF16，`with_acc
 
 ### 3.1 三条 dispatcher 到 grouped 布局
 
-**standard → masked**。`pre_permute_standard_to_deep_gemm` 调用 `moe_ep_deepgemm_preprocess`：按 expert 做 stable 分段，得到 `masked_m`、`expected_m`、逆置换 `src2dst`，以及 `[G, M_{\max}, K]` 的 hidden（FP8 时附 scale）。`use_masked_gemm=True`。CUDA graph 下 CPU 不必知道每组真实 \(m_g\)，kernel 只算 `masked_m` 标出的有效行。
+**standard → masked**。`pre_permute_standard_to_deep_gemm` 调用 `moe_ep_deepgemm_preprocess`：按 expert 做 stable 分段，得到 `masked_m`、`expected_m`、逆置换 `src2dst`，以及 `[G, M_{\max}, K]` 的 hidden（FP8 时附 scale）。`use_masked_gemm=True`。CUDA graph 下 kernel 只计算 `masked_m` 标出的有效行。
 
 **DeepEP low-latency → masked**。DeepEP LL 的输出已经是 masked 布局，`pre_permute_deepep_ll_to_deep_gemm` 直接转发 `masked_m` / `expected_m`。
 
@@ -97,7 +97,7 @@ contiguous FP8 路径（`_run_contiguous_gemm`）：
 4. GEMM2：同样 FP32→BF16，输出 `[all_tokens, K]`。
 5. DeepEP normal 的 combine 用 `ep_gather`；standard 的 finalize 见下。
 
-contiguous BF16 路径无量化与 post-quant，两次 `grouped_gemm_nt_bf16_contig` 夹一次 `_legacy_silu_and_mul`。
+contiguous BF16 路径两次 `grouped_gemm_nt_bf16_contig`，中间一次 `_legacy_silu_and_mul`。
 
 masked 路径把张量形状换成 `[G, M_{\max}, ·]`，两次 `grouped_gemm_nt_f8f8bf16_masked` / `_bf16_masked`，SwiGLU 走 `_varlen_deep_gemm_silu_mul_quant` 或 `silu_and_mul_masked_fwd`。FP4 expert 把 `recipe_a=(1,128)`、`recipe_b=(1,32)` 传进 DeepGEMM。
 
@@ -121,9 +121,7 @@ JIT 键含 `BLOCK_*`、`kNumStages`、`compiled_dims`、`KernelType`。捕获 CU
 
 ## 4. 结论
 
-每次 grouped 前向把同形状、变 \(M\) 的 expert 收成一次 GPU 启动。吞吐来自 TMA 与 WGMMA/UMMA 多 stage 重叠、角色拆分、\(N_{\mathrm{SM}}\) 常驻抢 tile、contiguous 把 \(BLOCK_M\) 锁成组对齐、FP32 整段 \(K\) 累加、按形状 JIT。BF16 NoSF 用 \(BLOCK_K=64\) 去掉 SF 流水。
-
-框架契约：
+框架接到 grouped GEMM 时保持：
 
 - `m_indices` / `masked_m` 与 alignment 一致
 - \(W_{13}\) 拼 \(N\) 后同一索引喂两次 GEMM
@@ -135,39 +133,7 @@ Serving 入口是 `grouped_gemm_nt_f8f8bf16_contig` 与 `grouped_gemm_nt_bf16_co
 
 ## 附录：源码摘录
 
-### A. 类型与 persistent 领取
-
-[`types.hpp`](https://github.com/deepseek-ai/DeepGEMM/blob/88965b0/deep_gemm/include/deep_gemm/common/types.hpp#L18-L39) · [站内 L18](src/types_hpp.md#__codelineno-0-18)：
-
-```cpp
-enum class GemmType {
-    Normal                              = 0,
-    MGroupedContiguous                  = 1,
-    MGroupedMasked                      = 2,
-    KGroupedContiguous                  = 3,
-    Batched                             = 4,
-    MGroupedContiguousWithPsumLayout    = 5,
-};
-enum class KernelType {
-    Kernel1D1D = 0,
-    Kernel1D2D = 1,
-    KernelNoSF = 2
-};
-```
-
-scheduler 领取下一 tile，contiguous multicast 要求 peer expert id 相同：
-
-```cpp
-const auto next_block_idx = (++ current_iter) * kNumSMs + blockIdx.x;
-// ...
-const auto group_idx = grouped_layout[m_block_idx * BLOCK_M];
-const auto peer_group_idx = grouped_layout[(m_block_idx ^ 1) * BLOCK_M];
-return group_idx == peer_group_idx;
-```
-
-**源码位置**: [gemm.cuh:L171-L172](https://github.com/deepseek-ai/DeepGEMM/blob/88965b0/deep_gemm/include/deep_gemm/scheduler/gemm.cuh#L171-L172) · [站内 L171](src/gemm_cuh.md#__codelineno-0-171)；[gemm.cuh:L273-L275](https://github.com/deepseek-ai/DeepGEMM/blob/88965b0/deep_gemm/include/deep_gemm/scheduler/gemm.cuh#L273-L275) · [站内 L273](src/gemm_cuh.md#__codelineno-0-273)
-
-### B. FP8 1D2D 生产者与 scale 提升
+### A. FP8 1D2D 生产者与 scale 提升
 
 TMA 按组坐标装 A/B，`arrive_and_expect_tx` 含 SFA：
 
@@ -182,9 +148,9 @@ full_barrier.arrive_and_expect_tx(
 
 **源码位置**: [sm90_fp8_gemm_1d2d.cuh:L194-L205](https://github.com/deepseek-ai/DeepGEMM/blob/88965b0/deep_gemm/include/deep_gemm/impls/sm90_fp8_gemm_1d2d.cuh#L194-L205) · [站内 L194](src/sm90_fp8_gemm_1d2d_cuh.md#__codelineno-0-194)
 
-math 侧在 `is_computation_valid` 为真时发 WGMMA，再用 `scale_a * scale_b` 提升。FP8 WGMMA 为 \(64\times N\times 32\) `F32E4M3E4M3`；BF16 为 \(64\times N\times 16\) `F32BF16BF16`。NoSF 无 scale 乘。
+math 侧在 `is_computation_valid` 为真时发 WGMMA，再用 `scale_a * scale_b` 提升。FP8 WGMMA 为 \(64\times N\times 32\) `F32E4M3E4M3`；BF16 为 \(64\times N\times 16\) `F32BF16BF16`。NoSF 路径跳过 scale 乘。
 
-### C. SGLang 两次 contiguous GEMM
+### B. SGLang 两次 contiguous GEMM
 
 ```python
 deep_gemm_wrapper.grouped_gemm_nt_f8f8bf16_contig(
@@ -195,7 +161,3 @@ deep_gemm_wrapper.grouped_gemm_nt_f8f8bf16_contig(
 ```
 
 **源码位置**: [`grouped_gemm_nt_f8f8bf16_contig`](https://github.com/sgl-project/sglang/blob/62c505a/python/sglang/srt/layers/moe/moe_runner/deep_gemm.py#L206-L293)
-
-finalize 按 token 扫 \(k_{\mathrm{top}}\)，FP32 累加后一次 store。
-
-**源码位置**: [`post_reorder_triton_kernel`](https://github.com/sgl-project/sglang/blob/62c505a/python/sglang/srt/layers/moe/ep_moe/kernels.py#L681-L719)

@@ -10,21 +10,7 @@ tags:
 
 ## 1. SM90：warpgroup 是计算原子
 
-Hopper 路径的同步主语是 warpgroup。SM90 1D2D 调用 `ptx::warpgroup_*`（[`ptx/wgmma.cuh`](https://github.com/deepseek-ai/DeepGEMM/blob/88965b0/deep_gemm/include/deep_gemm/ptx/wgmma.cuh)）；[`common/sm90_utils.cuh`](https://github.com/deepseek-ai/DeepGEMM/blob/88965b0/deep_gemm/include/deep_gemm/common/sm90_utils.cuh) 有同一组包装：
-
-```cpp
-CUTLASS_DEVICE void warpgroup_arrive() {
-    asm volatile("wgmma.fence.sync.aligned;\n" ::: "memory");
-}
-CUTLASS_DEVICE void warpgroup_commit_batch() {
-    asm volatile("wgmma.commit_group.sync.aligned;\n" ::: "memory");
-}
-template <int N>
-CUTLASS_DEVICE void warpgroup_wait() {
-    DG_STATIC_ASSERT(N >= 0 and N <= 7, "WGMMA wait: N must be in range [0, 7]");
-    asm volatile("wgmma.wait_group.sync.aligned %0;\n" :: "n"(N) : "memory");
-}
-```
+Hopper 路径的同步主语是 warpgroup。SM90 1D2D 调用 `ptx::warpgroup_arrive` / `commit_batch` / `wait`（[`ptx/wgmma.cuh`](https://github.com/deepseek-ai/DeepGEMM/blob/88965b0/deep_gemm/include/deep_gemm/ptx/wgmma.cuh)）；[`common/sm90_utils.cuh`](https://github.com/deepseek-ai/DeepGEMM/blob/88965b0/deep_gemm/include/deep_gemm/common/sm90_utils.cuh) 提供同一组包装。指令序列见[附录 A](#app-wgmma-ptx)。
 
 **源码位置**: [`ptx::warpgroup_arrive`](https://github.com/deepseek-ai/DeepGEMM/blob/88965b0/deep_gemm/include/deep_gemm/ptx/wgmma.cuh#L7-L23) · [wgmma.cuh:L7-L23](src/ptx_wgmma_cuh.md#__codelineno-0-7)；[`sm90_utils.cuh:L229-L245`](https://github.com/deepseek-ai/DeepGEMM/blob/88965b0/deep_gemm/include/deep_gemm/common/sm90_utils.cuh#L229-L245) · [站内 L229](src/sm90_utils_cuh.md#__codelineno-0-229)
 
@@ -44,8 +30,6 @@ impl 侧 UMMA 形状是 `UMMA_M = 128 * kNumMulticast`、`UMMA_K = 32`、`BLOCK_
 
 **源码位置**: [sm100_fp8_fp4_gemm_1d1d.cuh:L48-L68](https://github.com/deepseek-ai/DeepGEMM/blob/88965b0/deep_gemm/include/deep_gemm/impls/sm100_fp8_fp4_gemm_1d1d.cuh#L48-L68) · [站内 L48](src/sm100_fp8_fp4_gemm_1d1d_cuh.md#__codelineno-0-48)
 
-关注点是把 smem 与 TMEM 收成 UMMA 可消费几何。
-
 ## 3. TMA：单 SM load、SM90 multicast、SM100 2SM
 
 [`tma_copy.cuh`](https://github.com/deepseek-ai/DeepGEMM/blob/88965b0/deep_gemm/include/deep_gemm/common/tma_copy.cuh) 的 2D 路径按 `num_tma_multicast` 分叉：
@@ -64,12 +48,24 @@ SM100 1D1D 为累积、SFA、SFB 规划 TMEM 列数，并给 epilogue 单独的 
 
 **源码位置**: [sm100_fp8_fp4_gemm_1d1d.cuh:L94-L157](https://github.com/deepseek-ai/DeepGEMM/blob/88965b0/deep_gemm/include/deep_gemm/impls/sm100_fp8_fp4_gemm_1d1d.cuh#L94-L157) · [站内 L94](src/sm100_fp8_fp4_gemm_1d1d_cuh.md#__codelineno-0-94)
 
-epilogue 等 `tmem_full_barriers[accum_stage_idx]`，从 `accum_stage_idx * UMMA_N` 读 TMEM，写入 smem CD 后再 TMA store，最后 arrive `tmem_empty_barriers`。矩阵乘结果先沉到 TMEM，由独立线程集分段搬运。
+epilogue 等 `tmem_full_barriers[accum_stage_idx]`，从该 stage 对应的 TMEM 列（`accum_stage_idx * UMMA_N`，其中 `UMMA_N` 为 UMMA 在 \(N\) 向的边长）读出，写入 smem CD 后再 TMA store，最后 arrive `tmem_empty_barriers`。矩阵乘结果先沉到 TMEM，由独立线程集分段搬运。
 
 ## 5. 换件之后，grouped 前向怎么选核
 
-01 的分层在两代硬件上换了四件：GMMA→UMMA 描述符、单 SM / multicast / 2SM TMA、寄存器累积→TMEM staging、epilogue 成为独立消费者。
+对 M-grouped 前向，上述四件决定 Host 分发：SM90 FP8 走 `Kernel1D2D`（`BLOCK_K=128`，FP32 SF）；SM100 FP8/FP4 走 `Kernel1D1D`（packed UE8M0）；BF16 走 `KernelNoSF`（`BLOCK_K=64`）。tile 格子、alignment 与两次 GEMM 的精度顺序见 [03](03_grouped_gemm_moe_contract.md)。paged MQA 把同一角色拆分扩成四类 warp，见 [04](04_mega_moe_and_paged_mqa.md)。
 
-对 M-grouped 前向，这四件决定 Host 分发：SM90 FP8 走 `Kernel1D2D`（`BLOCK_K=128`，FP32 SF）；SM100 FP8/FP4 走 `Kernel1D1D`（packed UE8M0）；BF16 走 `KernelNoSF`（`BLOCK_K=64`）。tile 格子、alignment 与两次 GEMM 的精度顺序见 [03](03_grouped_gemm_moe_contract.md)。
+## 附录 A {#app-wgmma-ptx}
 
-同一套「生产者 / UMMA / 后处理」角色拆分，在 paged MQA 里扩成四类 warp（Q TMA、KV TMA、UMMA、reduce），见 [04](04_mega_moe_and_paged_mqa.md)。
+```cpp
+CUTLASS_DEVICE void warpgroup_arrive() {
+    asm volatile("wgmma.fence.sync.aligned;\n" ::: "memory");
+}
+CUTLASS_DEVICE void warpgroup_commit_batch() {
+    asm volatile("wgmma.commit_group.sync.aligned;\n" ::: "memory");
+}
+template <int N>
+CUTLASS_DEVICE void warpgroup_wait() {
+    DG_STATIC_ASSERT(N >= 0 and N <= 7, "WGMMA wait: N must be in range [0, 7]");
+    asm volatile("wgmma.wait_group.sync.aligned %0;\n" :: "n"(N) : "memory");
+}
+```

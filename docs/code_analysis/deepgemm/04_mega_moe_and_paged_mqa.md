@@ -10,7 +10,7 @@ tags:
 
 ## 1. Mega MoE：共享 token 池先于 expert GEMM
 
-[`layout/mega_moe.cuh`](https://github.com/deepseek-ai/DeepGEMM/blob/88965b0/deep_gemm/include/deep_gemm/layout/mega_moe.cuh) 把容量建立在「本 rank 最坏能收到多少 routed token」上。`BLOCK_M` 候选为 \(\{8,16,32,64,96,128,192\}\)，LCM 对齐 384。池上界为
+[`layout/mega_moe.cuh`](https://github.com/deepseek-ai/DeepGEMM/blob/88965b0/deep_gemm/include/deep_gemm/layout/mega_moe.cuh) 把容量建立在「本 rank 最坏能收到多少 routed token」上。记 \(N_{\mathrm{rank}}\) 为参与进程数，\(T_{\max}\) 为每 rank 最大 token 数，\(E_{\mathrm{rank}}\) 为每 rank 的 expert 数。`BLOCK_M` 候选为 \(\{8,16,32,64,96,128,192\}\)，LCM 对齐 384。池上界为
 
 \[
 \mathrm{align}\bigl(N_{\mathrm{rank}}\cdot T_{\max}\cdot \min(k_{\mathrm{top}}, E_{\mathrm{rank}}) + E_{\mathrm{rank}}\cdot(192-1),\; 384\bigr)
@@ -22,13 +22,13 @@ token 进入共享池，局部 expert 从池中消费。`Workspace::get_num_byte
 
 **源码位置**: [`Workspace::get_num_bytes`](https://github.com/deepseek-ai/DeepGEMM/blob/88965b0/deep_gemm/include/deep_gemm/layout/mega_moe.cuh#L33-L96) · [mega_moe.cuh:L33-L96](src/mega_moe_cuh.md#__codelineno-0-33)
 
-[`sm100_fp8_fp4_mega_moe_impl`](https://github.com/deepseek-ai/DeepGEMM/blob/88965b0/deep_gemm/include/deep_gemm/impls/sm100_fp8_fp4_mega_moe.cuh) 在同一 kernel 持有 L1/L2 两层 MLP 的 act / weight / SF TMA 描述符，并划分 dispatch 线程、MMA 非 epilogue 线程、epilogue/combine 线程。L1 的 CD 为 FP8（2 个 TMA store stage，SwiGLU 后宽为 `BLOCK_N/2`）；L2 为 BF16（无 TMA，单 stage）。通信与 tensor core 在 NVLink 对称内存上重叠。Mega MoE 在多进程对称内存上把 EP 与两层线性收进一次 launch。
+[`sm100_fp8_fp4_mega_moe_impl`](https://github.com/deepseek-ai/DeepGEMM/blob/88965b0/deep_gemm/include/deep_gemm/impls/sm100_fp8_fp4_mega_moe.cuh) 在同一 kernel 持有 L1/L2 两层 MLP 的 act / weight / SF TMA 描述符，并划分 dispatch 线程、MMA 非 epilogue 线程、epilogue/combine 线程。L1 的 CD 为 FP8（2 个 TMA store stage，SwiGLU 后宽为 `BLOCK_N/2`）；L2 的 CD 为 BF16（单 stage，由 epilogue 写回）。通信与 tensor core 在 NVLink 对称内存上重叠。Mega MoE 在多进程对称内存上把 EP 与两层线性收进一次 launch。
 
 **源码位置**: [`sm100_fp8_fp4_mega_moe_impl`](https://github.com/deepseek-ai/DeepGEMM/blob/88965b0/deep_gemm/include/deep_gemm/impls/sm100_fp8_fp4_mega_moe.cuh#L51-L69) · [站内 L51](src/sm100_fp8_fp4_mega_moe_cuh.md#__codelineno-0-51)；[`SharedStorage`](https://github.com/deepseek-ai/DeepGEMM/blob/88965b0/deep_gemm/include/deep_gemm/impls/sm100_fp8_fp4_mega_moe.cuh#L185-L217) · [站内 L185](src/sm100_fp8_fp4_mega_moe_cuh.md#__codelineno-0-185)
 
 ## 2. paged MQA：元数据把「每个 query 看多少 KV」变成任务流
 
-Lightning indexer 的 logits 是 token-to-token 点积再 ReLU 加权求和（[README](https://github.com/deepseek-ai/DeepGEMM/blob/88965b0/README.md#v32-mqa-kernels-for-the-indexer)）。paged 版本面对不规则 page table 与变长 context。DeepGEMM 先跑 `smxx_paged_mqa_logits_metadata`：对每个 query（或 varlen atom）把 `ceil_div(context_len, SPLIT_KV)` 做 warp 前缀和，统计该 query 需要多少个 KV split segment，再把总 segment 均分到 \(N_{\mathrm{SM}}\) 个 SM。每个 SM 得到 `(q_atom_idx, kv_split_idx)` 起点，写入 `schedule_metadata[sm*2], schedule_metadata[sm*2+1]`。
+Lightning indexer 的 logits 是 token-to-token 点积再 ReLU 加权求和（[README](https://github.com/deepseek-ai/DeepGEMM/blob/88965b0/README.md#v32-mqa-kernels-for-the-indexer)）。paged 版本的输入含不规则 page table 与变长 context。DeepGEMM 先跑 `smxx_paged_mqa_logits_metadata`：对每个 query（或 varlen atom）把 \(\lceil L_{\mathrm{ctx}} / \mathrm{SPLIT\_KV}\rceil\) 做 warp 前缀和，其中 \(L_{\mathrm{ctx}}\) 为该 query 的 context 长度，`SPLIT_KV` 为每个 KV split 覆盖的 token 数。由此得到该 query 的 segment 数，再把总 segment 均分到 \(N_{\mathrm{SM}}\) 个 SM。每个 SM 得到 `(q_atom_idx, kv_split_idx)` 起点，写入 `schedule_metadata[sm*2], schedule_metadata[sm*2+1]`。
 
 **源码位置**: [`smxx_paged_mqa_logits_metadata`](https://github.com/deepseek-ai/DeepGEMM/blob/88965b0/deep_gemm/include/deep_gemm/scheduler/paged_mqa_logits.cuh#L47-L94) · [paged_mqa_logits.cuh:L47-L94](src/paged_mqa_logits_cuh.md#__codelineno-0-47)
 
@@ -42,10 +42,10 @@ varlen 路径允许相邻 token 共享同一 `indices` 时合成一个 atom（�
 
 这与 grouped GEMM 的 scheduler 同构：persistent 领取任务流，任务坐标为 `(q_atom, kv_split)`。
 
-## 3. 和标准 MoE 的关系
+## 3. 任务几何
 
-- 标准 MoE + grouped GEMM：两次 M-grouped GEMM；DeepEP 或 `ep_scatter` / `src2dst` 在核外；框架做 permute、SwiGLU、finalize。
-- Mega MoE：单核 L1+SwiGLU+L2；kernel 内 NVLink 与 token 池；框架提供对称内存与权重 transform。
-- paged MQA：logits GEMM 族；page table 与 metadata kernel；框架提供 `context_lens` / `indices`。
+三条路径共用 01/02 的 TMA / UMMA 执行语言，差别在任务坐标：
 
-标准 MoE 适配走 [03](03_grouped_gemm_moe_contract.md) 的契约。本节两条路径换的是任务几何：token 池或 `(q_atom, kv_split)` 先被收成规则任务流，再交给 TMA / UMMA。
+- 标准 MoE（[03](03_grouped_gemm_moe_contract.md)）：任务是 M-grouped tile；permute、SwiGLU、finalize 在核外。
+- Mega MoE：任务是共享池中的 token 块；EP 与两层线性在同一 launch 内。
+- paged MQA：任务是 `(q_atom, kv_split)`；page table 与 metadata kernel 先把变长 context 收成这条流。
