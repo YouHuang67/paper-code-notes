@@ -2030,22 +2030,6 @@
     "summary": "共享 expert token 池与 metadata 驱动的 paged MQA logits 流水"
   },
   {
-    "title": "HPSv3",
-    "path": "paper_reading/hpsv3.md",
-    "type": "论文阅读",
-    "tags": [
-      "Reward Model",
-      "Reinforcement Learning",
-      "VLM",
-      "Post Training"
-    ],
-    "summary": "宽光谱人类偏好分：HPDv3 + Qwen2-VL + 与 BT 等价的 uncertainty ranking，ICCV 2025 主干 T2I RM",
-    "category": "文生图生成",
-    "date_arxiv": "2025-08",
-    "date_added": "2026-09-02",
-    "organizations": "Mizzen AI, CUHK MMLab, King's College London, SJTU, Shanghai AI Lab"
-  },
-  {
     "title": "VisionReward",
     "path": "paper_reading/visionreward.md",
     "type": "论文阅读",
