@@ -10,7 +10,7 @@ tags:
 
 - 论文：https://arxiv.org/abs/2603.05503
 - 团队：Apple, Tel Aviv University
-- 代码：当前未见明确官方开源仓库；本文实现分析基于论文、arXiv 源文件与补充材料重建
+- 代码：https://github.com/apple/ml-calibatt（本地 `refs/codes/calibatt`）
 
 ## 概述
 
@@ -175,7 +175,7 @@ $$
 
 ## 实现结构
 
-虽然论文没有公开完整仓库，但从正文、补充材料和 arXiv 源文件可以比较清楚地还原实现结构。CalibAtt 不是一组孤立 kernel，而是一条从标定到执行的编译式流水线：
+官方实现现已开源（`apple/ml-calibatt`）。从论文正文与补充材料仍可还原其实现结构：CalibAtt 不是一组孤立 kernel，而是一条从标定到执行的编译式流水线：
 
 1. **离线统计层**
    - 运行 dense attention；
@@ -407,7 +407,7 @@ CalibAtt 的加速不是来自单一来源，而是三部分叠加：
 - 标定成本不低，且一次性离线成本要靠重复推理摊销；
 - mask / skip-list 存储开销显著；
 - 结构固定在 block 粒度，不能像在线聚类方法那样细致适配内容；
-- 当前未见完整公开仓库，因此 kernel 级实现细节仍需依赖论文重建，而非代码逐行核实。
+- 官方代码已开源（`apple/ml-calibatt`），本文笔记仍以论文重建为主，未做逐行代码分析。
 
 ## 关键启示
 
