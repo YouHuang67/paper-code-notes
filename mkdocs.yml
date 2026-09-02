@@ -88,6 +88,11 @@ nav:
     - VideoScore2: paper_reading/videoscore2.md
     - Video-Bench: paper_reading/videobench.md
     - RewardDance: paper_reading/rewarddance.md
+    - HPSv3: paper_reading/hpsv3.md
+    - VisionReward: paper_reading/visionreward.md
+    - UnifiedReward: paper_reading/unifiedreward.md
+    - UnifiedReward-Think: paper_reading/unifiedreward_think.md
+    - UnifiedReward-Flex: paper_reading/unifiedreward_flex.md
     - PhysMaster: paper_reading/physmaster.md
     - RLGF: paper_reading/rlgf.md
     - VPO: paper_reading/vpo.md
