@@ -229,6 +229,17 @@ nav:
         - DiT Runtime 与 Collectives: code_analysis/minimax_h3/07_dit_runtime_and_collectives.md
         - Denoise Loop 状态机: code_analysis/minimax_h3/08_denoise_loop_state_machine.md
         - 效率附录: code_analysis/minimax_h3/06_efficiency_appendix.md
+      - DiT 推理优化:
+        - 总览: code_analysis/dit_inference_opt/overview.md
+        - Memory Offload: code_analysis/dit_inference_opt/memory_offload.md
+        - Kernels & Fusion: code_analysis/dit_inference_opt/kernels_fusion.md
+        - Graph Runtime: code_analysis/dit_inference_opt/graph_runtime.md
+        - Feature Cache: code_analysis/dit_inference_opt/feature_cache.md
+        - Parallelism: code_analysis/dit_inference_opt/parallelism.md
+        - Quantization: code_analysis/dit_inference_opt/quantization.md
+        - Encoder & VAE: code_analysis/dit_inference_opt/encoder_vae.md
+        - Progressive Resolution: code_analysis/dit_inference_opt/progressive_resolution.md
+        - Correctness: code_analysis/dit_inference_opt/correctness.md
       - DeepSeek V4:
         - 总览: code_analysis/deepseek_v4/00_overview.md
         - 模型架构: code_analysis/deepseek_v4/01_model_architecture.md

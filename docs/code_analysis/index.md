@@ -64,6 +64,16 @@
   - [DiT Runtime 与 Collectives](minimax_h3/07_dit_runtime_and_collectives.md) - 沿 `_embed -> block -> attention core -> gather` 主热路径细读 SGLang native H3 runtime，拆清 row-local staging、fused block dataflow 与 SP/TP collectives
   - [Denoise Loop 状态机](minimax_h3/08_denoise_loop_state_machine.md) - 单独拆开 `MiniMaxH3DenoiseBranch`、静态/动态状态、`unique_timesteps/inverse_indices/block_combined_indices` 与 target-row 增量更新
   - [效率附录](minimax_h3/06_efficiency_appendix.md) - 承接正文外的实现补充：关键文件地图、BCG prompt bucketing 与不同 GPU 拓扑的取舍
+- [DiT 推理优化](dit_inference_opt/overview.md) - 工程轴专题：offload / kernel / BCG / cache / 并行 / 量化 / Encoder·VAE / progressive / 正确性（稀疏 Attention 仅索引）
+  - [Memory Offload](dit_inference_opt/memory_offload.md) - 组件常驻与 layerwise、Cache-DiT bucket offload、与 Cache/FSDP 互斥
+  - [Kernels & Fusion](dit_inference_opt/kernels_fusion.md) - Diffusion kernel 注册与融合、中间 Tensor 消除
+  - [Graph Runtime](dit_inference_opt/graph_runtime.md) - Breakable CUDA Graph、warmup 签名、适用边界
+  - [Feature Cache](dit_inference_opt/feature_cache.md) - DBCache / TaylorSeer / SCM、TeaCache、Spectrum
+  - [Parallelism](dit_inference_opt/parallelism.md) - CFG × TP × Ulysses × Ring / KV-Gather
+  - [Quantization](dit_inference_opt/quantization.md) - ModelOpt / Online FP8 / Nunchaku 家族地图
+  - [Encoder & VAE](dit_inference_opt/encoder_vae.md) - Encoder parallel 与 VAE 并行索引
+  - [Progressive Resolution](dit_inference_opt/progressive_resolution.md) - DCT Rewind 与谱上采样
+  - [Correctness](dit_inference_opt/correctness.md) - 组合约束与验收清单
 - [DeepSeek V4](deepseek_v4/00_overview.md) - mHC + Hybrid Attention + MoE + TileLang 低精度推理实现
 - [DeepEP](deepep/00_overview.md) - MoE Expert-Parallel 通信库：基于 TMA + NCCL Gin 的全 GPU 端 all-to-all 实现
 - [DeepGEMM](deepgemm/00_overview.md) - Hopper/Blackwell JIT GEMM：分层内核、SM90/SM100 流水、grouped GEMM 接入标准 MoE

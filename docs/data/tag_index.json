@@ -2099,5 +2099,119 @@
     "date_arxiv": "2026-02",
     "date_added": "2026-09-02",
     "organizations": "Fudan University, Shanghai Innovation Institute, SJTU, Shanghai AI Lab"
+  },
+  {
+    "title": "DiT 推理优化 - 总览",
+    "path": "code_analysis/dit_inference_opt/overview.md",
+    "type": "代码分析",
+    "tags": [
+      "Diffusion Model",
+      "Video Generation",
+      "LLM Inference",
+      "CUDA"
+    ],
+    "summary": "DiT 推理优化专题地图：output-preserving 与 quality-tradeoff 杠杆、组合约束、稀疏 Attention 边界"
+  },
+  {
+    "title": "DiT 推理优化 - Memory Offload",
+    "path": "code_analysis/dit_inference_opt/memory_offload.md",
+    "type": "代码分析",
+    "tags": [
+      "Diffusion Model",
+      "Video Generation",
+      "LLM Inference",
+      "CUDA"
+    ],
+    "summary": "SGLang LayerwiseOffloadManager 与 Cache-DiT bucket offload；与 Cache-DiT/FSDP 互斥校验"
+  },
+  {
+    "title": "DiT 推理优化 - Kernels & Fusion",
+    "path": "code_analysis/dit_inference_opt/kernels_fusion.md",
+    "type": "代码分析",
+    "tags": [
+      "Diffusion Model",
+      "CUDA",
+      "Triton",
+      "LLM Inference"
+    ],
+    "summary": "SGLang diffusion kernel 注册与 Norm/RoPE/残差门控融合、中间 Tensor 消除思路"
+  },
+  {
+    "title": "DiT 推理优化 - Graph Runtime",
+    "path": "code_analysis/dit_inference_opt/graph_runtime.md",
+    "type": "代码分析",
+    "tags": [
+      "Diffusion Model",
+      "CUDA",
+      "LLM Inference"
+    ],
+    "summary": "Breakable CUDA Graph：warmup 分辨率签名、白名单模型、launch-bound 适用边界"
+  },
+  {
+    "title": "DiT 推理优化 - Feature Cache",
+    "path": "code_analysis/dit_inference_opt/feature_cache.md",
+    "type": "代码分析",
+    "tags": [
+      "Diffusion Model",
+      "Video Generation",
+      "LLM Inference"
+    ],
+    "summary": "Cache-DiT DBCache/TaylorSeer/SCM 与 TeaCache/Spectrum；质量换速度与互斥约束"
+  },
+  {
+    "title": "DiT 推理优化 - Parallelism",
+    "path": "code_analysis/dit_inference_opt/parallelism.md",
+    "type": "代码分析",
+    "tags": [
+      "Diffusion Model",
+      "Video Generation",
+      "LLM Inference",
+      "CUDA"
+    ],
+    "summary": "CFG×TP×Ulysses×Ring/KV-Gather 合成公式、整除约束与拓扑映射"
+  },
+  {
+    "title": "DiT 推理优化 - Quantization",
+    "path": "code_analysis/dit_inference_opt/quantization.md",
+    "type": "代码分析",
+    "tags": [
+      "Diffusion Model",
+      "Video Generation",
+      "LLM Inference"
+    ],
+    "summary": "SGLang Diffusion 量化家族地图：online FP8/MXFP4、ModelOpt NVFP4、Nunchaku 索引"
+  },
+  {
+    "title": "DiT 推理优化 - Encoder & VAE",
+    "path": "code_analysis/dit_inference_opt/encoder_vae.md",
+    "type": "代码分析",
+    "tags": [
+      "Diffusion Model",
+      "Video Generation",
+      "LLM Inference"
+    ],
+    "summary": "Encoder parallel 与 VAE 并行在 DiT 加速后的占比与组件 offload 关系"
+  },
+  {
+    "title": "DiT 推理优化 - Progressive Resolution",
+    "path": "code_analysis/dit_inference_opt/progressive_resolution.md",
+    "type": "代码分析",
+    "tags": [
+      "Diffusion Model",
+      "Video Generation",
+      "LLM Inference"
+    ],
+    "summary": "DCT Rewind 谱渐进分辨率：早期粗 latent 降 Attention 成本与质量权衡"
+  },
+  {
+    "title": "DiT 推理优化 - Correctness",
+    "path": "code_analysis/dit_inference_opt/correctness.md",
+    "type": "代码分析",
+    "tags": [
+      "Diffusion Model",
+      "Video Generation",
+      "LLM Inference"
+    ],
+    "summary": "output-preserving 边界、互斥表与优化验收清单"
   }
 ]
