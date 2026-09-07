@@ -12,78 +12,107 @@ tags:
 - SGLang `refs/codes/sglang` @ `db75dfe…`
 - Cache-DiT `refs/codes/cache-dit` @ `3db8d1e…`
 
-Offload 解决的是「模型装不下 / 峰值显存打爆」时，如何把权重在 CPU↔GPU 间搬迁，并尽量用计算掩盖 H2D。它通常是 **output-preserving** 杠杆：不改变去噪公式，只改变权重驻留位置与拷贝时机。
+返回：[专题总览](overview.md)
+
+## 抓住重点
+
+- Offload 是 **output-preserving**：不改去噪公式，只改权重驻留与 H2D 时机。
+- 先分清两层：**组件级**（Encoder/DiT/VAE 整段）与 **层间级**（transformer block 流式进出）。
+- SGLang 集成路径下：**Cache-DiT 与 DiT layerwise 不能同开**（硬错误）。Cache-DiT 库自带的 bucket offload 是另一条 API，勿与 SGLang `--dit-layerwise-offload` 混谈。
+- 实践：看第一次请求后的 peak memory；能常驻的组件优先留 GPU，再考虑 layerwise。
 
 ## 1. 两层语义：组件级 vs 层间级
 
 ### 组件级（Component residency）
 
-把 pipeline 拆成 text encoder、image encoder、DiT、VAE 等组件，决定哪些常驻 GPU、哪些整段 CPU offload。SGLang 用 `component_resident_strategies.py` + `auto_tune.py` 的 `--performance-mode`（`speed` / `memory` / `manual`）选择默认策略：显存紧时倾向 offload，显存够时倾向 GPU-resident。
+把 pipeline 拆成 text encoder、image encoder、DiT、VAE。请求头尾用 Encoder/VAE，中间把显存让给 DiT。
 
-实践习惯（与 BBuf 叙述一致）：看 **第一次请求后的 peak memory**，能留下的组件尽量留在 GPU，避免一股脑打开全部 offload 开关。
+SGLang 入口：
+
+- `component_resident_strategies.py`：策略表  
+- `component_manager.py` 的 `ComponentResidencyManager`：请求期内 onload / finish_use / 跨请求预热  
+- `auto_tune.py`：`--performance-mode` 为 `speed` / `memory` / `manual` 时套默认驻留与 layerwise 列表  
+
+`memory` 模式倾向 offload / layerwise；`speed` 倾向 GPU-resident（多卡且显存够时还可能推 FSDP 替换 DiT offload）。
 
 ### 层间级（Layerwise）
 
-只对 DiT（或指定组件）的 transformer blocks 做「算一层、预取下一层、释放上一层」。视频模型单层计算重，H2D 更容易藏进计算；图像模型或多卡切得很碎时，copy stream 经常藏不住，延迟上升。
+只对选定组件的 blocks 做「算一层 → 预取下一层 → 释放上一层」。视频模型单层算得久，H2D 更容易藏进计算；小图像模型或多卡切碎后，copy stream 经常藏不住。
 
 ## 2. SGLang：`LayerwiseOffloadManager`
 
-路径：`python/sglang/multimodal_gen/runtime/managers/memory_managers/layerwise_offload.py`
+路径：`python/sglang/multimodal_gen/runtime/managers/memory_managers/layerwise_offload.py`  
+注释写明改编自 Skywork AI Infra diffusion optimize。
 
-机制要点：
+机制：
 
-- 以 `layers_attr_str`（如 `blocks`）锚定 block 列表，用正则匹配 `blocks.<idx>.*`，避免误抓嵌套 `token_refiner.blocks`
-- 同 dtype 权重合并进 **pinned CPU** 大缓冲；非连续 stride 单独保存
-- 专用 `copy_stream` + Event：`prefetch_layer` / `release_layer` 与 forward hook 协作
-- `prefetch_size`：前瞻预取深度
-- `resident_layers`：前缀若干层跨 denoise step 常驻 GPU，避免每步从头流式加载；`_residency_active` 延迟到第一次 denoise forward 再武装，避免 load 阶段就把 resident 集合钉死
+1. 用 `layers_attr_str`（如 `blocks`）锚定 block 列表；正则 `^blocks\.(?P<layer_idx>\d+)`，避免误抓 `token_refiner.blocks`。  
+2. 同 dtype 权重合并进 **pinned CPU** 大缓冲；非连续 stride 单独存。  
+3. 专用 `copy_stream` + Event：`prefetch_layer` / `release_layer` 与 forward hook 协作。  
+4. `prefetch_size`：前瞻预取深度（至少 1，且不超过层数）。  
+5. `resident_layers`：前缀若干层跨 denoise step 常驻 GPU；`_residency_active` 延迟到**第一次 denoise forward** 再武装，避免 load 阶段就把 resident 集合钉死、和组件切换抢显存。  
+6. `ComponentResidencyManager` 对「带大 resident set 的 layerwise DiT」会避免跨请求常驻，防止 OOM。
 
-配置入口包括 `--dit-layerwise-offload`、`--layerwise-offload-components`、`--dit-layerwise-resident-layers`、`--dit-offload-prefetch-size`，并由 `auto_tune` 在 memory 模式下尝试套默认组件列表。
+CLI：`--dit-layerwise-offload`、`--layerwise-offload-components`（`dit` / `default` / `all` 或具名）、`--dit-layerwise-resident-layers`、`--dit-offload-prefetch-size`。  
+`--dit-layerwise-offload` 的 help 写明：可与 `--dit-cpu-offload` 组合（权重常驻 host，仅当前步需要的层上卡，峰值最低）。
 
 ## 3. Cache-DiT：bucket-style layerwise
 
-路径：`src/cache_dit/offload/layerwise.py`（文档注释见文件头与 `docs/user_guide/OFFLOAD.md`）
+路径：`src/cache_dit/offload/layerwise.py`（文件头设计说明 + `docs/user_guide/OFFLOAD.md`）
 
-与「严格一层进一层出」不同，它把选中 submodule 当成短流水线：
+与「严格一层进一层出」不同，选中 submodule 是短流水线桶：
 
-- pinned CPU mirror  
-- **两套独立** onload/offload CUDA copy stream 池（onload 不被慢 D2H 堵住）  
-- prefetch 窗口：目标个数上限 + 可选 `max_inflight_prefetch_bytes` 字节预算  
-- `persistent_buckets` / `persistent_bins`：部分目标全程常驻，并按 bin 分散，避免热点全堆在前缀  
-- 当选中目标覆盖全部参数化叶子时，可走 `keep_activations_onload_device`，减少激活设备来回
+| 设计点 | 作用 |
+|--------|------|
+| Pinned CPU mirror | H2D/D2H 直接对 reusable GPU storage，不经 pageable |
+| 两套 copy stream 池 | onload / offload 分开；慢 D2H 不堵下一桶 H2D |
+| Prefetch 双预算 | 目标个数上限（约 `min(4×transfer_buckets, 8)`）+ 可选 `max_inflight_prefetch_bytes` |
+| `persistent_buckets` / `persistent_bins` | 部分目标全程常驻，并按 bin 分散，避免热点全堆前缀 |
+| `keep_activations_onload_device` | 选中目标盖住全部参数化叶子时，根级 hook 一次搬输入/输出，减少激活设备来回 |
 
-公开入口：`layerwise_offload` / `layerwise_cpu_offload`。
+公开入口：`layerwise_offload` / `layerwise_cpu_offload`。这是 **Cache-DiT 库路径**；与 SGLang 的 `LayerwiseOffloadManager` 不是同一套开关。
 
 ## 4. 组合约束（必须先读）
 
-当前 SGLang pin 在 `server_args.py` 校验：
+`server_args.py` 校验（pin 原文语义）：
 
 | 组合 | 行为 |
 |------|------|
-| Cache-DiT + DiT layerwise offload | **硬错误**：cache 可能复用已被 release 的 block 权重 → shape mismatch |
-| Cache-DiT + FSDP inference | 显式打开则报错；否则自动关掉 FSDP |
-| DiT layerwise + FSDP | 自动关掉 FSDP |
+| `SGLANG_CACHE_DIT_ENABLED` + DiT 在 layerwise 选择中 | **ValueError**：cache 可能复用已被 release 的 block 权重 → shape mismatch |
+| Cache-DiT + FSDP | 显式开 FSDP → 报错；否则自动 `use_fsdp_inference=False` |
+| DiT layerwise + FSDP | 自动关 FSDP |
 | `dit_layerwise_resident_layers` 但未启用 DiT layerwise | 警告：无效 |
 
-注意：外部分享文案有时写「Cache-DiT 可与 Layerwise Offload 配合」。以本 pin 为准，**SGLang 集成路径下 DiT layerwise 与 Cache-DiT 不能同开**；若要用 Cache-DiT 自带的 bucket offload，应走 Cache-DiT API / 其文档路径，并单独验证与 SGLang 包装是否兼容。
+外部分享若写「Cache-DiT 可与 Layerwise Offload 配合」，通常指 Cache-DiT **自带** bucket API，或旧行为。**SGLang 集成路径必须以本 pin 校验为准。**
 
-量化路径也可能改写 offload：`transformer_load_utils.py` 中 ModelOpt FP8 / BitsAndBytes 适配器会 `_maybe_disable_incompatible_*_offload_modes`（见单测 `test_layerwise_offload.py`）。
+量化适配器也可能关不兼容 offload（`transformer_load_utils.py` 的 `_maybe_disable_incompatible_*_offload_modes`；单测 `test_layerwise_offload.py`）。
 
-Progressive resolution 官方文档建议关闭整模 `--dit-cpu-offload`，否则每步固定 PCIe 成本会冲淡分辨率带来的加速。
+Progressive 文档建议 `--dit-cpu-offload false`，否则每步固定 PCIe 成本冲淡分辨率加速 → [Progressive Resolution](progressive_resolution.md)。
 
 ## 5. 何时该开
 
-- **开 layerwise**：单卡装不下大 DiT，或 peak memory 由深层堆叠主导；视频长序列单层算得够久  
-- **优先组件 offload**：Encoder/VAE 只在请求头尾用，DiT 需要满速  
-- **慎开 / 别开**：已经 memory-bound 在通信上的多卡切分；计划开 Cache-DiT 加速；launch 已不是问题且 H2D 藏不住的小图像模型  
+- **开 layerwise**：单卡装不下大 DiT，或峰值由深层堆叠主导；视频长序列单层算得够久。  
+- **优先组件 offload**：Encoder/VAE 只在头尾用，DiT 要满速 → 也见 [Encoder & VAE](encoder_vae.md)。  
+- **慎开**：通信已是瓶颈的多卡切分；计划开 Cache-DiT；H2D 藏不住的小图像模型。
 
-## 6. 与本仓其他笔记
+## 6. 源码锚点
 
-- H3 效率附录讨论拓扑与 BCG，不替代本篇 offload 通论  
-- 总览组合表：[overview](overview.md)
+| 主题 | 路径 |
+|------|------|
+| Layerwise manager | `.../memory_managers/layerwise_offload.py` |
+| 组件选择常量 | `.../layerwise_offload_components.py` |
+| 组件驻留状态机 | `.../component_manager.py` |
+| 互斥校验 | `.../server_args/server_args.py`（`validate layerwise offload conflicts`） |
+| 默认策略 | `.../server_args/auto_tune.py` |
+| Cache-DiT bucket | `refs/codes/cache-dit/src/cache_dit/offload/layerwise.py` |
 
-## 7. 本轮缺口（待加深）
+## 相关阅读
 
-- `ComponentManager` 状态机与请求期 onload/offload 时序图  
-- Cache-DiT bucket offload 与 SGLang `LayerwiseOffloadManager` 参数对照表  
-- 各 `--performance-mode` 默认组件列表的模型差异（`auto_tune` 全部分支）
+- [专题总览](overview.md) · [Feature Cache](feature_cache.md) · [Graph Runtime](graph_runtime.md) · [Correctness](correctness.md)  
+- H3 效率附录讨论拓扑与 BCG，不替代本篇 offload 通论：[效率主线](../minimax_h3/05_efficiency_in_sglang.md)
+
+## 附录：仍可加深
+
+- `ComponentResidencyManager` 请求期时序图（onload / finish_use / 跨请求预热）  
+- Cache-DiT bucket 参数与 SGLang manager 参数逐项对照表  
+- 各模型在 `auto_tune` 下的默认 `layerwise_offload_components` 分支

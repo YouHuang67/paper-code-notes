@@ -2110,7 +2110,7 @@
       "LLM Inference",
       "CUDA"
     ],
-    "summary": "DiT 推理优化专题地图：output-preserving 与 quality-tradeoff 杠杆、组合约束、稀疏 Attention 边界"
+    "summary": "DiT 推理优化专题总览：杠杆分类、可点互斥表、阅读路径与稀疏边界"
   },
   {
     "title": "DiT 推理优化 - Memory Offload",
@@ -2122,7 +2122,7 @@
       "LLM Inference",
       "CUDA"
     ],
-    "summary": "SGLang LayerwiseOffloadManager 与 Cache-DiT bucket offload；与 Cache-DiT/FSDP 互斥校验"
+    "summary": "组件级与 layerwise Offload：SGLang manager vs Cache-DiT bucket、硬互斥与选用条件"
   },
   {
     "title": "DiT 推理优化 - Kernels & Fusion",
@@ -2134,7 +2134,7 @@
       "Triton",
       "LLM Inference"
     ],
-    "summary": "SGLang diffusion kernel 注册与 Norm/RoPE/残差门控融合、中间 Tensor 消除思路"
+    "summary": "Diffusion kernel 注册、典型融合语义、删中间 Tensor 与 Graph/Cache 关系"
   },
   {
     "title": "DiT 推理优化 - Graph Runtime",
@@ -2145,7 +2145,7 @@
       "CUDA",
       "LLM Inference"
     ],
-    "summary": "Breakable CUDA Graph：warmup 分辨率签名、白名单模型、launch-bound 适用边界"
+    "summary": "BCG 捕获/回放、白名单与 warmup、与 compile/Cache 互斥及适用边界"
   },
   {
     "title": "DiT 推理优化 - Feature Cache",
@@ -2156,7 +2156,7 @@
       "Video Generation",
       "LLM Inference"
     ],
-    "summary": "Cache-DiT DBCache/TaylorSeer/SCM 与 TeaCache/Spectrum；质量换速度与互斥约束"
+    "summary": "DBCache Fn/Bn、TaylorSeer、SCM、TeaCache/Spectrum 与并行 similarity patch"
   },
   {
     "title": "DiT 推理优化 - Parallelism",
@@ -2168,7 +2168,7 @@
       "LLM Inference",
       "CUDA"
     ],
-    "summary": "CFG×TP×Ulysses×Ring/KV-Gather 合成公式、整除约束与拓扑映射"
+    "summary": "CFG×TP×Ulysses×Ring/KV-Gather 公式、整除与拓扑、实践选择顺序"
   },
   {
     "title": "DiT 推理优化 - Quantization",
@@ -2179,7 +2179,7 @@
       "Video Generation",
       "LLM Inference"
     ],
-    "summary": "SGLang Diffusion 量化家族地图：online FP8/MXFP4、ModelOpt NVFP4、Nunchaku 索引"
+    "summary": "量化加载约定与家族地图；与 Offload/Fusion 的收益条件"
   },
   {
     "title": "DiT 推理优化 - Encoder & VAE",
@@ -2190,7 +2190,7 @@
       "Video Generation",
       "LLM Inference"
     ],
-    "summary": "Encoder parallel 与 VAE 并行在 DiT 加速后的占比与组件 offload 关系"
+    "summary": "Encoder fold/dp/replicate、VAE 与组件 offload；DiT 加速后的长尾"
   },
   {
     "title": "DiT 推理优化 - Progressive Resolution",
@@ -2201,7 +2201,7 @@
       "Video Generation",
       "LLM Inference"
     ],
-    "summary": "DCT Rewind 谱渐进分辨率：早期粗 latent 降 Attention 成本与质量权衡"
+    "summary": "dct_rewind 谱渐进分辨率、δ 与 SP/compile/offload 组合约束"
   },
   {
     "title": "DiT 推理优化 - Correctness",
@@ -2212,6 +2212,6 @@
       "Video Generation",
       "LLM Inference"
     ],
-    "summary": "output-preserving 边界、互斥表与优化验收清单"
+    "summary": "output-preserving 边界、可点互斥总表与优化验收清单"
   }
 ]
