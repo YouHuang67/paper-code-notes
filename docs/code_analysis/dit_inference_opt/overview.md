@@ -38,7 +38,7 @@ SGLang 官方决策框架见 pin 内 `docs/docs/sglang-diffusion/performance-opt
 | 文档 | 轴 | 深挖焦点 | 优先读 |
 |------|----|----------|--------|
 | [Memory Offload](memory_offload.md) | 显存 / 常驻 | 组件级 vs layerwise；SGLang manager vs Cache-DiT bucket | ★★★ |
-| [Kernels & Fusion](kernels_fusion.md) | 算子 | registry、Norm/RoPE/门控融合、删中间 Tensor | ★★★ |
+| [Kernels & Fusion](kernels_fusion.md) | 算子 | AdaLN/QK-RoPE/残差门控公式、quality 挂载、删中间 Tensor | ★★★ |
 | [Graph Runtime](graph_runtime.md) | 启动开销 | BCG 捕获/回放、warmup 签名、白名单 | ★★ |
 | [Feature Cache](feature_cache.md) | 步间冗余 | DBCache Fn/Bn、TaylorSeer、SCM、TeaCache、Spectrum | ★★★ |
 | [Parallelism](parallelism.md) | 多卡 | CFG × TP × Ulysses × Ring / KV-Gather | ★★ |

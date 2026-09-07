@@ -71,6 +71,8 @@ CLI help（`--enable-breakable-cuda-graph`）原文要点：
 - **Mutually exclusive with `--enable-torch-compile` and Cache-DiT（BCG takes priority）**。  
 - Requires `--warmup-resolutions`；warmup 时全部 capture。
 
+现网 [Fused Kernels](https://docs.sglang.io/docs/sglang-diffusion/fused_kernels) 另写：request-gated DiT 融合（`quality=extra-high/high`）不要与 BCG 同开——warmup 捕获的是 lossless 分支。本 pin 的 `server_args` 尚未搜到这条硬拒绝。质量挂载机制见 [Kernels & Fusion §3](kernels_fusion.md#3-数值契约lossless-与-high)。
+
 Layerwise offload 改变权重指针与异步拷贝，与 graph 捕获假设冲突风险高 → 实务上避免与 [Offload](memory_offload.md) 的 DiT layerwise 同开。
 
 H3 侧断点为何落在 Attention、以及 text-only bucketing：[效率附录](../minimax_h3/06_efficiency_appendix.md)、[DiT Runtime](../minimax_h3/07_dit_runtime_and_collectives.md)。

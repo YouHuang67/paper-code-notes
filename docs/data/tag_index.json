@@ -2134,7 +2134,7 @@
       "Triton",
       "LLM Inference"
     ],
-    "summary": "Diffusion kernel 注册、典型融合语义、删中间 Tensor 与 Graph/Cache 关系"
+    "summary": "DiT 非 GEMM 热路径：AdaLN/QK-RoPE/残差门控公式、lossless vs high 挂载、删中间 Tensor"
   },
   {
     "title": "DiT 推理优化 - Graph Runtime",

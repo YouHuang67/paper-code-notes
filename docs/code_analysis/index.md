@@ -44,7 +44,7 @@
 
 - [总览](dit_inference_opt/overview.md) - 瓶颈分解、组合约束、阅读路径
 - [Memory Offload](dit_inference_opt/memory_offload.md) - 组件常驻与 layerwise、Cache-DiT bucket offload、与 Cache/FSDP 互斥
-- [Kernels & Fusion](dit_inference_opt/kernels_fusion.md) - Diffusion kernel 注册与融合、中间 Tensor 消除
+- [Kernels & Fusion](dit_inference_opt/kernels_fusion.md) - AdaLN/QK-RoPE/残差门控融合、quality 挂载、删中间 Tensor
 - [Graph Runtime](dit_inference_opt/graph_runtime.md) - Breakable CUDA Graph、warmup 签名、适用边界
 - [Feature Cache](dit_inference_opt/feature_cache.md) - DBCache / TaylorSeer / SCM、TeaCache、Spectrum
 - [Parallelism](dit_inference_opt/parallelism.md) - CFG × TP × Ulysses × Ring / KV-Gather
