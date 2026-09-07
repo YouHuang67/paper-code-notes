@@ -6,82 +6,51 @@ tags:
 ---
 # DiT 推理优化：Graph Runtime（BCG）
 
-**源码**:
-
-- Diffusion runner：`multimodal_gen/runtime/breakable_cuda_graph/runner.py`
-- 底层原语：`srt/.../breakable_cuda_graph/`
-- CLI：`--enable-breakable-cuda-graph`、`--warmup-resolutions`、`--bcg-text-buckets`
-
 返回：[专题总览](overview.md)
 
 ## 抓住重点
 
-- BCG = Breakable CUDA Graph：把 DiT forward 里 **形状稳定** 的段捕获成可回放 graph；动态 Attention、变长、通信仍 Eager。
-- 目标是压 **launch 开销**、提高 GPU busy，不改算法（output-preserving 风格）。
-- **必须** `--warmup-resolutions`；仅白名单模型真正启用；与 **torch.compile / Cache-DiT 互斥**（BCG 优先）。
-- 适合 launch-bound 的小算子多的图像 DiT；视频重 Attention 时收益常接近零。
+- 将单步计算分为静态段 \(G\) 与动态段 \(E\)。BCG 固化 \(G\) 的调度图，仍逐次执行 \(E\)，故计算值不变而 launch 数下降。
+- 图只对已 warmup 的输入签名生效。把 prompt 长度映射到有限 bucket，才能提高真实请求的命中率。
+- 它减少的是固定开销 \(\alpha\)，对长 Attention 主导的步骤收益有限；与 Cache-DiT、`torch.compile` 的组合在当前运行时被排除。
 
 ## 1. 机制
 
-`runner.py` 模块文档约定：
+令 \(z\) 表示一次调用的张量形状、dtype、设备及离散控制量，\(\sigma(z)\) 是其签名。将 forward 分割为
 
-1. Runner 包装 `nn.Module`，属性透传。  
-2. **Capture 必须显式**（warmup 驱动）；serving 路径不触发新 capture。  
-3. 按 kwargs 张量 shape/dtype 等构造 signature；命中则 replay，否则 eager。  
-4. 在 Attention / SP all-to-all / 动态段处「打断」，前后静段各自成 graph。
+\[
+f_\theta(z)=E_0\circ G_1\circ E_1\circ\cdots\circ G_m\circ E_m(z),
+\]
 
-Diffusion 侧额外能力：静态 buffer、prompt-bucket padding、模型专用 padder（`model_padders/`：Ideogram / H3 / Qwen-Image / Z-Image 等）。`--bcg-text-buckets`：prompt 序列 pad 到最近 bucket，使不同长度复用同一张图；warmup 为每个 bucket capture 一次。
+其中 \(G_j\) 的张量地址和形状在一次服务配置内固定，\(E_j\) 包含动态 Attention、变长处理或 collective。warmup 为每个允许的 \(\sigma\) 捕获 \(G_j\)；请求只在 \(\sigma(z)\) 已捕获时 replay，否则完整走 eager。这里的“breakable”正是保留 \(E_j\) 的动态图边界。
+
+若文本长度为 \(n\)，bucket 集合为 \(\mathcal B\)，pad 后长度为 \(b(n)=\min\{b\in\mathcal B:b\ge n\}\)。它以额外 token 计算换取更多相同 \(\sigma\)；所有实际分辨率与 \(b(n)\) 必须在 warmup 集合中。
 
 ## 2. 启用条件
 
-`_validate_breakable_cuda_graph`：
-
-- 打开 BCG 时 **必须** 提供 `--warmup-resolutions`（每个服务分辨率单独 capture）。  
-- `--bcg-text-buckets` 若给出，需至少一个正整数。
-
-`_adjust_breakable_cuda_graph_support`：不在白名单则 **自动关掉** 并打 warning。当前 pin 日志列出的支持面：
-
-- Ideogram-4  
-- Lightricks/LTX-2  
-- MiniMax-H3  
-- Qwen/Qwen-Image、Qwen/Qwen-Image-2512  
-- SANA1.5  
-- Tongyi-MAI/Z-Image / Z-Image-Turbo  
-- zai-org/GLM-Image  
-
-（以 `BREAKABLE_CUDA_GRAPH_SUPPORTED_MODEL_IDS` 常量为准。）
-
-BCG 还会推动 server warmup（见 `test_server_args.py`）。
+启用的前提是服务输入域 \(\mathcal Z_{\rm serve}\) 被已捕获域 \(\mathcal Z_{\rm warm}\) 覆盖，或能接受未覆盖部分回退：\(\mathcal Z_{\rm serve}\subseteq\mathcal Z_{\rm warm}\cup\mathcal Z_{\rm eager}\)。当前 pin 强制提供分辨率 warmup，文本 bucket 必须为正整数；仅已验证的模型族进入捕获路径。白名单是实现覆盖范围，不是算法限制。
 
 ## 3. 何时值得开
 
 | 场景 | 建议 |
 |------|------|
-| 图像 DiT、小算子多、Nsight 显示 launch-bound | 值得试 BCG |
-| 视频重 Attention / 已接近打满 GPU | 优先 [Kernel](kernels_fusion.md) / Attention backend / [Parallel](parallelism.md) |
-| 需要 Cache-DiT 或 torch.compile | 先选一条路径对比，勿默认叠开 |
+| 图像 DiT、小算子多、profile 显示 launch-bound | \(\alpha\) 占比高，优先验证 BCG |
+| 视频重 Attention / 已接近打满 GPU | \(\beta\,\mathrm{FLOPs}\) 主导，优先 [Kernel](kernels_fusion.md) / Attention backend / [Parallel](parallelism.md) |
+| 需要 Cache-DiT 或 `torch.compile` | 当前配置路径互斥，分别测量 |
 
 官方 deployment cookbook：BCG 是 manual opt-in；每个服务分辨率必须出现在 warmup 列表。
 
 ## 4. 与 compile / Cache / Offload
 
-CLI help（`--enable-breakable-cuda-graph`）原文要点：
-
-- 在 Attention 处切开；SP all-to-all / 动态 Attention 保持 eager。  
-- **Mutually exclusive with `--enable-torch-compile` and Cache-DiT（BCG takes priority）**。  
-- Requires `--warmup-resolutions`；warmup 时全部 capture。
-
-现网 [Fused Kernels](https://docs.sglang.io/docs/sglang-diffusion/fused_kernels) 另写：request-gated DiT 融合（`quality=extra-high/high`）不要与 BCG 同开——warmup 捕获的是 lossless 分支。本 pin 的 `server_args` 尚未搜到这条硬拒绝。质量挂载机制见 [Kernels & Fusion §3](kernels_fusion.md#3-数值契约lossless-与-high)。
-
-Layerwise offload 改变权重指针与异步拷贝，与 graph 捕获假设冲突风险高 → 实务上避免与 [Offload](memory_offload.md) 的 DiT layerwise 同开。
+若某优化在请求间改变权重地址、控制分支或 \(\sigma\)，它会破坏 replay 的前提。故当前 CLI 令 BCG 与 Cache-DiT、`torch.compile` 互斥；层间 offload 也应单独测量。现网官方文档还要求 request-gated 融合与 BCG 分开，因为 warmup 捕获的是一个固定质量分支；该规则在本 pin 尚非硬校验，详见 [Kernels](kernels_fusion.md#3-数值契约lossless-与-high)。
 
 ## 4.1 Signature 与回退
 
-BCG 的 key 由 kwargs 中 Tensor 的 shape、dtype、device 等属性组成；同一分辨率但 prompt 长度不同也可能 miss。因此 text bucketing 先把长度 pad 到固定 bucket，warmup 必须覆盖实际服务的分辨率和 bucket。miss 时 runner 走 eager，服务不会在请求路径自动 capture 新图。评测需要记录 capture/replay 命中率，否则“开启 BCG”可能只代表增加了 warmup 而没有减少 launch。
+令 \(p=\Pr[\sigma(z)\in\mathcal Z_{\rm warm}]\)。若 eager 与 replay 时间分别为 \(\tau_e,\tau_g\)，稳态平均时间是 \(p\tau_g+(1-p)\tau_e\)，不是 \(\tau_g\)。因此报告必须给出 \(p\)、warmup 成本与 bucket padding 比例；只报告“已启用”无法说明服务实际减少了多少 launch。
 
 H3 侧断点为何落在 Attention、以及 text-only bucketing：[效率附录](../minimax_h3/06_efficiency_appendix.md)、[DiT Runtime](../minimax_h3/07_dit_runtime_and_collectives.md)。
 
-## 5. 源码锚点
+## 附录：实现证据
 
 | 主题 | 路径 |
 |------|------|
@@ -94,8 +63,4 @@ H3 侧断点为何落在 Attention、以及 text-only bucketing：[效率附录]
 
 - [专题总览](overview.md) · [Kernels & Fusion](kernels_fusion.md)（静段更适合进 graph） · [Feature Cache](feature_cache.md) · [Correctness](correctness.md)
 
-## 附录：仍可加深
-
-- 通用 DiT 上 BCG segment 自动划分规则（非 H3）  
-- signature miss 时 Diffusers fallback 对评测的污染路径  
-- 多分辨率 serving 下 buffer 上限（`SGLANG_DIFFUSION_IPC_A2A_MAX_BUFFERS` 等相邻约束）
+pin：`multimodal_gen/runtime/breakable_cuda_graph/runner.py`（签名、捕获与回退），`server_args.py`（warmup、白名单、互斥），`model_padders/`（模型输入规整）。模型特定断点及 H3 bucket 见 [效率附录](../minimax_h3/06_efficiency_appendix.md)。

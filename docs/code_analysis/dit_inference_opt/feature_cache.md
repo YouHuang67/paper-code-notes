@@ -6,79 +6,72 @@ tags:
 ---
 # DiT 推理优化：Feature Cache
 
-**源码**:
-
-- Cache-DiT：`refs/codes/cache-dit`（`DBCacheConfig`、TaylorSeer、SCM）
-- SGLang 集成：`multimodal_gen/runtime/cache/cache_dit_integration.py`、`teacache.py`、`spectrum.py`
-- 文档：`cache_dit.mdx`、`teacache.mdx`、`caching-acceleration.mdx`、`spectrum.mdx`
-
 返回：[专题总览](overview.md)
 
 ## 抓住重点
 
-- Feature cache 利用相邻 denoise step 隐状态相似，跳过中间 block 或整步计算 → **quality-tradeoff**。
-- Cache-DiT 主轴是 **DBCache（Fn/Bn + residual diff）**，可叠 **TaylorSeer** 校准与 **SCM** 逐步掩码。
-- SGLang 另有 TeaCache、Spectrum；二者互斥。
-- **不可**与 DiT layerwise offload、FSDP 同开；实务上勿与 BCG 同开。阈值不能跨模型照搬。
+- 特征缓存以相邻步的局部变化预测“重算是否值得”。它用受控近似 \(\tilde f_\theta\) 替换 \(f_\theta\)，属于质量换速度。
+- DBCache 的关键不是“跳步”：先计算锚点 block 得到误差信号，再选择复用中段、尾部校正或完整计算。
+- SCM 是强制计算日程，TaylorSeer 是缓存特征的局部外推；二者分别约束决策与近似值。
+- 阈值必须在目标模型、采样器、步数和条件分布上校准；当前集成与层间 offload/FSDP 存在硬约束。
 
 ## 1. 为什么能跳
 
-相邻 timestep 的 residual / hidden 往往缓慢变化。若前若干 block 算出的 residual 相对差低于阈值，中间 block 可复用缓存结果，只在尾部再算少量块做校正。跳过的是整段 DiT block 计算，因此 e2e 加速可观，但阈值与 warmup 直接决定画质。
+设 \(h_t^\ell\) 为第 \(t\) 个去噪步、第 \(\ell\) 个 block 后的隐状态，\(r_t^\ell=h_t^\ell-h_t^{\ell-1}\) 为该 block 的 residual。缓存的可检验假设是锚点集合 \(A\) 上
+
+\[
+\delta_t=\frac{\sum_{\ell\in A}\lVert r_t^\ell-r_{t'}^\ell\rVert_1}
+{\sum_{\ell\in A}\lVert r_{t'}^\ell\rVert_1+\eta}\leq\rho,
+\]
+
+其中 \(t'\) 是最近完整计算步，\(\eta>0\) 防止分母为零，\(\rho\) 是模型专属阈值。小 \(\delta_t\) 只说明锚点局部变化小；尾部校正和连续缓存上限用于限制其沿层、沿时间的累积误差。
 
 ## 2. Cache-DiT 三件套
 
-配置来自 `BasicCacheConfig` / `DBCacheConfig`（`cache_contexts/cache_config.py`）。
-
 ### DBCache（Dual Block Cache）
 
-单步内把 transformer 分成三段：
+令 \(L\) 是 block 数，\(a\) 和 \(b\) 分别是前、后重算 block 数。一条候选步按下列结构执行：
 
 ```text
-[ Fn 必算块 ] → 估 residual L1 diff → [ 中间可 cache ] → [ Bn 再算校正 ]
+[ 1,\ldots,a：锚点重算 ] → 判定 \(\delta_t\) → [ a+1,\ldots,L-b：复用或预测 ] → [ L-b+1,\ldots,L：校正 ]
 ```
 
 | 旋钮 | 默认（库） | 含义 |
 |------|------------|------|
-| `Fn_compute_blocks` | 8 | 前 Fn 块必算，用于稳定 L1 diff |
-| `Bn_compute_blocks` | 0 | 后 Bn 块再算，融合近似 hidden |
-| `residual_diff_threshold` | 0.08 | 越高越激进（更快、更糙） |
-| `max_warmup_steps` | 8 | warmup 内不 cache（或按 interval） |
-| `max_continuous_cached_steps` | -1 | 连续 cache 步数上限，防漂移 |
-| `enable_separate_cfg` | None | Wan / Qwen-Image 等分 CFG 步要单独设 |
+| \(a\) | 库默认 8 | 产生判定 \(\delta_t\) 的锚点长度 |
+| \(b\) | 库默认 0 | 尾部重算长度 |
+| \(\rho\) | 库默认 0.08 | 放宽后缓存概率上升，误差预算同步变紧 |
+| warmup | 库默认 8 步 | 在轨迹未稳定阶段禁用或稀疏缓存 |
+| 连续上限 | 库默认 -1 | 限制连续近似步数 |
 
-SGLang env 默认更激进（示例）：`SGLANG_CACHE_DIT_FN=1`、`RDT=0.24`、`WARMUP=4`、`MC=3`（见 `envs.py`）。**以目标模型实测为准，勿直接抄默认。**
+不同运行时默认值只是工作负载假设，不能作为质量承诺。配置应报告 \((a,b,\rho)\)、warmup 和最大连续缓存数。
 
 ### TaylorSeer
 
-`calibrators/taylorseer.py` + `TaylorSeerCalibratorConfig`：用泰勒展开预测/校准特征，减轻「直接抄旧 residual」的误差。SGLang：`SGLANG_CACHE_DIT_TAYLORSEER`、`SGLANG_CACHE_DIT_TS_ORDER`（1 或 2）。
+对缓存对象 \(u_t\)，TaylorSeer 用历史差分近似其时间导数，形成一阶或二阶预测 \(\tilde u_t=u_{t'}+\Delta t\,\hat u'_{t'}+\tfrac12\Delta t^2\hat u''_{t'}\)。它的作用是减小“直接复制 \(u_{t'}\)”的局部截断误差；阶数提高也会增加状态和校准假设，不能单凭阶数判断质量更高。
 
 ### SCM（Steps Computation Mask）
 
-`steps_computation_mask`：长度 = `num_inference_steps` 的 0/1 列表；1 = 本步必算，0 = 走 dynamic/static cache。可用 `steps_mask` / preset（SGLang：`SGLANG_CACHE_DIT_SCM_PRESET` = none/slow/medium/fast/ultra，或自定义 compute/cache bins）。掩码会覆盖其它「是否算本步」决策。
+令 \(m_t\in\{0,1\}\) 是长度 \(T\) 的掩码。\(m_t=1\) 强制完整计算，\(m_t=0\) 才允许动态相似度判定或静态复用。故 SCM 优先级高于 \(\delta_t\)：它把质量预算显式分配给时间轴，而不是让阈值在所有步上自由放行。
 
 ### SGLang 集成要点
 
-路径：`cache_dit_integration.py`。
-
-- 启用：`SGLANG_CACHE_DIT_ENABLED=true`，或 Diffusers backend 下 `--cache-dit-config` YAML。  
-- `_patch_cache_dit_similarity`：在 SP/TP 并行下对 similarity 做组归约，保证各 rank 对「是否 cache」判定一致。  
-- 支持 secondary transformer（如 Wan2.2 low-noise expert）一组独立 Fn/Bn/RDT env。
+在并行组 \(\mathcal P\) 中，每个 rank 的局部 \(\delta_t^{(p)}\) 必须约化成同一全局判据（例如加和分子、分母后求比）。否则各 rank 会在不同步数进入不同分支，后续 collective 无法对齐。多 transformer 专家应维护独立的 \((a,b,\rho)\)，因为它们的 residual 标度未必相同。
 
 ## 3. TeaCache 与 Spectrum
 
 | 后端 | 判据 | 互斥 |
 |------|------|------|
-| TeaCache | timestep embedding 调制输入的相对差异，决定是否复用 residual | 与 Spectrum 互斥 |
-| Spectrum | SGLang 另一缓存后端（`spectrum.py` / `spectrum.mdx`） | 与 TeaCache 互斥 |
+| TeaCache | 用时间条件的调制量变化作为代理误差，决定 residual 是否复用 | 与 Spectrum 互斥 |
+| Spectrum | 另一条特征复用策略 | 与 TeaCache 互斥 |
 
-`sampling_params.py`：`enable_teacache and enable_spectrum` → ValueError。  
-Wan2.2 注释：TeaCache 系数未校准前可能 silent no-op，可改用 Cache-DiT。
+二者对应不同状态与判据，当前参数校验禁止同时启用。TeaCache 的代理量需要模型校准；缺少系数时它可能不产生有效跳过。
 
 ## 4. 组合约束
 
 | 组合 | 行为 | 链接 |
 |------|------|------|
-| Cache-DiT + DiT layerwise | 硬错误 | [Offload §4](memory_offload.md#4-组合约束必须先读) |
+| Cache-DiT + DiT layerwise | 硬错误 | [Offload §5](memory_offload.md#5-组合约束) |
 | Cache-DiT + FSDP | 硬错误或自动关 FSDP | 同上 |
 | TeaCache + Spectrum | 硬错误 | 上文 |
 | Cache-DiT + BCG | CLI：互斥，BCG 优先 | [Graph §4](graph_runtime.md#4-与-compile--cache--offload) |
@@ -88,11 +81,9 @@ Wan2.2 注释：TeaCache 系数未校准前可能 silent no-op，可改用 Cache
 
 ## 4.1 从判定到复用
 
-每个 denoise step 先计算少量 anchor block，得到 residual 或 hidden 的相似度，再由 cache context 决定本步完整计算、复用中间 block，或用 TaylorSeer 预测特征。SCM 位于 step 级别：mask 为 1 的 step 强制计算，为 0 的 step 进入静态/动态 cache 策略。并行运行时，相似度判定必须在 SP/TP 组内归约，否则不同 rank 会走不同分支并破坏 collective 对齐；SGLang 在 `cache_dit_integration.py` 对该判定做了 patch。
+每步完整计算比例记为 \(q\)，中段平均重算比例为 \(r\)。理想 DiT block 计算成本从 \(L\) 降至 \(qL+(1-q)[a+b+r(L-a-b)]\)。实际加速还要扣除判定、缓存读写和未被隐藏的同步开销。缓存后 block 总量变化，不能用某个 kernel 的占比变化代表端到端收益。
 
-缓存减少的是 block 计算次数，因而会同步减少这些 block 上的 fused kernel 收益；cache 开启前后的 profile 不应直接比较单个 kernel 占比。
-
-## 5. 源码锚点
+## 附录：实现证据与参数
 
 | 主题 | 路径 |
 |------|------|
@@ -106,9 +97,4 @@ Wan2.2 注释：TeaCache 系数未校准前可能 silent no-op，可改用 Cache
 
 - [专题总览](overview.md) · [Memory Offload](memory_offload.md) · [Parallelism](parallelism.md)（并行下 similarity） · [Correctness](correctness.md)
 
-## 附录：仍可加深
-
-- DBCache 前向对照 `cache_blocks/` 的逐步数据流图  
-- TaylorSeer 阶数与误差项公式  
-- SCM 各 preset 掩码生成算法细节  
-- TeaCache 多项式校准系数在各模型 SamplingParam 中的挂载点
+pin：Cache-DiT 的 `cache_contexts/cache_config.py`、`cache_manager.py` 与 `calibrators/taylorseer.py`；SGLang 的 `cache_dit_integration.py`、`envs.py`、`sampling_params.py`。互斥的显存原因见 [Offload](memory_offload.md#5-组合约束)。

@@ -2,83 +2,35 @@
 tags:
   - Diffusion Model
   - Video Generation
-  - LLM Inference
 ---
 # DiT 推理优化：Progressive Resolution
-
-**文档**: `docs/docs/sglang-diffusion/progressive_resolution.mdx`  
-**实现**: `runtime/pipelines_core/stages/progressive_resolution/`  
-**论文线索**: Spectral Progressive Diffusion（文档引用 arXiv 2605.18736）
 
 返回：[专题总览](overview.md)
 
 ## 抓住重点
 
-- 早期 denoise 步在更粗 latent 分辨率上跑，再 **谱上采样** 到全分辨率继续 → 砍早期步的二次 Attention 成本。
-- 属 **quality-tradeoff**；推荐模式 `dct_rewind`（谱上采样 + scheduler rewind）。
-- **必须**尽量让 DiT GPU-resident（`--dit-cpu-offload false`），否则每步固定 PCIe 成本冲淡加速。
-- **不可**与 Ulysses/Ring SP、`torch.compile` 同开；与 Cache-DiT 组合标为 experimental。
+设全分辨率 latent 为 \(z\in\mathbb R^{C\times H\times W}\)，第 \(t\) 步采用分辨率 \((H_t,W_t)\)。Progressive 在早期噪声较大时取 \(H_tW_t<HW\)，再通过频域插值恢复到全分辨率；它减少 token 数，属于质量换速度。
 
-## 1. 模式与参数
+## 1. 机制
 
-| `progressive_mode` | 含义 |
-|--------------------|------|
-| `fullres` | 关闭，等价标准生成 |
-| `dct_rewind` | 谱上采样 + scheduler rewind（推荐） |
-| `dct` | 谱上采样，不 rewind |
+对 latent 做二维 DCT：\(\hat z=\mathcal D z\)。粗阶段保留低频子带 \(P_t\hat z\)，得到 \(z_t^{\rm low}=\mathcal D^{-1}(P_t\hat z)\)，在切换点用频域上采样算子 \(U\) 恢复 \(z_t^{\rm full}=\mathcal D^{-1}(UP_t\hat z)\)。若 token 数与面积近似成正比，Attention 二次项从 \(O((HW)^2)\) 降为 \(O((H_tW_t)^2)\)。`dct_rewind` 同时把 scheduler 时间状态回拨到新阶段一致；`dct` 只做频域恢复。
 
-| 参数 | 默认 | 含义 |
-|------|------|------|
-| `--progressive-levels` | 1 | 分辨率减半次数；1 = 一次粗阶段（如 64²→128² latent） |
-| `--progressive-delta` | 0.01 | 噪声主导容差 δ；越大粗分辨率步越多、越快 |
+## 2. 阶段选择与误差
 
-半分辨率 token 数约为全分辨率的 1/4；文档表述早期步 Attention 成本可降到约 6% 量级（相对全分辨率步）。
-
-## 2. 收益与条件
-
-文档给出的 denoise 加速（各自固定测试配置，**不是**万能 e2e 数字）量级约 1.5×–2.8×，覆盖 FLUX.1 / FLUX.2 / Z-Image / Wan2.1 / Qwen-Image / Ideogram 等；示例（A6000、`--dit-cpu-offload false`）：
-
-- FLUX 类：`dct_rewind` L1 δ=0.05 可到约 1.6× denoise  
-- FLUX.2-klein：δ=0.10 约 1.9×  
-- Z-Image：文档示例可达约 2.3×  
-
-（精确表以 pin 内 mdx 为准。）
-
-**Tip（官方）**：加 `--dit-cpu-offload false`。整模 CPU offload 每步固定 PCIe 成本，与分辨率无关，会稀释加速 → 也见 [Offload](memory_offload.md)。
-
-Z-Image 特殊：5-D latent `[B,C,1,H,W]` 需 squeeze/unsqueeze；阶段切换时重算 caption+image RoPE。
+令噪声水平为 \(\sigma_t\)，阈值为 \(\delta\)。阶段策略选择最小分辨率，使被丢弃高频能量满足
+\[
+\frac{\lVert(I-P_t)\hat z_t\rVert_2}{\lVert\hat z_t\rVert_2+\epsilon}\le\delta.
+\]
+增大 \(\delta\) 会延长粗阶段并降低计算量，但扩大频率截断误差。官方示例报告约 1.5--2.8 倍 denoise 加速；该数字依赖模型、分辨率、步数和硬件，不能外推为 e2e 保证。
 
 ## 3. 组合约束
 
-来自官方 Limitations 节：
+分辨率切换改变 token shape 与 RoPE/cache 状态，因此当前实现与 Ulysses/Ring SP、`torch.compile` 互斥；与 Cache-DiT 仅标记 experimental，切换时必须刷新 cache context。整模 DiT CPU offload 会为每步引入近似固定传输代价，可能吞掉 token 缩减收益，官方建议关闭。
 
-| 组合 | 行为 |
-|------|------|
-| Progressive + `--ulysses-degree` / `--ring-degree` | RuntimeError（SP 不兼容） |
-| Progressive + `--enable-torch-compile` | 不兼容（固定序列长 vs 分辨率切换） |
-| Progressive + Cache-DiT | experimental：换分辨率会 refresh cache context，需自测 |
-| Progressive + 整模 DiT CPU offload | 强烈建议关闭 offload |
+## 附录：实现证据
 
-与少步蒸馏正交：Progressive 改 **空间分辨率日程**；蒸馏改 \(N_{\mathrm{step}}\)。少步模型上再叠 progressive 的收益曲线需单独测。验收 → [Correctness](correctness.md#4-建议验收清单)。
-
-## 3.1 阶段切换的状态
-
-实现位于 `stages/progressive_resolution/`：denoise stage 根据当前噪声水平和 `progressive_delta` 选择粗分辨率，使用 DCT 频域上采样恢复 latent，再在 `dct_rewind` 模式同步 scheduler 状态。切换点会刷新与分辨率相关的 RoPE 或 cache context；Z-Image 还需处理 `[B,C,1,H,W]` latent 的 squeeze/unsqueeze。这里减少的是早期 token 数和 Attention 二次复杂度，Encoder/VAE 与最终输出尺寸保持原协议。
-
-## 4. 源码 / 文档锚点
-
-| 主题 | 路径 |
-|------|------|
-| 用户文档与测例表 | `docs/.../progressive_resolution.mdx` |
-| Stage 实现 | `runtime/pipelines_core/stages/progressive_resolution/` |
-| Sampling 字段 | `configs/sample/sampling_params.py`（`progressive_*`） |
+依据 SGLang `progressive_resolution.mdx` 与 `runtime/pipelines_core/stages/progressive_resolution/`；Z-Image 额外处理五维 latent 的 squeeze/unsqueeze，并在切换点重算 caption/image RoPE。相关约束汇总见 [Correctness](correctness.md#2-已核验的互斥--自动降级)。
 
 ## 相关阅读
 
-- [专题总览](overview.md) · [Memory Offload](memory_offload.md) · [Feature Cache](feature_cache.md) · [Parallelism](parallelism.md) · [Correctness](correctness.md)
-
-## 附录：仍可加深
-
-- `spectral_ops.py` / rewind 与 scheduler 状态同步  
-- δ 与 Bayes-optimal frequency-activation 准则的公式级对照  
-- 各 pipeline adapter（flux / wan / qwen_image / …）差异
+- [专题总览](overview.md) · [Memory Offload](memory_offload.md) · [Feature Cache](feature_cache.md) · [Parallelism](parallelism.md)

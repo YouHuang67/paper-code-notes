@@ -19,17 +19,26 @@ tags:
 
 - 一次请求 ≈ Encoder → \(N_{\mathrm{step}}\) 次 DiT → VAE；主成本在 DiT 步数 × 单步 FLOPs，DiT 变快后 Encoder/VAE 占比会抬头。
 - 杠杆分两类：**output-preserving**（驻留 / 并行 / kernel / 图）与 **quality-tradeoff**（cache / progressive / quant）。先定基线与显存策略，再开质量换速度。
-- 组合有硬互斥：最常见是 [Cache-DiT ⊥ DiT layerwise](memory_offload.md#4-组合约束必须先读)、[TeaCache ⊥ Spectrum](feature_cache.md#3-组合约束)、[BCG ⊥ torch.compile / Cache-DiT](graph_runtime.md#4-与-compile--cache--offload)、[Progressive ⊥ SP / torch.compile](progressive_resolution.md#3-组合约束)。全表见 [Correctness](correctness.md#2-已核验的互斥--自动降级)。
+- 组合有硬互斥：最常见是 [Cache-DiT ⊥ DiT layerwise](memory_offload.md#5-组合约束)、[TeaCache ⊥ Spectrum](feature_cache.md#3-组合约束)、[BCG ⊥ torch.compile / Cache-DiT](graph_runtime.md#4-与-compile--cache--offload)、[Progressive ⊥ SP / torch.compile](progressive_resolution.md#3-组合约束)。全表见 [Correctness](correctness.md#2-已核验的互斥--自动降级)。
 - 稀疏 Attention（Sage / SVG2 / VSA / SLA）本专题只索引，算法正文在论文与既有代码分析线。
 
 ## 1. 瓶颈怎么拆
+
+设初始噪声为 \(x_T\)，条件为 \(c\)，采样器在第 \(t\) 步调用 DiT \(f_\theta\)，并由
+
+\[
+x_{t-1}=\Phi_t\bigl(x_t,f_\theta(x_t,c,t)\bigr),\qquad t=T,\ldots,1
+\]
+
+生成 latent，最后由 VAE 解码。下文把一次端到端时间写成
+\(\tau=\tau_{\mathrm{enc}}+\sum_{t=1}^T\tau_{\mathrm{dit},t}+\tau_{\mathrm{vae}}\)。这一定义给出各专题的共同问题：在显存上限 \(M\) 与可接受误差 \(\varepsilon\) 下，怎样减小 \(\tau\)。
 
 SGLang 官方决策框架见 pin 内 `docs/docs/sglang-diffusion/performance-optimization.mdx`：
 
 | 类 | 含义 | 本专题入口 |
 |----|------|------------|
-| output-preserving | 改 residency、并行、kernel、调度；故意不改去噪语义 | [Offload](memory_offload.md) · [Kernel](kernels_fusion.md) · [Graph](graph_runtime.md) · [Parallel](parallelism.md) · [Encoder/VAE](encoder_vae.md) |
-| quality-tradeoff | 改路径 / 数值 / 分辨率日程，需质量验收 | [Feature Cache](feature_cache.md) · [Progressive](progressive_resolution.md) · [Quant](quantization.md) |
+| output-preserving | 保持 \(\Phi_t\) 与 \(f_\theta\) 的计算语义，改变驻留、并行、kernel 或调度 | [Offload](memory_offload.md) · [Kernel](kernels_fusion.md) · [Graph](graph_runtime.md) · [Parallel](parallelism.md) · [Encoder/VAE](encoder_vae.md) |
+| quality-tradeoff | 用近似 \(\tilde f_\theta\)、低精度表示或分阶段状态替换原路径，需验证 \(d(y,\tilde y)\le\varepsilon\) | [Feature Cache](feature_cache.md) · [Progressive](progressive_resolution.md) · [Quant](quantization.md) |
 
 建议顺序：定模型/分辨率/帧数/步数基线 → `--performance-mode` 与显存策略 → 并行与 attention backend → profile → 再加 cache / progressive / quant。收束验收见 [Correctness](correctness.md#4-建议验收清单)。
 
@@ -53,7 +62,7 @@ SGLang 官方决策框架见 pin 内 `docs/docs/sglang-diffusion/performance-opt
 
 | 组合 | 行为 | 详见 |
 |------|------|------|
-| Cache-DiT + DiT layerwise | **硬错误**（reuse 已 release 权重 → shape mismatch） | [Offload §4](memory_offload.md#4-组合约束必须先读) |
+| Cache-DiT + DiT layerwise | **硬错误**（reuse 已 release 权重 → shape mismatch） | [Offload §5](memory_offload.md#5-组合约束) |
 | Cache-DiT + FSDP | 显式开则报错，否则自动关 FSDP | 同上 |
 | DiT layerwise + FSDP | 自动关 FSDP | 同上 |
 | TeaCache + Spectrum | **硬错误** | [Cache §3](feature_cache.md#3-组合约束) |
@@ -62,7 +71,7 @@ SGLang 官方决策框架见 pin 内 `docs/docs/sglang-diffusion/performance-opt
 | BCG + torch.compile / Cache-DiT | CLI 声明互斥（BCG 优先） | [Graph §4](graph_runtime.md#4-与-compile--cache--offload) |
 | Progressive + SP | RuntimeError | [Progressive §3](progressive_resolution.md#3-组合约束) |
 | Progressive + torch.compile | 不兼容 | 同上 |
-| Progressive + 整模 DiT CPU offload | 文档建议关 offload，否则冲淡加速 | [Progressive §2](progressive_resolution.md#2-收益与条件) |
+| Progressive + 整模 DiT CPU offload | 文档建议关 offload，否则冲淡加速 | [Progressive §3](progressive_resolution.md#3-组合约束) |
 
 ## 4. 与稀疏 Attention 的边界
 

@@ -12,14 +12,14 @@ tags:
 
 ## 抓住重点
 
-- DiT 变快之后，Text/Image Encoder 与 VAE Decode 的占比上升；少步蒸馏或高并发时更明显。
-- Encoder 每请求通常一次，不像 DiT 重复 \(N_{\mathrm{step}}\) 次，但编码时 **整份 DiT 副本可能闲置** → `--encoder-parallel` 把闲置 GPU 用起来。
+- 端到端时间 \(\tau=\tau_{\rm enc}+T\tau_{\rm dit}+\tau_{\rm vae}\)。当优化降低 \(\tau_{\rm dit}\) 或 \(T\) 时，Encoder/VAE 的相对占比严格上升。
+- Encoder 每请求通常一次；编码时 DiT rank 闲置，可将其用于权重切分或数据并行。
 - Encoder/VAE 天然适合 **组件级 offload**：头尾 onload，中间把显存让给 DiT → [Memory Offload](memory_offload.md)。
 - `fold` / `replicate` 相对单卡编码是 bitwise-identical（官方声明）；`dp` 用于吞吐，可能引入帧差。
 
 ## 1. Encoder Parallel
 
-文档定位：编码阶段占请求时间可见份额、且 DiT 副本在编码时闲置时打开。
+设 encoder 工作量为 \(C_e\)，并行度为 \(n\)。fold 将权重切分，理想时间约为 \(C_e/n+A_e(n)\)，其中 \(A_e\) 是 collective；dp 将 batch \(B\) 切成 \(B/n\)；replicate 令每张卡保存完整权重并保持单样本计算路径。三者分别优化单请求宽模型、批吞吐和确定性路径。
 
 ```text
 --encoder-parallel {auto,fold,dp,replicate}
@@ -54,7 +54,11 @@ Cache-DiT 并行 YAML 也可把 `vae` / `text_encoder` 列入 `extra_parallel_mo
 
 ## 3.1 为什么 DiT 加速后要重算占比
 
-Encoder 和 VAE 通常各执行一次，而 DiT 执行 `N_step` 次。DiT 通过 cache、progressive 或 kernel fusion 缩短后，固定的一次性编码/解码时间在 e2e 中占比上升。`fold` 复用闲置 DiT ranks 做张量切分，`dp` 复用它们处理 batch，`replicate` 以重复计算换取简单和 bitwise-identical 行为；这些策略优化的是尾部阶段的 GPU 利用率，不改变 DiT 的 denoise 算法。
+令 \(r=(\tau_{\rm enc}+\tau_{\rm vae})/\tau\)。若 DiT 被加速为原来的 \(\gamma\in(0,1)\)，则
+\[
+r'=\frac{\tau_{\rm enc}+\tau_{\rm vae}}{\tau_{\rm enc}+\gamma T\tau_{\rm dit}+\tau_{\rm vae}}>r.
+\]
+这解释了为什么少步蒸馏、cache 或 fusion 后必须重新 profile Encoder/VAE。
 
 ## 4. 源码 / 文档锚点
 

@@ -13,8 +13,8 @@ tags:
 
 ## 抓住重点
 
-- 量化属 **quality-tradeoff**：压权重/激活或 KV bit 宽。
-- **低 bit ≠ 自动变快**：若前后仍造大 BF16 Tensor，或反复 quant/dequant、cat、transpose，GEMM 省下的时间会被搬运吃掉 → 需 [Kernel/Fusion](kernels_fusion.md) 配合。
+- 量化把权重或激活映射到有限集合。对张量 \(x\)，典型形式是 \(\hat x=s\,Q(x/s)\)，其中 \(s>0\) 为 scale，\(Q\) 为低 bit 舍入；误差 \(e=\hat x-x\) 会进入每个 DiT block。
+- 低 bit 只有在 GEMM、布局转换和 scale 读取的总成本下降时才加速；量化/反量化及大 BF16 中间量可能抵消 GEMM 收益。
 - 加载常拆：`--model-path`（基座）+ `--transformer-path` / `--transformer-weights-path`（量化组件）+ `--quantization`（online）+ `--kv-cache-quant`。
 - 部分量化适配器会禁用不兼容的 DiT offload → [Offload](memory_offload.md)。
 
@@ -45,17 +45,19 @@ tags:
 
 完整 validated checkpoint 表很长，以 pin 内 `quantization.mdx` 为准，本篇不复制全表。
 
-## 3. 与 Offload / Fusion / Graph
+## 3. 端到端成本与组合
 
-- Loader 可能 `_maybe_disable_incompatible_*_offload_modes` → [Memory Offload](memory_offload.md#4-组合约束必须先读)。  
-- 「Token Cat + NVFP4 Quant」类融合决定量化是否真体现在 e2e → [Kernels](kernels_fusion.md#3-删中间-tensor类优化)。  
+- Loader 可能自动关闭不兼容的 offload 模式 → [Memory Offload](memory_offload.md#5-组合约束)。
+- 「Token Cat + NVFP4 Quant」类融合决定量化是否真体现在 e2e → [Kernels](kernels_fusion.md#7-删中间-tensor-与纯数据搬移)。
 - 量化改变数值路径，与 BCG 静段假设需实测；质量验收 → [Correctness](correctness.md)。
 
-`server_args._adjust_quant_config` 当前注释写明：handles only nunchaku for now（解析 `nunchaku_config` → `transformer_weights_path`）。
+令原始 GEMM、量化准备、反量化/布局转换时间分别为 \(G,Q,D\)，则量化收益要求
+\[
+G-(G_q+Q+D)>0.
+\]
+同时输出误差需满足 \(d(y,\hat y)\le\varepsilon\)。因此 profile 必须同时记录 GEMM、Q/D、cat/transpose 和峰值显存；producer fusion 见 [Kernels](kernels_fusion.md)。
 
-## 3.1 端到端成本模型
-
-量化收益来自低 bit GEMM 的算力和权重带宽下降；损失项来自 scale 读取、反量化、layout 转换以及量化张量与 BF16 激活之间的来回搬运。若一个 block 的输入在量化前后被重复 materialize，GEMM 节省的时间可能被这些转换抵消。因而应同时 profile GEMM、quant/dequant、cat/transpose 和显存峰值，并用 [Kernels & Fusion](kernels_fusion.md) 中的 producer fusion 减少中间 Tensor。
+`server_args` 的 loader 会依据 checkpoint 族选择预量化或 online 路径；两者的 scale 存储、offload 兼容性和质量门禁不同，不能只凭文件名推断行为。
 
 加载阶段还决定运行时行为：预量化 transformer 通常通过 `transformer-path` 或 raw `transformer-weights-path` 接入，online quantization 则由 `quantization` 选择。两类路径的 config、offload 兼容性和质量门禁不同，不能只凭文件名判断量化格式。
 

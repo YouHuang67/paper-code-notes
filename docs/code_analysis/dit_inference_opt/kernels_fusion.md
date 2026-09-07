@@ -20,7 +20,7 @@ tags:
 
 - 一个 DiT block 的主干是 GEMM + Attention；真正拖慢 e2e 的，经常是 AdaLN / QK-Norm / RoPE / 残差门控这类 **短 elementwise 链**：每次一次 launch、一次 HBM 来回。层数 \(L\)、步数 \(N_{\mathrm{step}}\) 把这笔开销乘上去。
 - 融合有两类：**折 launch**（把 4～7 个 pointwise 合成 1 个）；**删中间 Tensor**（不物化 `[tokens, 4D]` 激活、不物化 temb `chunk` 出来的 GB 级 strided 切片）。后者往往比「再抠 5% GEMM」更明显。
-- 接线分三层：公开 `register_kernel` 只覆盖少数 op；模型真正走的是 `layernorm.py` / `elementwise.py` 的共享 helper；**非 bit-exact** 的融合走 denoise 阶段的 site 协议，只在 `quality="high"` 挂上。
+- 融合路径分为参考等价路径和 quality-gated 路径；后者只在请求的数值合同允许时启用。实现名称与文件位置放在附录。
 - 默认 `quality="lossless"` 保持参考链 bit-for-bit。评价融合必须关 [Feature Cache](feature_cache.md)：cache 跳过的 block 上，融合收益同时消失。
 
 ## 1. 这条轴在优化什么
@@ -36,17 +36,9 @@ y = x + g\odot F(\hat x)
 
 稀疏 Attention 算法不在本篇展开 → [overview 稀疏边界](overview.md#4-与稀疏-attention-的边界)。Attention **backend** 选择见 `attention_backends.mdx`。
 
-## 2. 三条接入层
+## 2. 融合的适用域
 
-| 层 | 作用 | pin 证据 |
-|----|------|----------|
-| Registry | `KernelSpec` 注册 `diffusion.*`，`get_kernel` 按后端取实现 | `kernels/ops/diffusion/__init__.py` |
-| 共享 runtime | 模型调 `apply_qk_norm_rope`、`LayerNormScaleShift`、`fuse_scale_shift_kernel` 等，内部再选 Triton / JIT / sgl_kernel | `runtime/layers/layernorm.py`、`elementwise.py`、`fused_scale_shift_gate.py` |
-| Quality site | `mark_*_site` 默认关；denoise 在 batch 边界 `mount` / `unmount` | `fused_linear_gelu.py`、`fused_ln_modulate.py`、`fused_gate_rmsnorm.py`；`pipelines_core/stages/denoising.py` `_maybe_toggle_quality_fusions` |
-
-公开 `__all__` 只有 `apply_group_norm_silu`、`residual_gate_add`、`fused_inplace_qknorm_rope`。同目录还有 `triton/`、`cutedsl/`、`flydsl/`、`ltx2_qknorm_split_rope.py`、`usp_relayout.py` 等，由模型或 helper **直接 import**，所以「registry 条目少」不等于「融合少」。
-
-现网文档称 registry 上约 45 个 op、51 套实现（含 KDA / JIT / Triton / CuTe-DSL / FlyDSL / AOT）。**本 pin 的 `__init__.py` 只注册了 5 个 `diffusion.*` op**；其余以模块函数存在。读本仓笔记以 pin 为准，现网库存当前瞻索引。
+令 \(\mathcal D\) 表示输入的 shape、dtype、layout 与设备组成的域。一条融合仅在 \(z\in\mathcal D\) 时替换参考计算。若其满足逐元素相同的舍入序列，可作为默认路径；若只满足误差界 \(\lVert\tilde f(z)-f(z)\rVert\le\epsilon\)，则只能在明确质量等级下启用。模型、共享算子与运行时选择层共同完成这个域判定；文件级接线见附录。
 
 ## 3. 数值契约：lossless 与 high
 

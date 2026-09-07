@@ -12,7 +12,7 @@ tags:
 
 ## 抓住重点
 
-- 官方说 **output-preserving**，不承诺 bit-exact：换 kernel / GPU / 精度路径仍可有微小数值差。决策边界是优化是否 **故意** 用质量换速度。
+- 设基线输出为 \(y\)，优化输出为 \(\tilde y\)，正确性验收是同时报告路径、性能和距离 \(d(y,\tilde y)\)。output-preserving 表示算法映射不变，不代表 bit-exact。
 - 质量敏感路径：[Cache](feature_cache.md)、[Progressive](progressive_resolution.md)、[Quant](quantization.md)、近似 Attention backend。
 - 评测若日志出现 Diffusers fallback，不能用来证明 Native Backend 速度。
 - 下表是本专题可点击的互斥导航；原因与开关细节在分篇。
@@ -21,8 +21,8 @@ tags:
 
 | 说法 | 含义 |
 |------|------|
-| output-preserving | 不故意改去噪语义；仍可能有实现级数值差 |
-| quality-tradeoff | 故意改路径 / 数值 / 分辨率日程，必须过质量门 |
+| output-preserving | \(\tilde f_\theta=f_\theta\) 的语义保持，差异来自实现舍入或调度 |
+| quality-tradeoff | \(\tilde f_\theta\ne f_\theta\) 或改变分辨率/精度，必须验证 \(d(y,\tilde y)\le\varepsilon\) |
 
 官方原文：pin 内 `performance-optimization.mdx`。H3 侧 Fast Path / admission 状态机见 [Denoise Loop](../minimax_h3/08_denoise_loop_state_machine.md)。
 
@@ -30,7 +30,7 @@ tags:
 
 | 约束 | 行为 | 证据入口 | 分篇 |
 |------|------|----------|------|
-| Cache-DiT ⊥ DiT layerwise | ValueError（reuse released weights） | `server_args.py` layerwise conflicts | [Offload](memory_offload.md#4-组合约束必须先读) |
+| Cache-DiT ⊥ DiT layerwise | ValueError（reuse released weights） | `server_args.py` layerwise conflicts | [Offload](memory_offload.md#5-组合约束) |
 | Cache-DiT ⊥ FSDP | 显式开报错，否则自动关 FSDP | 同上 | [Offload](memory_offload.md) |
 | DiT layerwise ⊥ FSDP | 自动关 FSDP | 同上 | [Offload](memory_offload.md) |
 | TeaCache ⊥ Spectrum | ValueError | `sampling_params.py` | [Feature Cache](feature_cache.md#3-组合约束) |
@@ -40,7 +40,7 @@ tags:
 | BCG × request-gated DiT 融合 | 现网文档禁止（warmup 捕 lossless）；pin 未见硬拒绝 | crawl `fused_kernels` | [Kernels §9](kernels_fusion.md#9-与-graph--cache--quant--parallel) |
 | Progressive ⊥ Ulysses/Ring SP | RuntimeError | `progressive_resolution.mdx` Limitations | [Progressive](progressive_resolution.md#3-组合约束) |
 | Progressive ⊥ torch.compile | 文档声明不兼容 | 同上 | [Progressive](progressive_resolution.md) |
-| Progressive + 整模 DiT CPU offload | 建议关 offload | 同上 Tip | [Progressive](progressive_resolution.md#2-收益与条件) |
+| Progressive + 整模 DiT CPU offload | 建议关 offload | 同上 Tip | [Progressive](progressive_resolution.md#3-组合约束) |
 | 量化适配器 × offload | 可能自动禁用不兼容模式 | loader adapters | [Quant](quantization.md) · [Offload](memory_offload.md) |
 | KV-Gather ⊥ Ulysses/Ring 同槽 | 争 SP 槽位 | `server_args` / `parallelism.mdx` | [Parallelism](parallelism.md) |
 

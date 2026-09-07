@@ -2,91 +2,46 @@
 tags:
   - Diffusion Model
   - Video Generation
-  - LLM Inference
   - CUDA
 ---
 # DiT 推理优化：Parallelism
-
-**文档**: `refs/codes/sglang/docs/docs/sglang-diffusion/parallelism.mdx`  
-**相关**: `ring_sp_performance.mdx`、`encoder_parallel.mdx`
 
 返回：[专题总览](overview.md)
 
 ## 抓住重点
 
-- 多卡公式：`num_gpus = cfg × tp × sp`，其中 `sp = ulysses × ring`（或用 KV-Gather 占同一 SP 槽位）。
-- **Ring 与 KV-Gather 互斥争槽**：都回答「本地 Q 行如何看见远程 K/V」。
-- 拓扑：Ulysses 吃 NVLink 连续 rank；Ring 邻居可跨慢互联。错映射仍正确但变慢。
-- Encoder 并行是另一轴，见 [Encoder & VAE](encoder_vae.md)；与 Progressive 的 SP 互斥见 [Progressive](progressive_resolution.md#3-组合约束)。
+设 CFG、张量并行和序列并行度分别为 \(g,p,s\)，则参与一次 DiT step 的设备数为 \(N=gps\)。并行化只在通信代价低于被分摊的计算时加速；它保持去噪数学不变。序列并行内部有两种互斥的数据交换组织：重排序列与 head 的 Ulysses，或保留本地 query、交换 K/V 的 Ring/KV-Gather。
 
-## 1. 合成公式
+## 1. 三种切分的数学对象
 
-```text
-num_gpus = cfg_parallel_degree × tp_size × sp_degree
-sp_degree = ulysses_degree × ring_degree   # 或由 kv_gather_degree 占用 SP 槽
-```
+设输入 \(X\in\mathbb R^{S\times D}\)，头数为 \(H\)，每头维度为 \(d=D/H\)。CFG 将条件/无条件两次函数评价分配给不同 rank，最后计算 \(y=y_u+w(y_c-y_u)\)。TP 将权重行列切分并在 GEMM 后 collective，约束是 \(H\bmod p=0\)。SP 将 token 轴切成 \(s\) 份，使每个 rank 只持有 \(S/s\) 行。
 
-| 策略 | 切什么 | 通信 | 标志 |
-|------|--------|------|------|
-| CFG parallel | guidance 分支 | 每步 combine | `--cfg-parallel-size` |
-| TP | 权重与头 | 每 block all-reduce | `--tp-size` |
-| Ulysses SP | 序列 ↔ 头 | 两次 all-to-all | `--ulysses-degree` |
-| Ring SP | 序列行 | 邻居 K/V 旋转 + 计算重叠 | `--ring-degree` |
-| KV-Gather CP | 序列行 | 一次 K/V all-gather | `--kv-gather-degree` |
-| DP | 请求 | 副本间无 | `--dp-size` |
+Ulysses 通过 all-to-all 把 token 份重排为完整的本地 heads；Ring 保持本地 heads，轮换 K/V 并在线合并 softmax。KV-Gather 直接执行
+\[
+K=\operatorname{AllGather}(K_r),\quad V=\operatorname{AllGather}(V_r),\quad O_r=\operatorname{Attn}(Q_r,K,V),
+\]
+与 Ring/Ulysses 争用同一 SP 维度，当前配置禁止叠加。
 
-默认行为（`server_args`）：`sp_degree=2` 时常自动落到 `kv_gather_degree=2`；更高 SP 默认偏向 Ulysses。`kv_gather_degree > 1` 时不与 Ulysses/Ring 组合。
+## 2. 形状与拓扑约束
 
-## 2. 形状与约束
+必须满足 \(H/p\in\mathbb N\)，并使 packed token 数能被 \(s\) 整除；Ulysses 还要求本地 head 数能被其 head 重排度整除。Ring 需要 attention backend 支持邻居 K/V 旋转。Ulysses 的 all-to-all 通常应映射到连续 NVLink rank，Ring 的邻居序列应贴合高速链路；错误映射保持正确性但增加通信时间。
 
-Ulysses 输入 all-to-all 后，Ring 在「同一组头、不同行」上做 online softmax merge。关键整除：
+## 3. 成本模型与选择
 
-- `num_heads % tp == 0`  
-- `(num_heads / tp) % ulysses == 0`（TP **本地**头数）  
-- 序列（含模型 packing）能被 `ulysses × ring` 整除  
-- Ring 需要 backend 声明 `supports_ring_rotation()`（如 fa、sage_attn）
+令单卡计算时间随切分为 \(C(N)\)，通信时间为 \(A(N)\)，则
+\[
+\tau(N)=C(N)+A(N),\qquad \mathrm{speedup}=\tau(1)/\tau(N).
+\]
+当 \(A(N)\) 接近 \(C(1)-C(N)\) 时继续扩卡没有收益。长序列优先测 Ulysses；跨节点且 all-to-all 昂贵时测 Ring 或 KV-Gather；TP 需确认每层 GEMM 足以覆盖 collective。Encoder 并行是独立轴，见 [Encoder & VAE](encoder_vae.md)。
 
-拓扑建议（官方并行文档）：
+## 4. 组合约束
 
-- Ulysses 组：连续 rank，吃满 NVLink bisection  
-- Ring 组：跨步 rank，邻居跳走慢互联  
+Progressive Resolution 改变每步 token 数，当前与 Ulysses/Ring SP 互斥；Cache-DiT 在 SP/TP 下必须对相似度判据做组内归约，否则不同 rank 会进入不同分支。详见 [Feature Cache](feature_cache.md) 与 [Progressive](progressive_resolution.md)。
 
-稀疏 Attention 与 USP/Ring 的已知限制见并行文档与稀疏专题；本篇不展开算法 → [overview 稀疏边界](overview.md#4-与稀疏-attention-的边界)。
+## 附录：实现证据
 
-## 3. 实践选择
-
-| 目标 | 优先尝试 |
-|------|----------|
-| True-CFG | CFG Parallel |
-| 节点内长序列 | Ulysses |
-| 跨节点扩展 | Ring（或测 KV-Gather） |
-| DiT 上 TP | 实测；不少模型易被通信拖住 |
-| 编码阶段闲置 | [Encoder Parallel](encoder_vae.md) |
-
-H3 上 Ulysses/Ring 与 late gather 数据流：[DiT Runtime 与 Collectives](../minimax_h3/07_dit_runtime_and_collectives.md)。
-
-Cache-DiT YAML 也可声明 1D/2D/3D parallelism（`cache_dit.mdx`）；SGLang 集成下 similarity 需组归约 → [Feature Cache](feature_cache.md#2-cache-dit-三件套)。
-
-## 3.1 Attention 内部的通信顺序
-
-Ulysses 先把序列维和 head 维做 all-to-all，使每个 rank 获得完整的本地 head；Ring 保持本地 head，轮转 K/V 并在线合并 softmax 统计量。KV-Gather 则让每个 rank 保留本地 query，通过一次 K/V all-gather 获取远端上下文。三者的张量布局和 collective 次序不同，`kv_gather_degree` 与 Ulysses/Ring 不能占用同一 SP 槽位。
-
-性能取决于通信链路：Ulysses 通常要求连续 NVLink rank，Ring 的邻居映射更适合跨节点。整除条件或 backend 能力不满足时，server 参数校验应失败或明确降级，不能把 eager fallback 当成并行加速。
-
-## 4. 源码 / 文档锚点
-
-| 主题 | 路径 |
-|------|------|
-| 合成公式与拓扑 | `docs/.../parallelism.mdx` |
-| Ring 性能专题 | `docs/.../ring_sp_performance.mdx` |
-| SP/KV-Gather 校验 | `server_args.py` `_validate_parallelism` / kv_gather 自动设定 |
-| Encoder 并行 | `docs/.../encoder_parallel.mdx` |
+本页依据 SGLang `parallelism.mdx`、`ring_sp_performance.mdx`、`encoder_parallel.mdx` 及 `server_args` 的并行校验；H3 的 packed QKV 与 collective 次序见 [DiT Runtime](../minimax_h3/07_dit_runtime_and_collectives.md)。
 
 ## 相关阅读
 
-- [专题总览](overview.md) · [Encoder & VAE](encoder_vae.md) · [Feature Cache](feature_cache.md) · [Graph Runtime](graph_runtime.md) · [Correctness](correctness.md)
-
-## 附录：仍可加深
-
-- Packed QKV、2 卡 IPC All-to-All、comm-compute overlap 的实现文件级拆解  
-- Encoder Parallel Folding 与 SP Group 复用细节（见 Encoder 篇附录）
+- [专题总览](overview.md) · [Feature Cache](feature_cache.md) · [Graph Runtime](graph_runtime.md) · [Correctness](correctness.md)
