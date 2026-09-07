@@ -95,6 +95,12 @@ Progressive 文档建议 `--dit-cpu-offload false`，否则每步固定 PCIe 成
 - **优先组件 offload**：Encoder/VAE 只在头尾用，DiT 要满速 → 也见 [Encoder & VAE](encoder_vae.md)。  
 - **慎开**：通信已是瓶颈的多卡切分；计划开 Cache-DiT；H2D 藏不住的小图像模型。
 
+## 5.1 一次 denoise step 的数据流
+
+SGLang 的 layerwise 路径把 block 权重整理到 pinned host buffer，forward hook 在当前层开始前发起下一层 H2D，在当前层结束后异步释放上一层。`prefetch_size` 决定前瞻窗口，`resident_layers` 把少量前缀层固定在 GPU 上；首次 denoise forward 才启用驻留集合，避免模型加载阶段与 Encoder/VAE 抢显存。实现见 `runtime/managers/memory_managers/layerwise_offload.py`。
+
+因此它优化的是峰值显存和传输重叠，计算量保持不变。单层计算时间不足以覆盖 H2D 时，copy stream 会成为新的串行边界；应以 Nsight 或 profile 结果决定窗口大小。
+
 ## 6. 源码锚点
 
 | 主题 | 路径 |

@@ -52,6 +52,10 @@ Cache-DiT 并行 YAML 也可把 `vae` / `text_encoder` 列入 `extra_parallel_mo
 - Progressive 改的是 DiT latent 分辨率日程，不替代 VAE 优化 → [Progressive](progressive_resolution.md)。  
 - DiT 侧 SP/TP：[Parallelism](parallelism.md)。
 
+## 3.1 为什么 DiT 加速后要重算占比
+
+Encoder 和 VAE 通常各执行一次，而 DiT 执行 `N_step` 次。DiT 通过 cache、progressive 或 kernel fusion 缩短后，固定的一次性编码/解码时间在 e2e 中占比上升。`fold` 复用闲置 DiT ranks 做张量切分，`dp` 复用它们处理 batch，`replicate` 以重复计算换取简单和 bitwise-identical 行为；这些策略优化的是尾部阶段的 GPU 利用率，不改变 DiT 的 denoise 算法。
+
 ## 4. 源码 / 文档锚点
 
 | 主题 | 路径 |

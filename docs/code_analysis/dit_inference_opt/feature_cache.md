@@ -86,6 +86,12 @@ Wan2.2 注释：TeaCache 系数未校准前可能 silent no-op，可改用 Cache
 
 官方建议：先有 lossless 风格基线与验收标准，再开 cache → [Correctness](correctness.md#4-建议验收清单)。
 
+## 4.1 从判定到复用
+
+每个 denoise step 先计算少量 anchor block，得到 residual 或 hidden 的相似度，再由 cache context 决定本步完整计算、复用中间 block，或用 TaylorSeer 预测特征。SCM 位于 step 级别：mask 为 1 的 step 强制计算，为 0 的 step 进入静态/动态 cache 策略。并行运行时，相似度判定必须在 SP/TP 组内归约，否则不同 rank 会走不同分支并破坏 collective 对齐；SGLang 在 `cache_dit_integration.py` 对该判定做了 patch。
+
+缓存减少的是 block 计算次数，因而会同步减少这些 block 上的 fused kernel 收益；cache 开启前后的 profile 不应直接比较单个 kernel 占比。
+
 ## 5. 源码锚点
 
 | 主题 | 路径 |

@@ -67,6 +67,12 @@ H3 上 Ulysses/Ring 与 late gather 数据流：[DiT Runtime 与 Collectives](..
 
 Cache-DiT YAML 也可声明 1D/2D/3D parallelism（`cache_dit.mdx`）；SGLang 集成下 similarity 需组归约 → [Feature Cache](feature_cache.md#2-cache-dit-三件套)。
 
+## 3.1 Attention 内部的通信顺序
+
+Ulysses 先把序列维和 head 维做 all-to-all，使每个 rank 获得完整的本地 head；Ring 保持本地 head，轮转 K/V 并在线合并 softmax 统计量。KV-Gather 则让每个 rank 保留本地 query，通过一次 K/V all-gather 获取远端上下文。三者的张量布局和 collective 次序不同，`kv_gather_degree` 与 Ulysses/Ring 不能占用同一 SP 槽位。
+
+性能取决于通信链路：Ulysses 通常要求连续 NVLink rank，Ring 的邻居映射更适合跨节点。整除条件或 backend 能力不满足时，server 参数校验应失败或明确降级，不能把 eager fallback 当成并行加速。
+
 ## 4. 源码 / 文档锚点
 
 | 主题 | 路径 |

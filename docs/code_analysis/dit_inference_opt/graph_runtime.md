@@ -75,6 +75,10 @@ CLI help（`--enable-breakable-cuda-graph`）原文要点：
 
 Layerwise offload 改变权重指针与异步拷贝，与 graph 捕获假设冲突风险高 → 实务上避免与 [Offload](memory_offload.md) 的 DiT layerwise 同开。
 
+## 4.1 Signature 与回退
+
+BCG 的 key 由 kwargs 中 Tensor 的 shape、dtype、device 等属性组成；同一分辨率但 prompt 长度不同也可能 miss。因此 text bucketing 先把长度 pad 到固定 bucket，warmup 必须覆盖实际服务的分辨率和 bucket。miss 时 runner 走 eager，服务不会在请求路径自动 capture 新图。评测需要记录 capture/replay 命中率，否则“开启 BCG”可能只代表增加了 warmup 而没有减少 launch。
+
 H3 侧断点为何落在 Attention、以及 text-only bucketing：[效率附录](../minimax_h3/06_efficiency_appendix.md)、[DiT Runtime](../minimax_h3/07_dit_runtime_and_collectives.md)。
 
 ## 5. 源码锚点

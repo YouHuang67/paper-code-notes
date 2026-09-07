@@ -61,6 +61,10 @@ Z-Image 特殊：5-D latent `[B,C,1,H,W]` 需 squeeze/unsqueeze；阶段切换�
 
 与少步蒸馏正交：Progressive 改 **空间分辨率日程**；蒸馏改 \(N_{\mathrm{step}}\)。少步模型上再叠 progressive 的收益曲线需单独测。验收 → [Correctness](correctness.md#4-建议验收清单)。
 
+## 3.1 阶段切换的状态
+
+实现位于 `stages/progressive_resolution/`：denoise stage 根据当前噪声水平和 `progressive_delta` 选择粗分辨率，使用 DCT 频域上采样恢复 latent，再在 `dct_rewind` 模式同步 scheduler 状态。切换点会刷新与分辨率相关的 RoPE 或 cache context；Z-Image 还需处理 `[B,C,1,H,W]` latent 的 squeeze/unsqueeze。这里减少的是早期 token 数和 Attention 二次复杂度，Encoder/VAE 与最终输出尺寸保持原协议。
+
 ## 4. 源码 / 文档锚点
 
 | 主题 | 路径 |

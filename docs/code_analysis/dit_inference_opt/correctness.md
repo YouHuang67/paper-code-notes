@@ -68,6 +68,14 @@ H3：[Denoise Loop 状态机](../minimax_h3/08_denoise_loop_state_machine.md)。
 4. 把互斥与自动降级写进报告（日志里「automatically disabling …」也算生效结果）。  
 5. 排除 Diffusers fallback 污染后再比 Native 速度。
 
+建议把结果拆成三层记录：
+
+1. **路径层**：实际启用的 backend、是否发生自动 disable、BCG capture/replay 命中率。
+2. **性能层**：Encoder、每步 DiT、VAE 的耗时，GPU 峰值显存与 H2D/D2H 流量。
+3. **质量层**：固定 seed 下的像素/latent 差异，以及适合图像或视频的感知指标。
+
+这样可以区分“配置未生效”“配置生效但通信/搬运占主导”和“速度提升伴随质量变化”三种结果。
+
 ## 相关阅读
 
 - [专题总览](overview.md)（阅读路径与杠杆分类）  

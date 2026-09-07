@@ -53,6 +53,12 @@ tags:
 
 `server_args._adjust_quant_config` 当前注释写明：handles only nunchaku for now（解析 `nunchaku_config` → `transformer_weights_path`）。
 
+## 3.1 端到端成本模型
+
+量化收益来自低 bit GEMM 的算力和权重带宽下降；损失项来自 scale 读取、反量化、layout 转换以及量化张量与 BF16 激活之间的来回搬运。若一个 block 的输入在量化前后被重复 materialize，GEMM 节省的时间可能被这些转换抵消。因而应同时 profile GEMM、quant/dequant、cat/transpose 和显存峰值，并用 [Kernels & Fusion](kernels_fusion.md) 中的 producer fusion 减少中间 Tensor。
+
+加载阶段还决定运行时行为：预量化 transformer 通常通过 `transformer-path` 或 raw `transformer-weights-path` 接入，online quantization 则由 `quantization` 选择。两类路径的 config、offload 兼容性和质量门禁不同，不能只凭文件名判断量化格式。
+
 ## 4. 源码 / 文档锚点
 
 | 主题 | 路径 |
