@@ -15,11 +15,11 @@ tags:
 - 端到端时间 \(\tau=\tau_{\rm enc}+T\tau_{\rm dit}+\tau_{\rm vae}\)。当优化降低 \(\tau_{\rm dit}\) 或 \(T\) 时，Encoder/VAE 的相对占比严格上升。
 - Encoder 每请求通常一次；编码时 DiT rank 闲置，可将其用于权重切分或数据并行。
 - Encoder/VAE 天然适合 **组件级 offload**：头尾 onload，中间把显存让给 DiT → [Memory Offload](memory_offload.md)。
-- `fold` / `replicate` 相对单卡编码是 bitwise-identical（官方声明）；`dp` 用于吞吐，可能引入帧差。
+- `fold` / `replicate` 相对单卡编码是 bitwise-identical（官方声明）；`dp` 的目标是吞吐，质量与确定性须按实际 batch 切分验收。
 
 ## 1. Encoder Parallel
 
-设 encoder 工作量为 \(C_e\)，并行度为 \(n\)。fold 将权重切分，理想时间约为 \(C_e/n+A_e(n)\)，其中 \(A_e\) 是 collective；dp 将 batch \(B\) 切成 \(B/n\)；replicate 令每张卡保存完整权重并保持单样本计算路径。三者分别优化单请求宽模型、批吞吐和确定性路径。
+设 \(C_e\) 是单卡 encoder 计算时间、\(n\) 是并行度。fold 将权重切分，理想时间约为 \(C_e/n+A_e(n)\)，其中 \(A_e(n)\) 是 collective 与同步时间；dp 将 batch \(B\) 切成约 \(B/n\)；replicate 令每张卡保存完整权重并保持单样本计算路径。三者分别优化单请求宽模型、批吞吐和确定性路径。
 
 ```text
 --encoder-parallel {auto,fold,dp,replicate}
@@ -36,7 +36,11 @@ tags:
 
 ## 2. VAE
 
-高分辨率图像与视频 Decode 的显存与时延问题，常见工程手段（社区/实现侧；本篇以「组件 offload + 并行索引」为主）：
+设输出 latent 含 \(S=H W\) 个空间 token，VAE decoder 的局部卷积/上采样成本通常近似 \(O(S)\)，峰值激活近似 \(O(SC)\)，其中 \(C\) 为通道数。它不同于 DiT Attention 的 \(O(S^2)\) 项：分辨率提升后仍会成为稳定的端到端尾部，但不会以同一二次律增长。
+
+可将空间域划分为 \(n\) 个 tile。每个 tile 需要 halo 宽度 \(r\) 才能保持边界卷积等价，因此有效工作量近似 \(n(S/n+O(r\sqrt{S/n}))\)。tile 越细，单卡峰值越低，halo 交换和边界冗余越高。由此选择 height sharding、tiled decode 或并行 decode 的依据是 \(S,C,r\) 与链路带宽，而不是仅按模型名选开关。
+
+当前资料中的工程入口包括：
 
 - Height sharding / halo exchange  
 - Parallel tiled decode  
@@ -48,9 +52,9 @@ Cache-DiT 并行 YAML 也可把 `vae` / `text_encoder` 列入 `extra_parallel_mo
 
 ## 3. 与 Offload / Progressive / Parallel
 
-- 组件级 CPU offload：`text_encoder_cpu_offload` / `image_encoder_cpu_offload` / `vae_cpu_offload`；也可进 `--layerwise-offload-components` 的 default 组 → [Offload](memory_offload.md)。  
-- Progressive 改的是 DiT latent 分辨率日程，不替代 VAE 优化 → [Progressive](progressive_resolution.md)。  
-- DiT 侧 SP/TP：[Parallelism](parallelism.md)。
+- Encoder/VAE 只在请求头尾活跃，适合组件级驻留调度；显存约束与搬运隐藏条件见 [Offload](memory_offload.md)。
+- Progressive 改的是 DiT 的 latent 分辨率日程，最终 VAE 仍需在目标分辨率解码，故不替代 VAE 优化，见 [Progressive](progressive_resolution.md)。
+- DiT 的 SP/TP 通信模型见 [Parallelism](parallelism.md)；Encoder parallel 复用闲置 rank，但不改变该模型。
 
 ## 3.1 为什么 DiT 加速后要重算占比
 

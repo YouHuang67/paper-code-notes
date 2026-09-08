@@ -37,7 +37,7 @@ tags:
 | BCG 需 warmup resolutions | ValueError | `_validate_breakable_cuda_graph` | [Graph](graph_runtime.md#2-启用条件) |
 | BCG 仅白名单模型 | 自动 disable + warning | `_adjust_breakable_cuda_graph_support` | [Graph](graph_runtime.md) |
 | BCG ⊥ torch.compile / Cache-DiT | CLI help：互斥，BCG 优先 | `--enable-breakable-cuda-graph` help | [Graph](graph_runtime.md#4-与-compile--cache--offload) |
-| BCG × request-gated DiT 融合 | 现网文档禁止（warmup 捕 lossless）；pin 未见硬拒绝 | crawl `fused_kernels` | [Kernels §9](kernels_fusion.md#9-与-graph--cache--quant--parallel) |
+| BCG × request-gated DiT 融合 | 现网文档禁止（warmup 捕 lossless）；pin 未见硬拒绝 | crawl `fused_kernels` | [Kernels §8](kernels_fusion.md#8-与-graph--cache--quant--parallel) |
 | Progressive ⊥ Ulysses/Ring SP | RuntimeError | `progressive_resolution.mdx` Limitations | [Progressive](progressive_resolution.md#3-组合约束) |
 | Progressive ⊥ torch.compile | 文档声明不兼容 | 同上 | [Progressive](progressive_resolution.md) |
 | Progressive + 整模 DiT CPU offload | 建议关 offload | 同上 Tip | [Progressive](progressive_resolution.md#3-组合约束) |

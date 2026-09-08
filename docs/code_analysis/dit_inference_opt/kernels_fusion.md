@@ -62,101 +62,85 @@ H3 对 `quality="high"` 另有 admission 约束，见 [Denoise Loop](../minimax_
 
 ### 4.1 通用 scale / shift
 
-`triton/scale_shift.py` 的 `fuse_scale_shift_kernel` 实现 \(x\odot(1+s)+b\)。要求 `x` CUDA 且 contiguous；`s/b` 支持多种 broadcast。NPU 走 `npu_fallback`。
+对 \(x\in\mathbb R^{B\times S\times D}\)、调制向量 \(s,b\in\mathbb R^{B\times 1\times D}\)，融合目标是一次遍历完成
+\[
+z_{bsd}=x_{bsd}(1+s_{bd})+b_{bd}.
+\]
+适用域要求布局可线性访问且 broadcast 规则明确；否则回退参考实现。
 
-`LayerNormScaleShift` / `RMSNormScaleShift`（`layernorm.py`）把 **Norm + 上式** 收成一个 CustomOp。CuTe-DSL 路径 `fused_norm_scale_shift` / `fused_scale_residual_norm_scale_shift` 还要求 \(D\bmod 256=0\) 且 \(D\le 8192\)；不满足则 warning 后回退 PyTorch。
+若 \(\mu,\sigma\) 是按 token 计算的均值和标准差，则 Norm+调制可写为
+\[
+z=\frac{x-\mu(x)}{\sqrt{\sigma^2(x)+\epsilon}}(1+s)+b.
+\]
+融合把归一化后的中间张量留在寄存器/共享内存中，减少一次 HBM 写回；维度对齐或设备条件不满足时保持分步实现。
 
-`ScaleResidual*` 再往前折一步：先做 \(x+g\odot u\)，再 Norm，再 scale/shift。这是「残差门控 + AdaLN」在同一段 fused dataflow 里。
+残差门控进一步计算 \(z=\operatorname{Norm}(x+g\odot u)(1+s)+b\)，把残差、归一化和调制串成单一数据流。
 
 ### 4.2 Qwen-Image：select-0/1 门控
 
-`fused_scale_shift_gate.py`：`FusedLayerNormScaleShiftGateSelect01` 用 Triton 一次完成 LN + 两套 \((s,b,g)\) 按 boolean index 选择。native 回退是 `torch.where` 选参数再 `F.layer_norm`。对应 Qwen 双流 / 双调制表。
+双流模型可令选择变量 \(q\in\{0,1\}\)，从两套参数中选取 \((s_q,b_q,g_q)\)，再执行同一 AdaLN 公式；融合避免先生成两套候选张量再用 \(q\) 选择。选择维度或 layout 不满足时回退。
 
-### 4.3 LTX-2：`residual + gate * update`
+### 4.3 LTX-2：残差门控更新
 
-`residual_gate_add.py` JIT CUDA，bit-exact 目标。约束：同 dtype（fp16/bf16/fp32）、同设备、contiguous、`update.shape == residual.shape`；`gate` 可全 shape 或行广播。`ltx_2.py` 的 `_ltx2_residual_gate_add` 在 runtime 异常时 **进程级关掉** fast path，避免反复失败。
+LTX 类更新的数学形式是 \(y=x+g\odot u\)。要保持 bit-exact，\(x,u,g\) 必须具有兼容 shape、dtype、设备和广播规则；运行时失败应回退并记录，不能静默改变公式。
 
 ### 4.4 MiniMax-H3：按行 index 的调制
 
-H3 packed 序列每行有 `combined_indices`，不能先 `index_select` 再 pointwise。`triton/indexed_modulation.py`：
+H3 packed 序列每行都有调制索引；先取出调制表再做 pointwise 会额外物化中间量。
 
-- `indexed_scale_shift_bf16_`：按行取 \((s,b)\)，并在 Triton 里 **显式复刻 eager BF16 rounding**（`_round_bf16_to_fp32`），再算 \((x\cdot(1+s))+b\)。  
-- `indexed_gate_bf16_`：按行取 gate，做门控残差。
+设 packed 序列第 \(i\) 行的调制索引为 \(j_i\)，则 \(z_i=x_i(1+s_{j_i})+b_{j_i}\)。若参考路径在中间操作执行 BF16 舍入 \(R_{bf16}\)，融合必须逐项复现同一舍入顺序；这属于数值合同而非可选优化。
 
 这不是「数学上等价即可」：换一种收缩会破坏 H3 的 BF16 边界。业务含义见 [H3 效率主线 §5.2](../minimax_h3/05_efficiency_in_sglang.md)。
 
 ### 4.5 Quality-gated：折 LN 与 Ideogram 门控 RMSNorm
 
-`fused_ln_modulate.py`：用 `F.layer_norm(..., weight=1+s, bias=b)` 代替「无 affine 的 LN + 单独 modulate」。`1+s` 仍按 eager 对调制行 rounding，但 scale/shift 作用在未 round 的归一化值上，故 **非 bit-exact**。仅 `x.shape[0]==1` 且调制为 `[1,D]` 时允许。
+把无 affine 的 LN 与调制合并为 affine LN 等价于令 \(\gamma=1+s,\beta=b\)。由于 \(\gamma\) 作用在未独立舍入的归一化值上，该变换通常只有 \(\lVert\tilde f-f\rVert\le\epsilon\) 意义，必须归入 `quality=high`，并限制到已审计的 shape。
 
-`fused_gate_rmsnorm.py`：Ideogram-4 每 block 四条 RMSNorm 调制/门控链，复用 Z-Image `zimage_native_norm`。Z-Image 自身参考就是 native bf16，可无条件走 Triton；Ideogram 参考是 `F.rms_norm`（fp32 统计），融合后统计经 bf16，故只在 `quality="high"` 挂上。静态限制：bf16 权重、\(D\le 8192\)、Triton 可用。
+RMSNorm 门控链可写为 \(y=x+\tanh(g)\odot \operatorname{RMSNorm}(x)\odot s\)。若参考统计在 FP32、融合统计在 BF16，误差来源已超出 bit-exact 合同，只能在质量门控路径启用。
 
 ## 5. QK-Norm 与 RoPE
 
 Attention 前处理的典型 eager 链：Q/K RMSNorm（可能 per-head）→ 写回 → RoPE 再读。融合目标是 **原地、一次过**。
 
-`apply_qk_norm`（`layernorm.py`）：CUDA、inplace、`q_eps==k_eps`、fp16/bf16、contiguous、`head_dim ∈ {64,128,256,512,1024}` 时走 `fused_inplace_qknorm`（`kernels/ops/layernorm/norm.py`）；否则各做一次 RMSNorm。调用面包括 flux / flux_2 / qwen_image / zimage / wanvideo / ltx_2 / hunyuanvideo。
+对每个 head 的 \(q,k\in\mathbb R^d\)，QK-Norm+RoPE 计算
+\[
+q'=\operatorname{RoPE}\left(q/\sqrt{\operatorname{mean}(q^2)+\epsilon}\right),\quad
+k'=\operatorname{RoPE}\left(k/\sqrt{\operatorname{mean}(k^2)+\epsilon}\right).
+\]
+原地融合要求 q/k layout、dtype、head_dim 和两侧 epsilon 兼容；否则拆成参考 RMSNorm 与 RoPE。
 
-`apply_qk_norm_rope`：再叠 RoPE。默认 `SGLANG_ENABLE_FUSED_QKNORM_ROPE=1`。额外约束：4D 同 shape 的 q/k、`head_dim ∈ {64,128,256}`、`rope_dim` 整除 per-thread 宽度、**不在 `torch.compile` 区域**。失败则 `apply_qk_norm` + FlashInfer inplace RoPE。JIT 实现见 `qknorm_rope.py`（`diffusion/qknorm_rope.cuh`）。
+融合 kernel 还要求 q/k 的 4D shape 一致、RoPE 子维度可整除线程布局，且不位于 `torch.compile` 捕获区；任一条件不满足即回退，保证输出路径明确。
 
-H3 直接调 `fused_inplace_qknorm_rope`：BF16、`head_dim=128`、`rope_dim=96`、NeoX、`round_norm_before_rope=True`（这是 H3 eager 数值合同的一部分）。compile 下故意拆回分开的 eager op。见 [H3 §5.1](../minimax_h3/05_efficiency_in_sglang.md)。
+H3 的已审计域为 BF16、head dimension 128、RoPE dimension 96 和 NeoX 布局，并要求先按参考路径完成 norm 的舍入再应用 RoPE；这些是数值合同的一部分。compile 下故意拆回分开的 eager op。见 [H3 §5.1](../minimax_h3/05_efficiency_in_sglang.md)。
 
-LTX-2 另有 `apply_ltx2_split_rotary_emb`（`triton/ltx2_rotary.py`）：`[B,S,H*D]` 上拆开的 cos/sin。profile 若仍是大段 split-RoPE PyTorch 链，应先查 shape/dtype 是否把这条路径打掉。
-
-单独 GPT-J 风格 RoPE：`triton/rotary.py`；Q/K 优先 FlashInfer。
+LTX-2 的另一条 RoPE 路径处理 \([B,S,H D]\) 布局上拆开的 cos/sin；profile 若仍是大段 split-RoPE PyTorch 链，应先查 shape/dtype 是否落在已审计域。单独 GPT-J 风格 RoPE 也有对应实现；Q/K 优先 FlashInfer。源码位置见附录。
 
 ## 6. GEMM epilogue 与 packed 投影
 
 ### 6.1 Linear + tanh-GELU
 
-MLP up-proj 常见 \( \mathrm{gelu}(xW^\top + b,\ \mathrm{approx=tanh}) \)。eager 会物化 `[tokens, 4D]` 再跑带宽受限的 GELU。`fused_linear_gelu_tanh` 走 `torch._addmm_activation(..., use_gelu=True)`，把 bias+GELU 吃进 cublasLt epilogue。cublasLt GELU 相对 `F.gelu(approximate="tanh")` 在 fp32 上 max abs ~5e-6，半精度下只剩 rounding-order 差。
+MLP up-proj 计算 \(y=\operatorname{GELU}_{tanh}(xW^\top+b)\)。epilogue fusion 直接在 GEMM 写回阶段计算 GELU，避免物化 \([tokens,4D]\) 中间量。它要求 bias、半精度和非量化线性层等条件满足；量化路径见 [Quantization](quantization.md)。
 
-静态拒绝：量化 linear、`skip_bias_add`、多 rank 的 `gather_output`、无 bias、非半精度。CPU offload 时权重可在 host，设备检查放在 **每次 forward**。site 标记在 flux / qwen_image / glm_image 等 FFN；`quality="high"` 才 mount。
+当线性层缺少 bias、采用量化表示、需要跨 rank 聚合或不满足半精度条件时，当前路径回退。其舍入顺序与参考 GEMM 不完全相同，故只在 `quality="high"` 的审计域启用。
 
-量化 FLUX 另有 Nunchaku `_fused_gelu_mlp`：把 `fc1 GEMM + GELU + shift + re-quant + fc2.lora_down` 收进第二段 GEMM 之前，避免独立 GELU Tensor。这是 checkpoint 路径，不受上面 cublasLt site 协议管理。见 [Quantization](quantization.md)。
+量化 MLP 还可把 GEMM、GELU、重定标和重新量化串联，避免在两次 GEMM 间生成高精度中间量；其适用域由 checkpoint 家族决定，见 [Quantization](quantization.md)。
 
 ### 6.2 Packed QKV：少一次全局写
 
-NVFP4 / Nunchaku FLUX：磁盘上 QKV packed，runtime 用 `MergedColumnParallelLinear`（`to_qkv` / `to_added_qkv`），而不是三次独立投影再 `cat`。SANA self-attn 同样 `to_qkv`；cross-attn 用 `to_kv`（K/V 共享步不变的 encoder 状态，Q 仍单独）。profile 若出现拆开的 `to_q/to_k/to_v`，先当 **已有 packed 路径没挂上**，不要先写新 GEMM fusion。
+若 QKV 权重已按列打包，投影可写为一次 \([Q,K,V]=XW_{qkv}^\top\)，随后按视图切分；相比三次 GEMM 加 concat，它减少全局写和布局转换。Cross-Attention 中 encoder 的 K/V 可复用，Q 仍单独投影。是否能采用取决于权重布局与并行切分，见 [Parallelism](parallelism.md)。
 
 ## 7. 删中间 Tensor 与纯数据搬移
 
-这类 kernel **不改算术**，只少 copy / 少 `contiguous`。
+设中间张量大小为 \(m\) bytes，eager 链若产生 \(k\) 次完整 materialization，至少会增加 \(km\) 写和随后读取；布局融合直接将最终布局写出，使额外读写降为常数次。它不改变算术，却可能在长序列/高分辨率下成为主要收益来源。Ulysses 的 pack/merge 与变长 gather/scatter 同时决定通信布局，见 [Parallelism](parallelism.md)。
 
-| 路径 | 替换什么 | pin 文件 |
-|------|----------|----------|
-| `usp_merge_heads` | Ulysses 输出 `permute(2,1,0,3,4).contiguous()`，bit-exact | `usp_relayout.py`；`torch.compile` 内禁用 |
-| `pack_qkv_destination_major` | 三次独立准备 Ulysses Q/K/V 交换 → 一次 destination-major pack + 一次 collective | `triton/ulysses_qkv.py`；H3 |
-| `fused_pack_qkv` / `fused_scatter_to_padded` | masked varlen attention 的 gather/scatter | `triton/varlen_pack_pad.py` |
-| `apply_group_norm_silu` | VAE / LTX upsampler 的 GroupNorm+SiLU | HunyuanVAE、`latent_upsampler.py`；无 env 开关，guard 失败回退 |
-
-现网文档另举 Wan `temb_table_slices`：eager `(scale_shift_table + temb.float()).chunk(6, dim=2)` 在 704p/121f 会物化约 **8 GB fp32**，六个 strided slice 再各自 `.contiguous()`。融合一次写出六个 contiguous slice。**本 pin 无 `temb_table_slices` 符号**，当作现网已落地、pin 未跟上的例子，用来理解「删中间 Tensor」量级。
-
-因果 Conv3d 的 cat+pad 见 `causal_conv3d_cat_pad.py`。
-
-## 8. pin 上能对上的模型调用点
-
-| 模型 | pin 内可核验的融合 |
-|------|-------------------|
-| FLUX / FLUX.2 | `apply_qk_norm(_rope)`；`quality=high` 的 linear+GELU、LN modulate；量化 packed QKV / Nunchaku GELU MLP |
-| Qwen-Image | select-0/1 LN+gate；linear+GELU site |
-| Z-Image | `zimage_rmsnorm_scale` / `tanh_residual`（native bf16，可默认） |
-| Ideogram-4 | gate RMSNorm sites（`quality=high`） |
-| LTX-2 | residual-gate CUDA、split RoPE、ada values Triton |
-| HunyuanVideo | `apply_qk_norm`；VAE `apply_group_norm_silu` |
-| SANA | packed `to_qkv` / `to_kv` |
-| MiniMax-H3 | indexed AdaLN、fused qknorm+rope、`silu_and_mul`、packed Ulysses QKV、`usp_merge_heads` |
-
-现网「Coverage by model」表更长（FLUX.2 QKV epilogue、LingBot MoE top-k、SANA-Video 线性注意力等）。那些 op **不必假装已经在本 pin 的 `__init__.py` 里**；要对齐现网需重新 pin。
-
-## 9. 与 Graph / Cache / Quant / Parallel
+## 8. 与 Graph / Cache / Quant / Parallel
 
 - **BCG**：静段（Norm / RoPE / Residual / MLP）适合进 graph；动态 Attention 与通信保持 Eager → [Graph Runtime](graph_runtime.md)。pin 的 BCG CLI 与 torch.compile、Cache-DiT 互斥。现网文档额外规定：**不要把 request-gated DiT 融合和 BCG 一起开**——warmup 捕获的是 lossless 分支，replay 会绕过后来 mount 的 kernel。本 pin 的 `server_args` **尚未**搜到这条硬拒绝；落地以运行时日志为准，评测不要混用。  
 - **Cache**：跳过的 block 上融合不执行 → 用未开 cache 的基线比 kernel。  
 - **Quant**：Producer fusion（LN+modulate 直接写出 FP8/NVFP4）决定量化是否吃到 e2e；只报 GEMM TOP 不够 → [Quantization](quantization.md)。  
 - **Parallel**：Ulysses pack / merge、varlen USP 与通信重叠是同一条热路径上的另一面 → [Parallelism](parallelism.md)、[H3 DiT Runtime](../minimax_h3/07_dit_runtime_and_collectives.md)。
 
-## 10. 源码锚点
+## 附录：源码锚点与覆盖
 
 | 主题 | 路径 |
 |------|------|
@@ -167,6 +151,16 @@ NVFP4 / Nunchaku FLUX：磁盘上 QKV packed，runtime 用 `MergedColumnParallel
 | JIT QKNorm+RoPE | `kernels/ops/diffusion/qknorm_rope.py` |
 | H3 indexed AdaLN | `kernels/ops/diffusion/triton/indexed_modulation.py` |
 | 单测 / microbench | `test/registered/kernels/ops/diffusion/`、`test/registered/kernels/benchmark/diffusion/` |
+
+| 模型族 | pin 内可核验的机制 |
+|------|------|
+| FLUX / FLUX.2 | QK-Norm/RoPE、quality-gated MLP/AdaLN、量化 QKV/MLP |
+| Qwen-Image | 双调制选择、quality-gated MLP |
+| Z-Image / Ideogram-4 | RMSNorm 门控；后者受质量门控 |
+| LTX-2 / HunyuanVideo | 残差门控或 QK 前处理；VAE 融合 |
+| SANA / MiniMax-H3 | packed QKV，或 indexed AdaLN 与 Ulysses 布局融合 |
+
+数据搬移实现覆盖 Ulysses head merge、destination-major QKV pack、变长 gather/scatter 与 VAE GroupNorm+SiLU；现网还有本 pin 不含的 Wan temb slice 融合。覆盖表是实现索引，公式及适用域以正文为准。
 
 ## 相关阅读
 
