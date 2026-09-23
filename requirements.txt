@@ -1,2 +1,5 @@
 mkdocs-material
 mkdocs-material-extensions
+
+# arXiv scan dependencies live in envs/scan-arxiv-requirements.txt.
+# Build with scripts/setup_scan_arxiv_env.sh and source envs/scan-arxiv/bin/activate.

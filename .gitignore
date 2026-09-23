@@ -7,6 +7,7 @@ __pycache__/
 *.pyo
 .venv/
 venv/
+envs/scan-arxiv/
 
 # MkDocs cache
 .cache/

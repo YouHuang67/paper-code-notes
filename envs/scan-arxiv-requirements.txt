@@ -1,0 +1,3 @@
+arxiv==4.0.1
+openai==3.19.0
+socksio==1.0.0

@@ -8,6 +8,7 @@ Three-stage pipeline:
   3. DeepSeek summarizes results into a Markdown report
 
 Usage:
+    source envs/scan-arxiv/bin/activate
     python scripts/scan_arxiv.py "视频生成中的强化学习对齐"
     python scripts/scan_arxiv.py "sparse attention" --days 30
     python scripts/scan_arxiv.py "sparse attention" --from 20260301 --to 20260401
@@ -22,10 +23,30 @@ import time
 from datetime import datetime, timedelta
 from pathlib import Path
 
+ROOT_DIR = Path(__file__).resolve().parent.parent
+SCAN_ENV_DIR = ROOT_DIR / "envs" / "scan-arxiv"
+
+
+def require_scan_env() -> None:
+    """Refuse to run unless the dedicated scan environment is active."""
+    if Path(sys.prefix).resolve() == SCAN_ENV_DIR.resolve():
+        return
+    sys.stderr.write(
+        "scan_arxiv requires envs/scan-arxiv.\n"
+        "Build it once:\n"
+        "  scripts/setup_scan_arxiv_env.sh\n"
+        "Then source it before every scan:\n"
+        "  source envs/scan-arxiv/bin/activate\n"
+        "  python scripts/scan_arxiv.py --help\n"
+    )
+    raise SystemExit(1)
+
+
+require_scan_env()
+
 import arxiv
 from openai import OpenAI
 
-ROOT_DIR = Path(__file__).resolve().parent.parent
 PAPERS_DIR = ROOT_DIR / "refs" / "papers"
 SCANS_DIR = ROOT_DIR / "refs" / "scans"
 API_KEY_FILE = ROOT_DIR / "refs" / "deepseek_api"
@@ -529,7 +550,8 @@ def main():
   %(prog)s "视频生成" --max-results 100
   %(prog)s "reinforcement learning" --exclude "robotics, medical, 机器人"
 
-依赖: pip install arxiv openai
+依赖: scripts/setup_scan_arxiv_env.sh
+运行前: source envs/scan-arxiv/bin/activate
 API Key: refs/deepseek_api (一行纯文本)""",
     )
     parser.add_argument(
