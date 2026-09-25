@@ -1,0 +1,62 @@
+{
+  "timezone": "Asia/Shanghai",
+  "checkTime": "09:30",
+  "maxResults": 8,
+  "topics": [
+    {
+      "name": "视频后训练",
+      "scope": "对象必须是视频生成模型的 post-training 或对齐。图像生成、机器人、语言模型不算。",
+      "enabled": true
+    },
+    {
+      "name": "视频高效计算",
+      "scope": "对象必须是视频生成的计算量，如 sparse attention、cache、token merging。LLM 或 dLLM 的推理缓存不算。",
+      "enabled": true
+    },
+    {
+      "name": "视频强化学习",
+      "scope": "对象必须是视频生成的 RL、GRPO 或 PPO。通用 LLM 的 RL 不算。",
+      "enabled": true
+    },
+    {
+      "name": "视频奖励",
+      "scope": "对象必须是给生成视频打分的 reward model 或 preference。检索、理解、benchmark 不算。",
+      "enabled": true
+    },
+    {
+      "name": "拟合与蒸馏",
+      "scope": "对象必须是语言模型的 SFT 选数据、memorization、regularization，或 distillation，如 on-policy distillation、GKD、自蒸馏。扩散蒸馏不算。prompt enhancer 不算。",
+      "enabled": true
+    },
+    {
+      "name": "样本偏好",
+      "scope": "对象必须是 DPO、KTO 等用成对偏好或单条好/坏标签更新语言模型。只做评测的不算。",
+      "enabled": true
+    },
+    {
+      "name": "奖励强化学习",
+      "scope": "对象必须是语言模型上的 GRPO 或 PPO，且训练依赖 reward。视频生成上的 RL 不算。",
+      "enabled": true
+    },
+    {
+      "name": "注意力现象",
+      "scope": "对象必须是 attention sink、attention map，或据此做的监测。范围包括语言模型、多模态和视觉生成。",
+      "enabled": true
+    },
+    {
+      "name": "训练信号",
+      "scope": "对象必须是训练不稳定、样本重加权，或把 perplexity 用作训练监测。",
+      "enabled": true
+    },
+    {
+      "name": "VLM调PE",
+      "scope": "对象必须是 image/video 的 prompt enhancer，或用 VLM 改写、评估这类 prompt。LLM 蒸馏不算。",
+      "enabled": true
+    },
+    {
+      "name": "信息图后训练",
+      "scope": "对象必须是 infographic 或 text rendering 的后训练。普通视觉指令不算。",
+      "enabled": true
+    }
+  ]
+}
