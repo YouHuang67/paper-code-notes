@@ -1,0 +1,33 @@
+{
+  "topic": "wanpe",
+  "created": "2026-09-25",
+  "entries": [
+    {
+      "id": "arxiv-2609.30221",
+      "kind": "paper",
+      "url": "https://arxiv.org/abs/2609.30221",
+      "sha256": "local-pdf-not-committed",
+      "license": "not stated on abstract page",
+      "admitted": true,
+      "note": "WanPE v1; method, ablations, WanPEval and deployment claims read from the PDF."
+    },
+    {
+      "id": "wanpe-official-repo",
+      "kind": "git",
+      "url": "https://github.com/Wan-PE/Wan-PE.github.io",
+      "commit": "64602b5b036fbd601e6d66d59c42a32d98867853",
+      "license": "no repository license file observed",
+      "admitted": true,
+      "note": "Official project-page repository. Static HTML/JS, figures, prompt text, enhanced prompt text and pre-rendered Wan3.0 comparisons."
+    },
+    {
+      "id": "wanpe-project-page",
+      "kind": "html",
+      "url": "https://wan-pe.github.io/",
+      "sha256": "see-official-repository-index-html",
+      "license": "not stated",
+      "admitted": true,
+      "note": "Project page links the paper, renders the results table and lazy-loads five static demo pairs."
+    }
+  ]
+}

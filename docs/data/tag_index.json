@@ -1831,6 +1831,24 @@
     "organizations": "NVIDIA, University of Michigan"
   },
   {
+    "title": "WanPE",
+    "path": "paper_reading/wanpe.md",
+    "type": "论文阅读",
+    "tags": [
+      "Prompt Enhancer",
+      "Video Generation",
+      "VLM",
+      "Reinforcement Learning",
+      "GRPO",
+      "Post Training"
+    ],
+    "summary": "视频 grounded reverse SFT + Semantic-Consistency GRPO 的电影化 prompt enhancer，397B 模型规划跨镜头动作、镜头、光照与声音，Wan3.0 30秒偏好提升50.86点",
+    "category": "视频生成对齐（RL / Human Feedback）",
+    "date_arxiv": "2026-09",
+    "date_added": "2026-09-25",
+    "organizations": "Wan Team, Alibaba Group"
+  },
+  {
     "title": "DeepEP - 总览",
     "path": "code_analysis/deepep/00_overview.md",
     "type": "代码分析",
