@@ -234,7 +234,7 @@ def classify_papers(topic_names: list[str], papers: list[dict], guide: str) -> d
             "下面这些论文请你归类。先看论文对象是不是主题规定的那个，不要按标题里的词硬塞。每篇最多一个主题。\n"
             "若一句解释里不得不写「非…」或「不是…」，这篇不要放进 picks。\n"
             f"主题说明：\n{guide}\n"
-            "line 保留关键英文术语，后面用很短的中文补方法和洞察。不要写「属于某主题」，不要把术语整句翻译掉。\n"
+            "line 以可指代的英文名开头，接中文冒号，再写一句中文：解决什么、核心做法是什么。有短名就用短名，如 WanPE、TRACK、AV-GRPO。没有短名就从标题取 2 到 4 个最能指代的英文词，不要整句标题。专名不要翻译。不要整句英文。不要写「属于某主题」。\n"
             "每个主题最多 8 篇。只返回 JSON："
             "{\"picks\":[{\"id\":\"\",\"topic\":\"\",\"line\":\"\"}]}\n\n"
             + "\n\n".join(blocks)
@@ -269,12 +269,13 @@ def render_wechat(day_label: str, sections: list[tuple[str, list[str]]], empty_n
     return "\n".join(blocks).strip("\n") + "\n"
 
 
-def compose_day(day_label: str, topic_names: list[str], papers: list[dict], guide: str) -> tuple[str, list[str]]:
+def compose_day(day_label: str, topic_names: list[str], papers: list[dict], guide: str) -> tuple[str, list[str], list[tuple[str, str, str]]]:
     grouped = classify_papers(topic_names, papers, guide)
     sections = []
     empty_names = []
     new_ids: list[str] = []
     used: set[str] = set()
+    details: list[tuple[str, str, str]] = []
     for name in topic_names:
         fresh = []
         for paper_id, line in grouped.get(name) or []:
@@ -283,11 +284,12 @@ def compose_day(day_label: str, topic_names: list[str], papers: list[dict], guid
             used.add(paper_id)
             fresh.append(line)
             new_ids.append(paper_id)
+            details.append((name, paper_id, line))
         if fresh:
             sections.append((name, fresh))
         else:
             empty_names.append(name)
-    return render_wechat(day_label, sections, empty_names), new_ids
+    return render_wechat(day_label, sections, empty_names), new_ids, details
 
 
 def day_label_from(iso_day: str) -> str:
@@ -295,14 +297,50 @@ def day_label_from(iso_day: str) -> str:
     return f"{int(month)}月{int(day)}日"
 
 
+def empty_day_text(day_label: str) -> str:
+    return f"\n{day_label}\n\n今天没有\n"
+
+
+def write_daily_record(iso_day: str, details: list[tuple[str, str, str]], wechat_text: str) -> None:
+    day_dir = ROOT / "refs" / "scans" / "daily" / "by-date"
+    day_dir.mkdir(parents=True, exist_ok=True)
+    lines = [f"# {iso_day}", ""]
+    if not details:
+        lines.append("今天没有")
+    current = ""
+    for name, paper_id, line in details:
+        if name != current:
+            lines.extend(["", f"【{name}】", ""])
+            current = name
+        lines.append(f"- {paper_id}")
+        lines.append(f"  {line}")
+    if wechat_text.strip():
+        lines.extend(["", "微信正文", "", wechat_text.strip()])
+    record = day_dir / f"{iso_day}.md"
+    record.write_text("\n".join(lines).strip() + "\n", encoding="utf-8")
+    index = ROOT / "refs" / "scans" / "daily" / "index.md"
+    previous = index.read_text(encoding="utf-8") if index.exists() else "# 日报入口\n\n先按用户要求。提到日报时按日期打开下面文件，优先今天。\n"
+    row = f"- {iso_day}: refs/scans/daily/by-date/{iso_day}.md"
+    kept = [line for line in previous.splitlines() if not line.startswith(f"- {iso_day}:")]
+    if kept and kept[-1] != "":
+        kept.append("")
+    kept.append(row)
+    index.write_text("\n".join(kept).strip() + "\n", encoding="utf-8")
+
+
 def build_digest(config: dict, ledger: dict) -> tuple[str, list[str]]:
     seen = ledger.setdefault("seen", {})
-    papers = [paper for paper in load_announcements() if paper["id"] not in seen]
+    now = datetime.now()
+    day = now.date().isoformat()
+    fetched = fetch_oai_new(day)
+    if not fetched:
+        return empty_day_text(f"{now.month}月{now.day}日"), []
+    papers = [paper for paper in fetched if paper["id"] not in seen]
     if not papers:
-        raise SystemExit("arXiv RSS 没有未读论文")
-    dates = sorted({paper["published"] for paper in papers if paper.get("published")})
-    label = day_label_from(dates[-1]) if dates else datetime.now().strftime("%m-%d")
-    return compose_day(label, topic_names(config), papers, topic_guide(config))
+        return "", []
+    digest, new_ids, details = compose_day(day_label_from(day), topic_names(config), papers, topic_guide(config))
+    write_daily_record(day, details, digest)
+    return digest, new_ids
 
 
 def fetch_oai_new(day: str) -> list[dict]:
@@ -314,7 +352,7 @@ def fetch_oai_new(day: str) -> list[dict]:
     seen_ids: set[str] = set()
     token = ""
     page = 0
-    while page < 6:
+    while page < 15:
         if token:
             query = urllib.parse.urlencode({"verb": "ListRecords", "resumptionToken": token})
         else:
@@ -336,7 +374,8 @@ def fetch_oai_new(day: str) -> list[dict]:
                 continue
             raw = header.findtext("o:identifier", default="", namespaces=ns) or ""
             paper_id = raw.rsplit(":", 1)[-1].split("v")[0]
-            if not paper_id.startswith("2609.") or paper_id in seen_ids:
+            month_prefix = day[2:4] + day[5:7] + "."
+            if not paper_id.startswith(month_prefix) or paper_id in seen_ids:
                 continue
             title = " ".join((record.findtext(".//dc:title", default="", namespaces=ns) or "").split())
             summary = " ".join((record.findtext(".//dc:description", default="", namespaces=ns) or "").split())
@@ -350,7 +389,7 @@ def fetch_oai_new(day: str) -> list[dict]:
         if not token:
             break
     papers.sort(key=lambda paper: paper["id"], reverse=True)
-    return papers[:80]
+    return papers
 
 
 def cmd_recent(args: argparse.Namespace) -> None:
@@ -361,9 +400,10 @@ def cmd_recent(args: argparse.Namespace) -> None:
         papers = fetch_oai_new(day)
         print(f"{day} papers {len(papers)}", file=sys.stderr, flush=True)
         if not papers:
-            print(f"skip {day}")
-            continue
-        digest, new_ids = compose_day(day_label_from(day), names, papers, topic_guide(config))
+            digest, new_ids, details = empty_day_text(day_label_from(day)), [], []
+        else:
+            digest, new_ids, details = compose_day(day_label_from(day), names, papers, topic_guide(config))
+        write_daily_record(day, details, digest)
         stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ") + "-" + day.replace("-", "")
         out_dir = ROOT / "refs" / "scans" / "daily" / stamp
         out_dir.mkdir(parents=True, exist_ok=True)
@@ -374,6 +414,7 @@ def cmd_recent(args: argparse.Namespace) -> None:
             continue
         send_heartbeat(stamp, digest_path, new_ids)
         print(f"sent {day} {len(new_ids)}")
+        time.sleep(8)
 
 
 def send_heartbeat(run_id: str, digest_path: Path, paper_ids: list[str]) -> None:
@@ -404,6 +445,9 @@ def cmd_run(args: argparse.Namespace) -> None:
             raise SystemExit("wechat daemon endpoint missing")
     ledger = load_ledger()
     digest, new_ids = build_digest(config, ledger)
+    if not digest:
+        print("already sent")
+        return
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     out_dir = ROOT / "refs" / "scans" / "daily" / stamp
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -413,14 +457,12 @@ def cmd_run(args: argparse.Namespace) -> None:
     if args.dry_run:
         print(f"dry-run wrote {digest_path}")
         return
-    if not new_ids:
-        print("nothing new to send")
-        return
     send_heartbeat(stamp, digest_path, new_ids)
-    now = datetime.now(timezone.utc).isoformat()
-    for paper_id in new_ids:
-        ledger["seen"][paper_id] = now
-    save_ledger(ledger)
+    if new_ids:
+        now = datetime.now(timezone.utc).isoformat()
+        for paper_id in new_ids:
+            ledger["seen"][paper_id] = now
+        save_ledger(ledger)
     print(f"sent {len(new_ids)}")
 
 
