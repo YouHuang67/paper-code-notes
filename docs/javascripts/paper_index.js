@@ -95,7 +95,10 @@ document.addEventListener("DOMContentLoaded", function () {
     return arr.slice().sort(function (a, b) {
       var da = currentSort === "arxiv" ? (a.date_arxiv || "") : (a.date_added || "");
       var db = currentSort === "arxiv" ? (b.date_arxiv || "") : (b.date_added || "");
-      return da > db ? -1 : da < db ? 1 : 0;
+      if (da !== db) return da > db ? -1 : 1;
+      var ta = (a.title || "").toLocaleLowerCase();
+      var tb = (b.title || "").toLocaleLowerCase();
+      return ta < tb ? -1 : ta > tb ? 1 : 0;
     });
   }
 
@@ -132,21 +135,9 @@ document.addEventListener("DOMContentLoaded", function () {
       return;
     }
 
-    var groups = {};
-    var catOrder = [];
-    docs.forEach(function (d) {
-      var cat = d.category || "其他";
-      if (!groups[cat]) { groups[cat] = []; catOrder.push(cat); }
-      groups[cat].push(d);
-    });
-    catOrder.forEach(function (cat) { groups[cat] = sortDocs(groups[cat]); });
-
-    var html = "";
-    catOrder.forEach(function (cat) {
-      html += '<h2>' + cat + '</h2><div class="paper-list">';
-      groups[cat].forEach(function (d) { html += paperItemHtml(d, linkBase, dateKey); });
-      html += '</div>';
-    });
+    var html = '<div class="paper-list">';
+    sortDocs(docs).forEach(function (d) { html += paperItemHtml(d, linkBase, dateKey); });
+    html += '</div>';
     container.innerHTML = html;
   }
 });

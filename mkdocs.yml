@@ -55,7 +55,7 @@ extra_javascript:
   - javascripts/mathjax.js
   - javascripts/tag_search.js?v=7
   - javascripts/home.js?v=6
-  - javascripts/paper_index.js?v=8
+  - javascripts/paper_index.js?v=9
   - https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js
 
 extra_css:
