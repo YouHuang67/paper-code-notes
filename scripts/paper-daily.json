@@ -1,0 +1,73 @@
+{
+  "timezone": "Asia/Shanghai",
+  "checkTime": "09:30",
+  "maxResults": 30,
+  "topics": [
+    {
+      "name": "视频后训练",
+      "scope": "对象必须是视频生成模型的 post-training 或对齐。",
+      "reject": "图像生成、文生图、机器人策略、语言模型。世界模型只有在后训练视频生成模型时才收。",
+      "enabled": true
+    },
+    {
+      "name": "视频高效计算",
+      "scope": "对象必须是视频生成模型的计算量，如 sparse attention、cache、token merging。",
+      "reject": "LLM、dLLM、VLM 推理的 KV cache、稀疏注意力、剪枝、prompt 压缩。",
+      "enabled": true
+    },
+    {
+      "name": "视频强化学习",
+      "scope": "对象必须是视频生成模型的 RL、GRPO 或 PPO。",
+      "reject": "LLM、VLA、机器人操作、图像生成、自动驾驶规划、视频理解里的工具调用。",
+      "enabled": true
+    },
+    {
+      "name": "视频奖励",
+      "scope": "对象必须是给生成出来的视频打分的 reward model 或 preference。",
+      "reject": "语言模型 reward、检索打分、视频理解、benchmark。",
+      "enabled": true
+    },
+    {
+      "name": "拟合与蒸馏",
+      "scope": "对象必须是语言模型的 SFT 选数据、memorization、regularization，或 distillation，如 on-policy distillation、GKD、自蒸馏。",
+      "reject": "扩散蒸馏、视频蒸馏、推荐蒸馏、参数高效微调、测试时训练、恶意软件检测、prompt enhancer。",
+      "enabled": true
+    },
+    {
+      "name": "样本偏好",
+      "scope": "对象必须是 DPO、KTO 等用成对偏好或单条好/坏标签更新语言模型。",
+      "reject": "只做评测或 benchmark、机器人、视频生成。",
+      "enabled": true
+    },
+    {
+      "name": "奖励强化学习",
+      "scope": "对象必须是语言模型上的 GRPO 或 PPO，且训练依赖 reward。",
+      "reject": "视频生成上的 RL、机器人、没有 reward 的推理训练。",
+      "enabled": true
+    },
+    {
+      "name": "注意力现象",
+      "scope": "对象必须是 attention sink、attention map，或据此做的监测。语言模型、多模态和视觉生成都可以。",
+      "reject": "只把 attention 当作计算模块，或去雨等只借用 attention 名字的视觉任务。",
+      "enabled": true
+    },
+    {
+      "name": "训练信号",
+      "scope": "对象必须是训练不稳定、样本重加权，或把 perplexity 用作训练监测。",
+      "reject": "推理时预算、缩放定律、泛泛的训练动态。",
+      "enabled": true
+    },
+    {
+      "name": "VLM调PE",
+      "scope": "对象必须是图像或视频的 prompt enhancer，或用 VLM 改写、评估这类 prompt。PE 只指这个主题。",
+      "reject": "普通 VLM 训练、唇读、机器人微调、LLM 蒸馏。",
+      "enabled": true
+    },
+    {
+      "name": "信息图后训练",
+      "scope": "对象必须是 infographic 或 text rendering 的后训练。",
+      "reject": "普通视觉指令、通用图像生成。",
+      "enabled": true
+    }
+  ]
+}

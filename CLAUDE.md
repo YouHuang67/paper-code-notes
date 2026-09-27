@@ -182,6 +182,8 @@ paper-code-notes/
 │   ├── paper_reading/
 │   └── code_analysis/
 ├── scripts/                 # ✅ 入库（工具脚本）
+│   ├── paper_daily.py
+│   └── paper-daily.json     # 日报主题配置，入库；抓取结果不入库
 ├── refs/                    # ❌ 不入库
 │   └── papers/
 └── mkdocs.yml

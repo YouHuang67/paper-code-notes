@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Configure and run the local arXiv daily digest.
 
-Topics and the daily clock live in paper-daily.json.
+Topics and the daily clock live in scripts/paper-daily.json.
 The seen-paper ledger stays under refs/scans/ and is not committed.
 """
 
@@ -13,6 +13,7 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
 import time
 import urllib.error
 import urllib.parse
@@ -23,7 +24,7 @@ from email.utils import parsedate_to_datetime
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-CONFIG_PATH = ROOT / "paper-daily.json"
+CONFIG_PATH = Path(__file__).resolve().parent / "paper-daily.json"
 LEDGER_PATH = ROOT / "refs" / "scans" / "daily-ledger.json"
 BRIDGE_DIR = Path("/mnt/d/projects/cli-wechat-bridge")
 NODE_BIN = Path("/home/hy/.local/opt/node-v24.19.0-linux-x64/bin/node")
@@ -36,7 +37,7 @@ _last_request_at = 0.0
 
 def load_config() -> dict:
     if not CONFIG_PATH.exists():
-        return {"timezone": "Asia/Shanghai", "checkTime": "14:30", "maxResults": 8, "topics": []}
+        return {"timezone": "Asia/Shanghai", "checkTime": "14:30", "maxResults": 30, "topics": []}
     return json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
 
 
@@ -186,25 +187,42 @@ def load_deepseek_key() -> str:
     return match.group(1)
 
 
-def topic_guide(config: dict) -> str:
-    lines = []
-    for topic in config.get("topics") or []:
-        if topic.get("enabled", True):
-            lines.append(f"{topic['name']}：{topic.get('scope', '')}")
-    return "\n".join(lines)
-
-
 def topic_names(config: dict) -> list[str]:
     return [topic["name"] for topic in config.get("topics") or [] if topic.get("enabled", True)]
 
 
-def ask_deepseek(prompt: str) -> dict:
+def system_prompt(config: dict) -> str:
+    blocks = []
+    for topic in config.get("topics") or []:
+        if not topic.get("enabled", True):
+            continue
+        name = str(topic.get("name") or "").strip()
+        scope = str(topic.get("scope") or "").strip()
+        reject = str(topic.get("reject") or "").strip()
+        if not name or not scope or not reject:
+            raise SystemExit(f"topic {name or '(unnamed)'} needs scope and reject; both enter the DeepSeek system prompt")
+        blocks.append(f"{name}\n收：{scope}\n不收：{reject}")
+    limit = int(config.get("maxResults") or 30)
+    return (
+        "你是论文日报分类器。只收对象与「收」完全一致的论文。标题或摘要里出现相近的词不够。拿不准就不收。\n"
+        "每篇最多一个主题。topic 必须是下面的主题名原文，不能自造。\n"
+        f"全部主题合计不超过 {limit} 篇。\n"
+        "line 以英文短名开头，接中文冒号，再一句中文说明解决的问题和核心做法。不要写「属于」。不要用「非」或「不是」把论文收进来。\n"
+        "只返回 JSON：{\"picks\":[{\"id\":\"\",\"topic\":\"\",\"line\":\"\"}]}\n\n"
+        + "\n\n".join(blocks)
+    )
+
+
+def ask_deepseek(system: str, prompt: str) -> dict:
     request = urllib.request.Request(
         "https://api.deepseek.com/chat/completions",
         data=json.dumps({
             "model": "deepseek-chat",
-            "temperature": 0.2,
-            "messages": [{"role": "user", "content": prompt}],
+            "temperature": 0.1,
+            "messages": [
+                {"role": "system", "content": system},
+                {"role": "user", "content": prompt},
+            ],
         }).encode(),
         headers={
             "Authorization": f"Bearer {load_deepseek_key()}",
@@ -220,9 +238,36 @@ def ask_deepseek(prompt: str) -> dict:
     return json.loads(match.group(0))
 
 
-def classify_papers(topic_names: list[str], papers: list[dict], guide: str) -> dict[str, list[tuple[str, str]]]:
-    grouped = {name: [] for name in topic_names}
+def cap_total(grouped: dict[str, list[tuple[str, str]]], names: list[str], limit: int) -> dict[str, list[tuple[str, str]]]:
+    total = sum(len(grouped.get(name) or []) for name in names)
+    if total <= limit:
+        return grouped
+    kept = {name: [] for name in names}
+    index = {name: 0 for name in names}
+    chosen = 0
+    while chosen < limit:
+        progressed = False
+        for name in names:
+            cursor = index[name]
+            rows = grouped.get(name) or []
+            if cursor >= len(rows):
+                continue
+            kept[name].append(rows[cursor])
+            index[name] = cursor + 1
+            chosen += 1
+            progressed = True
+            if chosen >= limit:
+                break
+        if not progressed:
+            break
+    return kept
+
+
+def classify_papers(config: dict, papers: list[dict]) -> dict[str, list[tuple[str, str]]]:
+    names = topic_names(config)
+    grouped = {name: [] for name in names}
     allowed = {paper["id"]: paper for paper in papers}
+    system = system_prompt(config)
     batch_size = 20
     for start in range(0, len(papers), batch_size):
         batch = papers[start:start + batch_size]
@@ -230,17 +275,9 @@ def classify_papers(topic_names: list[str], papers: list[dict], guide: str) -> d
         for paper in batch:
             summary = (paper.get("summary") or "")[:280]
             blocks.append(f"id={paper['id']}\n{paper['title']}\n{summary}")
-        prompt = (
-            "下面这些论文请你归类。先看论文对象是不是主题规定的那个，不要按标题里的词硬塞。每篇最多一个主题。\n"
-            "若一句解释里不得不写「非…」或「不是…」，这篇不要放进 picks。\n"
-            f"主题说明：\n{guide}\n"
-            "line 以可指代的英文名开头，接中文冒号，再写一句中文：解决什么、核心做法是什么。有短名就用短名，如 WanPE、TRACK、AV-GRPO。没有短名就从标题取 2 到 4 个最能指代的英文词，不要整句标题。专名不要翻译。不要整句英文。不要写「属于某主题」。\n"
-            "每个主题最多 8 篇。只返回 JSON："
-            "{\"picks\":[{\"id\":\"\",\"topic\":\"\",\"line\":\"\"}]}\n\n"
-            + "\n\n".join(blocks)
-        )
+        prompt = "归类下面这些论文。\n\n" + "\n\n".join(blocks)
         print(f"ds batch {start // batch_size + 1} n={len(batch)}", file=sys.stderr, flush=True)
-        for item in ask_deepseek(prompt).get("picks") or []:
+        for item in ask_deepseek(system, prompt).get("picks") or []:
             paper_id = str(item.get("id") or "").split("v")[0]
             topic = str(item.get("topic") or "")
             line = " ".join(str(item.get("line") or "").split())
@@ -250,10 +287,8 @@ def classify_papers(topic_names: list[str], papers: list[dict], guide: str) -> d
                 continue
             if any(kept_id == paper_id for kept_id, _line in grouped[topic]):
                 continue
-            if len(grouped[topic]) >= 8:
-                continue
             grouped[topic].append((paper_id, line))
-    return grouped
+    return cap_total(grouped, names, int(config.get("maxResults") or 30))
 
 
 def render_wechat(day_label: str, sections: list[tuple[str, list[str]]], empty_names: list[str]) -> str:
@@ -269,14 +304,15 @@ def render_wechat(day_label: str, sections: list[tuple[str, list[str]]], empty_n
     return "\n".join(blocks).strip("\n") + "\n"
 
 
-def compose_day(day_label: str, topic_names: list[str], papers: list[dict], guide: str) -> tuple[str, list[str], list[tuple[str, str, str]]]:
-    grouped = classify_papers(topic_names, papers, guide)
+def compose_day(day_label: str, config: dict, papers: list[dict]) -> tuple[str, list[str], list[tuple[str, str, str]]]:
+    names = topic_names(config)
+    grouped = classify_papers(config, papers)
     sections = []
     empty_names = []
     new_ids: list[str] = []
     used: set[str] = set()
     details: list[tuple[str, str, str]] = []
-    for name in topic_names:
+    for name in names:
         fresh = []
         for paper_id, line in grouped.get(name) or []:
             if paper_id in used:
@@ -319,7 +355,7 @@ def write_daily_record(iso_day: str, details: list[tuple[str, str, str]], wechat
     record = day_dir / f"{iso_day}.md"
     record.write_text("\n".join(lines).strip() + "\n", encoding="utf-8")
     index = ROOT / "refs" / "scans" / "daily" / "index.md"
-    previous = index.read_text(encoding="utf-8") if index.exists() else "# 日报入口\n\n先按用户要求。提到日报时按日期打开下面文件，优先今天。\n"
+    previous = index.read_text(encoding="utf-8") if index.exists() else "# 日报入口\n\n先按用户要求。提到日报时按日期打开下面文件，优先今天。主题名只认 scripts/paper-daily.json。PE 指 VLM调PE。\n"
     row = f"- {iso_day}: refs/scans/daily/by-date/{iso_day}.md"
     kept = [line for line in previous.splitlines() if not line.startswith(f"- {iso_day}:")]
     if kept and kept[-1] != "":
@@ -338,7 +374,7 @@ def build_digest(config: dict, ledger: dict) -> tuple[str, list[str]]:
     papers = [paper for paper in fetched if paper["id"] not in seen]
     if not papers:
         return "", []
-    digest, new_ids, details = compose_day(day_label_from(day), topic_names(config), papers, topic_guide(config))
+    digest, new_ids, details = compose_day(day_label_from(day), config, papers)
     write_daily_record(day, details, digest)
     return digest, new_ids
 
@@ -394,7 +430,6 @@ def fetch_oai_new(day: str) -> list[dict]:
 
 def cmd_recent(args: argparse.Namespace) -> None:
     config = load_config()
-    names = topic_names(config)
     days = [day.strip() for day in args.days.split(",") if day.strip()]
     for day in days:
         papers = fetch_oai_new(day)
@@ -402,19 +437,30 @@ def cmd_recent(args: argparse.Namespace) -> None:
         if not papers:
             digest, new_ids, details = empty_day_text(day_label_from(day)), [], []
         else:
-            digest, new_ids, details = compose_day(day_label_from(day), names, papers, topic_guide(config))
+            digest, new_ids, details = compose_day(day_label_from(day), config, papers)
         write_daily_record(day, details, digest)
-        stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ") + "-" + day.replace("-", "")
-        out_dir = ROOT / "refs" / "scans" / "daily" / stamp
-        out_dir.mkdir(parents=True, exist_ok=True)
-        digest_path = out_dir / "digest.txt"
-        digest_path.write_text(digest, encoding="utf-8")
         print(digest)
         if args.dry_run:
             continue
-        send_heartbeat(stamp, digest_path, new_ids)
+        stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ") + "-" + day.replace("-", "")
+        digest_path = ephemeral_digest(digest)
+        try:
+            send_heartbeat(stamp, digest_path, new_ids)
+        finally:
+            digest_path.unlink(missing_ok=True)
         print(f"sent {day} {len(new_ids)}")
         time.sleep(8)
+
+
+def ephemeral_digest(text: str) -> Path:
+    handle = tempfile.NamedTemporaryFile(
+        "w", encoding="utf-8", prefix="paper-daily-", suffix=".txt", delete=False,
+    )
+    try:
+        handle.write(text)
+    finally:
+        handle.close()
+    return Path(handle.name)
 
 
 def send_heartbeat(run_id: str, digest_path: Path, paper_ids: list[str]) -> None:
@@ -448,16 +494,16 @@ def cmd_run(args: argparse.Namespace) -> None:
     if not digest:
         print("already sent")
         return
-    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    out_dir = ROOT / "refs" / "scans" / "daily" / stamp
-    out_dir.mkdir(parents=True, exist_ok=True)
-    digest_path = out_dir / "digest.txt"
-    digest_path.write_text(digest, encoding="utf-8")
     print(digest)
     if args.dry_run:
-        print(f"dry-run wrote {digest_path}")
+        print("dry-run kept the day record under refs/scans/daily/by-date")
         return
-    send_heartbeat(stamp, digest_path, new_ids)
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    digest_path = ephemeral_digest(digest)
+    try:
+        send_heartbeat(stamp, digest_path, new_ids)
+    finally:
+        digest_path.unlink(missing_ok=True)
     if new_ids:
         now = datetime.now(timezone.utc).isoformat()
         for paper_id in new_ids:
