@@ -153,6 +153,10 @@ nav:
     - APE: paper_reading/ape.md
     - WanPE: paper_reading/wanpe.md
     - Lance: paper_reading/lance_arxiv.md
+    - TailSFT: paper_reading/tailsft.md
+    - TRACE: paper_reading/trace.md
+    - SA-OPD: paper_reading/sa_opd.md
+    - Quality-Utility Paradox: paper_reading/quality_utility_paradox.md
   - 代码分析:
     - 导读: code_analysis/index.md
     - 公共基础（CUDA）:

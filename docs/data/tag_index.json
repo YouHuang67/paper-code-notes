@@ -2231,5 +2231,69 @@
       "LLM Inference"
     ],
     "summary": "output-preserving 边界、可点互斥总表与优化验收清单"
+  },
+  {
+    "title": "TailSFT",
+    "path": "paper_reading/tailsft.md",
+    "type": "论文阅读",
+    "tags": [
+      "LLM Post Training",
+      "SFT",
+      "Data Selection",
+      "Coverage"
+    ],
+    "summary": "以相对初始策略的序列损失过滤已拟合响应，将 SFT 更新集中到欠覆盖尾部；评估数学、代码及后续 GRPO 表现",
+    "category": "LLM Post Training",
+    "date_arxiv": "2026-08",
+    "date_added": "2026-09-28",
+    "organizations": "UC San Diego, Microsoft Research NYC"
+  },
+  {
+    "title": "TRACE",
+    "path": "paper_reading/trace.md",
+    "type": "论文阅读",
+    "tags": [
+      "LLM Post Training",
+      "On-Policy Distillation",
+      "Token Routing",
+      "SFT"
+    ],
+    "summary": "将 self-OPD 蒸馏限制在关键 reasoning spans，结合局部 KL 路由与退火，降低 all-token 监督的漂移",
+    "category": "LLM Post Training",
+    "date_arxiv": "2026-05",
+    "date_added": "2026-09-28",
+    "organizations": "Nanjing University, Alibaba Group, Tsinghua University, University of Wisconsin–Madison"
+  },
+  {
+    "title": "SA-OPD",
+    "path": "paper_reading/sa_opd.md",
+    "type": "论文阅读",
+    "tags": [
+      "LLM Post Training",
+      "On-Policy Distillation",
+      "Vision Language Model",
+      "Data Selection"
+    ],
+    "summary": "联合输入 groundedness 与蒸馏 divergence 筛除低输入依赖且高影响的可疑 token 级 OPD 信号",
+    "category": "LLM Post Training",
+    "date_arxiv": "2026-08",
+    "date_added": "2026-09-28",
+    "organizations": "Zhejiang University, ByteDance, Shanghai AI Laboratory"
+  },
+  {
+    "title": "Quality-Utility Paradox",
+    "path": "paper_reading/quality_utility_paradox.md",
+    "type": "论文阅读",
+    "tags": [
+      "LLM Post Training",
+      "SFT",
+      "Knowledge Distillation",
+      "Data Quality"
+    ],
+    "summary": "分析高 reward Oracle 数据与小模型训练效用错位，并以 Style-Aligned Refinement 保留学生分布同时修复逻辑",
+    "category": "LLM Post Training",
+    "date_arxiv": "2026-06",
+    "date_added": "2026-09-28",
+    "organizations": "Tsinghua University, Microsoft Research Asia, Shenzhen University of Advanced Technology, China National Petroleum Corporation"
   }
 ]
