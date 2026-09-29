@@ -25,6 +25,12 @@ RLVR 给整条轨迹一个标量奖励，token 级 credit assignment 很稀疏�
 
 TRACE 将一个 rollout 的 token 集合划分为关键正确 spans、局部错误 spans 和其余位置。对正确 rollout 的关键 spans 使用 forward KL；错误 spans 可以选择性使用 reverse KL；其余位置不使用 OPD KL，由 GRPO 更新。annotator 只提供 span 的粗粒度诊断类型，不把 span 文本直接交给教师，降低特权信息泄漏。
 
+令 $m_t\in\{0,1\}$ 表示 token 是否被路由到蒸馏通道，$q_t$ 为特权条件下的教师分布，$p_t$ 为学生分布。关键正确 span 的局部目标为
+
+$$L_{\mathrm{span}}=\sum_t m_t\,\mathrm{KL}(q_t\|p_t).$$
+
+其余位置的 $m_t=0$，继续由 GRPO 更新；错误 span 可以切换到 reverse KL，以减少错误 token 的概率质量。KL 系数在 warm-up 后退火，避免特权信号在整个训练 horizon 中累积成主导梯度。论文诊断的 all-token 失效包括 reasoning length collapse、per-token entropy 上升和 held-out validation collapse。
+
 若 $M$ 表示被路由的 token 集合，$q$ 是教师分布，$p$ 是学生分布，关键 span 的 forward KL 可写为
 
 $$\mathcal{L}_{\mathrm{FKL}}(M)=\sum_{t\in M}\mathrm{KL}(q_t\|p_t).$$
@@ -35,9 +41,13 @@ $$\mathcal{L}_{\mathrm{FKL}}(M)=\sum_{t\in M}\mathrm{KL}(q_t\|p_t).$$
 
 主实验使用 Qwen3-8B，并在数学推理数据上比较 GRPO、all-token self-OPD、选择性 OPD 和 TRACE。评测包含四个 held-out 数学基准与 GPQA-Diamond；论文还测试 online self-annotation，即训练中的学生策略自己充当 annotator，不依赖外部 supervisor。训练细节、span-to-token 对齐、解码配置和 annotator prompt 在附录给出。
 
+训练使用 OpenThoughts-114k 数学子集中的最多 30K problem–solution pairs，在 H100 上以 verl 训练，并采用 DAPO clip-higher。Qwen3-8B 属于 strong-base regime，各 in-distribution 数学基准的 base avg@8 至少约 60%；论文另用 Qwen3-1.7B 检查弱基础模型。
+
 ## 3. 主要结果
 
 TRACE 相对 GRPO 在四个数学基准和 GPQA-Diamond 上平均提升 2.76 个百分点。它是比较的训练方法中唯一保持 Qwen3-8B base OOD 分数的方案；GRPO 与 all-token self-OPD 在 GPQA-Diamond 上出现退化。使用 online self-annotation 时，论文仍报告约 1.90 个百分点的平均增益，说明关键在于路由粒度和更新范围，而非必须拥有外部逐 token 教师。
+
+跨规模结果显示，最优 KL 方向取决于基础模型：强 Qwen3-8B 主要从正确关键 span 的 FKL 获益，较弱的 Qwen3-1.7B 则在错误 span 上使用 RKL 更有效。因此论文把 FKL、RKL、span mask 和 KL decay 分开做消融，而不是假定一种 KL 对所有学生都适用。
 
 消融实验围绕三项设计展开：只路由关键正确 spans、错误 spans 的局部 RKL，以及 KL 退火。论文还报告 all-token self-OPD 的三类失败症状、asymmetric thinking、NoThink-Eval robustness 和负结果，说明全 token 监督在长程数学训练中会出现熵与长度方向的异常变化。
 
@@ -45,11 +55,17 @@ TRACE 相对 GRPO 在四个数学基准和 GPQA-Diamond 上平均提升 2.76 个
 
 TRACE 的核心不是增加教师信息量，而是控制教师信息落点。关键 span 具有较高的决策价值，能够在学生需要纠正的位置提供密集梯度；非关键 token 由学生自身的生成和 GRPO 保持，避免把表达表面、冗余连接词和特权上下文一起写入模型。局部 RKL 用于错误 span 的方向性排斥，但其使用范围仍由 annotator 路由。
 
+理论部分给出两个互补解释：FKL 会提升教师支持而学生低估的关键 token 概率；span mask 与 KL decay 则使 privileged-gradient exposure 在训练 horizon 内保持有限。online self-annotation 的增益说明 annotator 可以退化为“识别当前学生轨迹中的关键位置”，不必把完整外部推理轨迹直接写入学生。
+
 ## 5. 限制
 
 实验主体是数学推理和 Qwen3 系列，关键 span 由 annotator 识别，路由质量会影响结果。论文没有图像 caption 或视觉 groundedness 评测，因此 span 的定义能否迁移到视觉描述需要重新设计。论文也不主张把所有 token 的 KL 都替换成 RKL；不同 span 类型使用不同信号。
 
-## 6. 方法启示
+## 6. 复现与限制
+
+复现时需要实现 rollout、span-to-token 对齐、按 span 类型切换 FKL/RKL、GRPO 主损失和逐步衰减的 KL 通道；仅把全响应 KL 改成更小系数不能复现论文的路由机制。论文主体是数学推理，span annotator 的可靠性会直接影响结果，视觉 caption 任务需要重新定义关键 span 和错误 span。
+
+## 7. 方法启示
 
 1. 蒸馏粒度会影响信号效用；响应中的关键位置与冗余位置可以采用不同更新目标。
 2. 使用特权标注时，路由信息与具体 span 文本的分离可限制信息泄漏。
