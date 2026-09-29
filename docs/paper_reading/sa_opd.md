@@ -27,37 +27,37 @@ SA-OPD 将信号质量拆成两个维度：一是输入 groundedness，衡量蒸
 
 ## 2. 算法框架
 
-训练仍使用学生 on-policy 轨迹。对每个 token 计算输入 groundedness proxy 与教师—学生 divergence，形成二值或软过滤掩码。掩码作用于 OPD loss，学生的普通语言建模或其他训练项保持不变。方法的计算开销被设计为轻量级，重点是 token 级选择而不是重新训练教师。
+学生对输入 $x$ 采样 $y=(y_1,\ldots,y_L)$；冻结教师和学生分别在学生访问过的前缀 $(x,y_{<t})$ 上评分。Vanilla OPD 使用逐位置 reverse KL。对已采样 token，论文定义 $A_t=\log\pi_\theta(y_t\mid x,y_{<t})-\log\pi_T(y_t\mid x,y_{<t})$，将其作为 stop-gradient 系数时，更新方向与 $-A_t\nabla_\theta\log\pi_\theta(y_t\mid x,y_{<t})$ 成正比。$|A_t|$ 因而是该 token 的优化影响代理，不是整词表 KL，也不能单独代表信号可靠性。
 
-具体流程是：学生先对输入采样一条轨迹；教师在同一前缀上给出 token 分布；方法估计该位置的 input-groundedness，再计算教师与学生分布的 divergence；只有同时满足“groundedness 低、divergence 高”的位置进入过滤集合，其余位置保留原始 OPD 梯度。直觉上，若对输入做轻微扰动后教师方向基本不变，该方向更像语言先验；若它同时与学生差异很大，更新量就足以造成明显漂移。联合条件因此把“影响大”与“由证据支持”分开。
+论文先用条件互信息 $I(X;A_t\mid Y_{<t})$ 定义“分歧有多依赖输入”，但它不可直接计算。实际代理是在**同一条学生生成前缀**上做两次教师—学生评分：一次保留原 prompt，得到 $A_t^{\mathrm{full}}$；另一次移除 prompt、保留响应前缀，得到 $A_t^{\mathrm{res}}$。二者的差 $\Delta_t^{\mathrm{IG}}=A_t^{\mathrm{full}}-A_t^{\mathrm{res}}$ 是 Input-Grounding Gap。差值小表示这条蒸馏方向在没有任务输入时仍出现，更可能来自模板或语言先验。这是论文采用的 no-prompt 对照，并非任意“轻微输入扰动”。
 
-设 $g_t$ 为 groundedness 分数，$d_t$ 为 teacher-student divergence，保留掩码可写为
+每个 batch 内，方法取 $\Delta_t^{\mathrm{IG}}$ 最低的 $p_1$ 分位与 $|A_t^{\mathrm{full}}|$ 最高的 $p_2$ 分位的交集 $F$，只过滤这批同时“输入依赖弱、更新影响大”的 token。为避免固定分位在不同任务中过度删除监督，作者动态调整 $p_1,p_2$，使过滤损失质量占比
 
-$$m_t=\mathbf{1}[g_t\geq\tau_g\ \text{or}\ d_t\leq\tau_d],$$
+$$\operatorname{FLMR}(F)=\frac{\sum_{t\in F}|A_t^{\mathrm{full}}|}{\sum_{t\in V}|A_t^{\mathrm{full}}|+\epsilon}\leq\beta,$$
 
-并将 $m_t$ 乘到 token 级 OPD 项上；等价地，$1-m_t$ 是被过滤的低 groundedness、高 divergence 交集。阈值或连续权重由验证集调节；论文的关键是交集判据，而不是某一种固定阈值。
+其中 $V$ 是 batch 内有效响应 token。最后仅在 $V\setminus F$ 上平均 reverse-KL 损失。FLMR 约束的是被删掉的蒸馏信号总量；相同过滤 token 比例可能对应截然不同的优化影响。
 
 论文的理论分析指出，先验诱导的梯度对输入特定目标的 alignment 较弱；低信噪比 OPD 更新会造成参数漂移。SA-OPD 的联合条件把“看起来很有影响”与“确实由输入支持”区分开。
 
 ## 3. 实验设置
 
-语言实验使用 Qwen3 和 Qwen3.5 的 non-thinking 变体，包含 Qwen3-4B-Instruct→1.7B 以及 Qwen3.5-35B-A3B→2B 等教师—学生组合。数学数据从 DeepMath 中保留难度至少为 6 的样本，并对其余数据随机抽取 30%，总量约 7K examples；视觉实验从 VERO-600K 的 Captioning & IF、Grounding、Counting & Search 子集抽取 10%，并加入 MMRL30K visual reasoning。评测覆盖五个数学基准及六个视觉/多模态基准，比较 Vanilla OPD、已有 selective OPD 和 SA-OPD。
+语言实验使用 Qwen3 和 Qwen3.5 的 non-thinking 变体，主配对为 Qwen3-4B-Instruct→1.7B 以及 Qwen3.5-35B-A3B→2B；跨规模检验还包括 DeepSeek-R1-0528-Qwen3-8B→Qwen3-1.7B 和 Qwen3.5-9B→2B。数学数据从 DeepMath 中保留难度至少为 6 的样本，并对其余数据随机抽取 30%，总量约 7K examples；视觉理解从 VERO-600K 的 Captioning & IF、Grounding、Counting & Search 子集各抽取 10%，视觉推理从 MMRL30K 抽取 10%。
+
+数学评测为 Math500、AMC23、AIME24/25 和 MinervaMATH；视觉理解为 EvoChart、MMIFEval、CountQA，视觉推理为 MathVision、Geo3K、MathVista。对照包括 Vanilla OPD、ExOPD、TIP 和 FiRe-OPD，论文声明在相同数据、模型和计算预算下比较。指标遵循各基准官方口径，不应将数学准确率与视觉评分直接合并。
 
 ## 4. 主要结果与消融
 
-SA-OPD 在语言和视觉语言设置中一致优于 Vanilla OPD 与竞争选择方法。消融分别移除 groundedness 或 divergence 条件，结果显示单独使用“信号影响大”会把高梯度先验一起保留下来，单独使用 groundedness 又可能过滤掉真正困难且有价值的更新；两者联合更稳定。附录给出过滤 token 示例、详细算法和计算开销。
+在 Qwen3.5-35B-A3B→2B 的视觉实验中，SA-OPD 将视觉理解三项平均分从 Vanilla OPD 的 50.5 提至 54.0，视觉推理三项从 60.4 提至 63.5。CountQA 为 26.4→33.6，Geo3K 为 67.2→72.2；SA-OPD 六项均高于对照 OPD 方法。在 Qwen3-4B-Instruct→1.7B 数学实验中，五项均分为 Vanilla OPD 28.5、TIP 29.3、SA-OPD 30.4；Math500 为 66.4→69.6。跨规模表还报告另两组教师—学生配对的正向增益，但仍集中在 Qwen 系学生。
 
-消融的解释重点在交集：只按 divergence 选样本会偏向教师最自信、与学生差异最大的 token，其中包含格式和先验补全；只按 groundedness 过滤则无法区分低依赖但影响很小的无害 token 与真正会改变参数的错误方向。联合判据把过滤预算集中到前者，因而在数学与视觉任务上都更稳定。
+消融在约相同过滤比例（相差约 1 个百分点）下比较随机过滤、仅按 $|A_t|$ 过滤、仅按 $\Delta_t^{\mathrm{IG}}$ 过滤，以及将 groundedness 代理替换成教师 log-probability。单维过滤虽有收益，联合判据的 Geo3K/MathVista 结果最佳。这个对照支持“两个维度都必要”，同时保留了一个边界：no-prompt gap 只是输入依赖的代理，不能证明被过滤 token 在语义上必然错误。
 
-## 5. 解释与限制
+训练动态也有任务差异：数学 OPD 的高影响过滤信号在早期迅速衰减；视觉任务的 FLMR 在训练期间持续非零。论文据此解释视觉蒸馏收益更大，因为感知不确定性与语言先验的混合会持续制造可疑信号。这是由观测动态支持的机制解释，尚不能排除数据分布和模型架构的其他影响。
 
-论文的结论是监督质量至少包含“输入对应度”这一维度。教师更强、文本更流畅并不保证 token 更新更适合当前输入。实验主要集中在 Qwen 家族和数学/视觉语言任务；groundedness proxy 的具体形式依赖任务与模型，论文没有证明它可以直接替代所有外部 verifier。
+## 5. 复现与边界
 
-## 6. 复现与限制
+复现需要保存学生 rollout，在 full-prompt 与 no-prompt 两个上下文上对齐教师和学生的逐 token log-prob，计算 $\Delta_t^{\mathrm{IG}}$、$|A_t^{\mathrm{full}}|$、交集分位集合及 FLMR，再只对保留 token 求 reverse KL。额外成本来自 no-prompt 评分前向；论文没有提出 CUDA、Triton 或其他自定义算子，方法属于训练目标和 token 过滤层面的改动。实验主要集中在 Qwen 系学生和数学/视觉语言任务；移除 prompt 可能改变 token 分布本身，因此这个代理需要随任务校准，且不能直接替代视觉事实核验或外部 verifier。
 
-复现需要保存学生 rollout，在相同前缀上运行教师，按 token 对齐两套分布，计算 groundedness proxy 与 divergence，再把 mask 接入 OPD loss。主要成本是额外的教师前向和 groundedness 估计；论文没有提出 CUDA、Triton 或其他自定义算子，方法属于训练目标和样本路由层面的改动。groundedness proxy 依赖输入扰动或任务特定信号，迁移到新的 caption 或多模态任务时需要重新校准阈值。
-
-## 7. 方法启示
+## 6. 方法启示
 
 1. 教师—学生分歧只能衡量更新差异，不能单独代表监督质量；需要同时衡量输入依赖。
 2. 联合过滤条件把高影响且低输入支持的信号与普通格式差异区分开。
