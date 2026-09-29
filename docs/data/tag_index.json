@@ -2295,5 +2295,55 @@
     "date_arxiv": "2026-06",
     "date_added": "2026-09-28",
     "organizations": "Tsinghua University, Microsoft Research Asia, Shenzhen University of Advanced Technology, China National Petroleum Corporation"
+  },
+  {
+    "title": "VSA2",
+    "path": "paper_reading/vsa2.md",
+    "type": "论文阅读",
+    "tags": [
+      "Sparse Attention",
+      "Video Generation",
+      "Diffusion Model",
+      "CUDA",
+      "ThunderKittens",
+      "CuTe"
+    ],
+    "summary": "细粒度 router 与序列级 topK 的视频稀疏注意力，配合 Sparse Rebasing；ThunderKittens block-sparse 与 CuTe DSL 融合 kernel 在 720p 达到 8.9x 注意力加速",
+    "category": "Sparse Attention",
+    "date_arxiv": "2026-09",
+    "date_added": "2026-09-29",
+    "organizations": "ByteDance Seed"
+  },
+  {
+    "title": "FlashForward",
+    "path": "paper_reading/flashforward.md",
+    "type": "论文阅读",
+    "tags": [
+      "Video Generation",
+      "KV Cache",
+      "Distributed Inference",
+      "Diffusion Model"
+    ],
+    "summary": "复用 denoising 中的 stage-matched KV，结合稀疏 clean anchors 和 planner-renderer wavefront，降低自回归视频扩散 cache-only forward",
+    "category": "视频生成架构",
+    "date_arxiv": "2026-09",
+    "date_added": "2026-09-29",
+    "organizations": "Meta"
+  },
+  {
+    "title": "RefAdapt-DiT",
+    "path": "paper_reading/refadapt_dit.md",
+    "type": "论文阅读",
+    "tags": [
+      "Video Generation",
+      "Image Generation",
+      "KV Cache",
+      "Diffusion Model"
+    ],
+    "summary": "以 target-Q 变化与 target-to-reference 暴露度控制 reference K/V 的深度自适应复用，Qwen Image Edit 达到 2.58x 加速",
+    "category": "视频生成架构",
+    "date_arxiv": "2026-09",
+    "date_added": "2026-09-29",
+    "organizations": "Tencent"
   }
 ]

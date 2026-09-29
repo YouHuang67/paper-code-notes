@@ -153,6 +153,9 @@ nav:
     - APE: paper_reading/ape.md
     - WanPE: paper_reading/wanpe.md
     - Lance: paper_reading/lance_arxiv.md
+    - VSA2: paper_reading/vsa2.md
+    - FlashForward: paper_reading/flashforward.md
+    - RefAdapt-DiT: paper_reading/refadapt_dit.md
     - TailSFT: paper_reading/tailsft.md
     - TRACE: paper_reading/trace.md
     - SA-OPD: paper_reading/sa_opd.md
