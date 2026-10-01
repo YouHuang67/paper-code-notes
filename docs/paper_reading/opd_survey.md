@@ -12,7 +12,7 @@ tags:
 
 > 论文：Mingyang Song, Mao Zheng, “A Survey of On-Policy Distillation for Large Language Models”，arXiv:2604.00626v4，2026-06-18。本文聚焦综述及其引用的论文。
 
-## 先给结论
+## 概述
 
 On-Policy Distillation（OPD）的核心流程是学生先生成自己的轨迹，教师再在这些学生会遇到的状态上提供密集的 token 分布或反馈。该流程针对 off-policy 蒸馏中的暴露偏差：训练时学生主要接触教师或数据前缀，推理时需要沿自己的前缀继续生成。
 
@@ -26,7 +26,7 @@ $$
 \mathcal L_{\mathrm{off}}=\mathbb E_{x,y\sim\mathcal D}\left[\sum_tD_{\mathrm{KL}}\left(p_T(\cdot|x,y_{<t})\|p_\theta(\cdot|x,y_{<t})\right)\right].
 $$
 
-这里的前缀来自标注数据或教师生成结果。学生训练时接触的状态与推理时自己的错误、犹豫和长度变化存在差异，小的局部误差会在长序列中累积。综述借用 DAgger 的直觉：若每一步错误概率为 $\epsilon$，on-policy 训练可以把误差累积从近似 $O(\epsilon T^2)$ 降到 $O(\epsilon T)$。该直觉依赖教师在学生前缀上的校准能力；学生轨迹进入教师覆盖不足的区域时，误差界的适用条件会减弱。
+off-policy 前缀来自标注数据或教师生成结果。学生训练时接触的状态与推理阶段的错误、犹豫和长度变化存在差异，小的局部误差会在长序列中累积。综述借用 DAgger 的分析直觉：若每一步错误概率为 $\epsilon$，on-policy 训练可将误差累积从近似 $O(\epsilon T^2)$ 降到 $O(\epsilon T)$。该分析依赖教师在学生前缀上的校准能力；学生轨迹进入教师覆盖不足的区域时，误差界的适用条件会减弱。
 
 综述将 OPD 写成统一目标：
 
@@ -38,7 +38,7 @@ $$
 
 $$D_f(P\|Q)=\mathbb E_{y\sim Q}\left[f\left(P(y)/Q(y)\right)\right],\quad f(1)=0.$$
 
-因此 OPD 的研究空间可以压缩成三个轴：**轨迹分布**（谁产生前缀）、**比较目标**（用哪种 divergence）、**监督信号**（白盒 logits、黑盒反馈还是自蒸馏）。这三个轴比按应用领域分类更能解释方法差异。
+据此，OPD 的研究空间可按三个维度组织：**轨迹分布**（前缀的生成来源）、**比较目标**（采用的 divergence）、**监督信号**（白盒 logits、黑盒反馈或自蒸馏）。这三个维度直接对应方法设计差异。
 
 ## 2. 主线进展
 
@@ -60,7 +60,7 @@ $$
 
 $$R_t=\sum_{t'=t}^{|y|}\log\frac{p_T(y_{t'}|y_{<t'})}{p_\theta(y_{t'}|y_{<t'})}.$$
 
-这里的 return 同时包含当前 token 质量和未来 token 的影响，$-1$ 来自熵项。MiniLLM 的实际价值在于给出了可训练的序列级 reverse-KL 路径，并用单步词表期望降低方差；代价是 rollout 和策略梯度比 token-level KD 更贵、更不稳定。
+该 return 同时包含当前 token 质量和未来 token 的影响，$-1$ 来自熵项。MiniLLM 给出了可训练的序列级 reverse-KL 路径，并用单步词表期望降低方差；rollout 和策略梯度也带来高于 token-level KD 的计算成本与训练方差。
 
 ### 2.3 DistiLLM：在支持集和方差之间搭桥
 
@@ -74,7 +74,7 @@ ExOPD（也称 G-OPD，arXiv:2602.12125）把教师 token 分布解释为 dense�
 
 固定 divergence 在不同 token 熵区间具有不同作用。Entropy-Aware OPD（arXiv:2603.07079）在高熵 token 偏向 forward KL、低熵 token 偏向 reverse KL：前者保留不确定区域的多种合理选择，后者在确定区域集中学习。Veto（arXiv:2601.07155）直接改写 logit-space 的目标，抑制不稳定的错误更新。Revisiting OPD（arXiv:2603.25562）则系统梳理失败模式，指出截断 reverse KL 与教师 top-k 支持对稳定训练更实用。这些工作共同把问题从“选哪种 KL”推进到“根据状态、熵和支持集动态选目标”。
 
-### 2.6 Rethinking OPD：先判断蒸馏是否有信息增益
+### 2.6 Rethinking OPD：蒸馏信息增益判定
 
 Rethinking OPD（arXiv:2604.13016）的关键结论是：教师能力优势需要与学生可学习的新信号同时存在，OPD 才能产生有效增益。教师与学生的思考模式高度兼容时，学生生成的高概率 token 已与教师重合，蒸馏主要强化学生已有能力；教师提供学生缺少的能力，且双方在关键前缀上仍可比较时，OPD 更可能带来信息增益。论文用 teacher top-k 支持的 overlap ratio 与 token advantage 做诊断，并把它们接入 verl 的蒸馏实现。该判据直接检查教师信号的新颖程度，可用于安排 rollout 和蒸馏预算。
 
@@ -84,7 +84,7 @@ Forward KL 是 mode-covering、zero-avoiding，依赖教师完整词表分布；
 
 监督信号决定了可用目标：白盒教师能给 full-vocabulary logits，适合 forward KL；黑盒 API 可提供采样、排序或 verbal feedback，通常需要 discriminator、偏好或 outcome reward；自蒸馏可用 privileged information、外部反馈或教师快照产生信号。信号源属于目标设计的约束，因为它决定 divergence 是否可估计。
 
-成本是 OPD 的硬边界。综述估计 OPD 训练成本约为 off-policy SFT 的 4–5 倍，主要来自学生 rollout、教师前向和更复杂的缓存/同步。DeepSeek-V4 报告的系统做法很有代表性：缓存教师最后一层 hidden states，用输出头重建 logits，按教师分组调度 batch，并避免所有教师同时驻留；Lightning-OPD 则在一致性假设下预计算教师 log-prob，报告约 4 倍加速。一个现实的三阶段配方是：off-policy warm-up，on-policy full-logit distillation，最后用 reward-guided refinement 收尾。
+计算成本构成 OPD 的主要系统约束。综述估计 OPD 训练成本约为 off-policy SFT 的 4–5 倍，开销主要来自学生 rollout、教师前向和缓存/同步。DeepSeek-V4 报告采用以下系统设计：缓存教师最后一层 hidden states，通过输出头重建 logits，按教师分组调度 batch，并控制驻留显存的教师数量；Lightning-OPD 在一致性假设下预计算教师 log-prob，报告约 4 倍加速。综述提出的三阶段流程为 off-policy warm-up、on-policy full-logit distillation 和 reward-guided refinement。
 
 ## 4. 失败模式与证据边界
 
@@ -96,7 +96,7 @@ Forward KL 是 mode-covering、zero-avoiding，依赖教师完整词表分布；
 4. **Calibration-capability gap**：教师可能拥有更高的最终能力，同时在学生的异常状态上缺乏可靠打分能力。
 5. **Length inflation / multi-turn degradation**：序列级奖励和多轮 rollout 可能诱发无意义延长，教师在长对话后段也可能退化。
 
-跨论文的“谁更好”需要更多统一实验。不同论文使用的基座模型、教师能力、rollout 数、上下文长度、benchmark 版本和训练预算不同；综述据此将横向排序视为证据有限的问题。GKD/MiniLLM 的基础性可由后续方法对核心机制的持续复用来观察。2026 年方法的影响力可分成三层：**被多个方法复用的机制**（学生轨迹、reverse-KL/自适应 divergence）、**进入通用训练框架的诊断或实现**（如 Rethinking OPD 的 overlap 指标进入 verl）、**现阶段主要由单篇论文或垂类任务支持的增益**。第三层目前属于候选方向，广泛影响力仍待独立复现和更多采用证据。
+跨论文比较需要更多统一实验。不同论文使用的基座模型、教师能力、rollout 数、上下文长度、benchmark 版本和训练预算存在差异，因此综述将横向排序视为证据有限的问题。GKD/MiniLLM 的基础性可通过后续方法对其核心机制的持续复用来观察。2026 年方法的影响力可分成三层：**被多个方法复用的机制**（学生轨迹、reverse-KL/自适应 divergence）、**进入通用训练框架的诊断或实现**（如 Rethinking OPD 的 overlap 指标进入 verl）、**现阶段主要由单篇论文或垂类任务支持的增益**。第三层属于候选方向，其影响范围仍需独立复现和更多采用证据确认。
 
 ## 5. 对此前候选工作的核验
 
@@ -109,18 +109,18 @@ Forward KL 是 mode-covering、zero-avoiding，依赖教师完整词表分布；
 
 Qwen3、DeepSeek-V4、MiMo-V2-Flash、GLM-5 等技术报告把 OPD 放进多阶段后训练或多教师能力合并流程。更有参考价值的证据来自系统设计：教师 logits 的获取与缓存、rollout 吞吐、混合教师调度、蒸馏与 RL 的阶段切换都围绕 OPD 的真实瓶颈展开。DeepSeek-V4 报告用多教师 OPD 承担能力整合，显示 OPD 已成为规模化训练的基础原语之一；这些报告同时改变了数据、模型和训练阶段，因此单篇报告难以分离某个 divergence 或采样策略的因果收益。
 
-## 7. 适合继续深挖的主线
+## 7. 核心文献阅读路径
 
-如果只保留最值得读的核心链条，顺序应是：**GKD → MiniLLM → DistiLLM → ExOPD/G-OPD → Entropy-Aware/Veto/Revisiting → Rethinking OPD → OPD Survey**。读完这条链能回答三个实际问题：学生轨迹是否覆盖了需要修复的状态；教师在这些状态上是否提供新且可校准的分布；额外 rollout 与教师计算是否换来了可重复的能力增量。其余论文应先按“目标函数、信号来源、训练动态”三轴归位，再判断是否有独立复现、框架合入或工业采用证据。
+建议按以下顺序阅读核心工作：**GKD → MiniLLM → DistiLLM → ExOPD/G-OPD → Entropy-Aware/Veto/Revisiting → Rethinking OPD → OPD Survey**。这条脉络依次呈现学生轨迹、序列级 reverse-KL、稳定性机制、RL 融合、自适应目标和蒸馏信息增益判据。阅读时可围绕三个问题评估方法：学生轨迹是否覆盖待修复状态；教师是否在这些状态上提供新且可校准的分布；额外 rollout 与教师计算是否带来可重复的能力增量。其他论文可按“目标函数、信号来源、训练动态”三个维度归类，并结合独立复现、框架合入和工业采用证据评估影响范围。
 
 ### 来源与外部材料
 
 - 综述正文与参考文献：[arXiv:2604.00626](https://arxiv.org/abs/2604.00626)。
-- 直观解释：[Thinking Machines, On-Policy Distillation](https://thinkingmachines.ai/blog/on-policy-distillation/)。
+- 技术说明：[Thinking Machines, On-Policy Distillation](https://thinkingmachines.ai/blog/on-policy-distillation/)。
 - 工具化入口：[Hugging Face TRL On-Policy Distillation](https://huggingface.co/spaces/HuggingFaceH4/on-policy-distillation)。
 - 诊断实现：[Rethinking-OPD](https://github.com/Thinking-Space/Rethinking-OPD)，其 README 记录了 verl PR #6469 的 overlap 指标与版本注意事项；该材料可证明实现传播，学术有效性仍需独立复现评估。
 - 论文索引：[awesome-on-policy-distillation](https://github.com/chrisliu298/awesome-on-policy-distillation)。该类聚合页用于发现材料，影响力判断仍以论文、官方技术报告和框架合入为准。
 
-## 一句话评价
+## 总结
 
-OPD 的真正进展，是把蒸馏从教师答案分布拟合推进到学生会访问的状态监督，并结合可选择的 divergence 与密集反馈纠正策略；2026 年最值得关注的方向包括信息增益判定、稳定估计和 rollout 成本的规模化控制。
+OPD 将蒸馏扩展到学生实际访问的状态，并结合可选择的 divergence 与密集反馈修正策略。2026 年的主要研究方向包括信息增益判定、稳定估计和 rollout 成本控制。

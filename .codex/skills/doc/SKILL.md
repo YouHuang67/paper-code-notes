@@ -46,6 +46,8 @@ Do not create a stack of `YYYYMMDD_*` folders under `refs/` or `docs/research/` 
 - Prefer affirmative, concrete prose. Prohibit contrast-by-negation constructions such as "not X but Y" and "rather than X" in every document. State the intended object or behavior directly, then describe relevant distinctions with separate factual sentences.
 - 禁止使用“不是……而是……”“并非……而是……”“不是……却……”和“而非……”等否定式对比句。需要区分概念时，分别陈述各自的对象、机制和证据，避免把无关概念强行构造成二选一关系。
 - 每份文档初稿完成后，必须检索“不是”“而是”“而非”“并非”“而不”“却”等高风险表达，逐句判断语义；发现对比式否定时改成正向陈述，再进行两轮审阅。
+- 技术报告和论文解读采用正式、客观的书面语。避免“先给结论”“一句话评价”“简单说”“说白了”“看看”等口语化标题、导语和措辞；使用“概述”“方法分析”“实验结果”“讨论”“总结”等中性标题。
+- 初稿完成后，对全文进行语体检查：检索口语化提示词、聊天式称呼、随意强调语和主观赞叹，逐项改为具体对象、机制、结果或证据边界。保留必要的可读性，不用口语化句式制造亲近感。
 - Remove purpose-only narration, repeated caveats, generic transition sentences, and explanations that add no decision-relevant information.
 - Do not sacrifice the essential mechanism for brevity: retain the input, transformation, output, and reason for each central method step.
 - Match detail to the reader's needs. Introduce technical depth where it becomes necessary, not prematurely and not after relying on it.
