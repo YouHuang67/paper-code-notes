@@ -29,8 +29,14 @@
     },
     {
       "name": "拟合与蒸馏",
-      "scope": "对象必须是语言模型的 SFT 选数据、memorization、regularization，或 distillation，如 on-policy distillation、GKD、自蒸馏。",
-      "reject": "扩散蒸馏、视频蒸馏、推荐蒸馏、参数高效微调、测试时训练、恶意软件检测、prompt enhancer。",
+      "scope": "对象必须是语言模型的 SFT 选数据、memorization、regularization，或 knowledge distillation；包括 on-policy distillation（OPD）、Generalized Knowledge Distillation（GKD）、reverse-KL/forward-KL 蒸馏、自蒸馏、教师 logits 蒸馏、序列级蒸馏，以及与蒸馏目标直接耦合的学生轨迹、divergence、信号筛选和训练稳定性。",
+      "reject": "扩散蒸馏、视频蒸馏、推荐蒸馏、参数高效微调、测试时训练、恶意软件检测、prompt enhancer；仅使用语言模型 reward 或 GRPO/PPO 而不包含蒸馏目标的工作归入奖励强化学习。",
+      "enabled": true
+    },
+    {
+      "name": "语言模型在策略蒸馏（On-Policy Distillation, OPD）",
+      "scope": "对象必须是语言模型的 on-policy distillation（OPD）主线：学生采样轨迹、教师在学生前缀上提供 token/logit/black-box 反馈、GKD、MiniLLM、DistiLLM、adaptive f-divergence、OPD 与 RL 融合、OPD 稳定性与训练效率。",
+      "reject": "仅做 off-policy SFT 或普通 knowledge distillation、扩散/视频/推荐蒸馏、视觉语言模型垂类蒸馏、只做偏好优化或只做 GRPO/PPO、没有学生轨迹或蒸馏监督的泛训练动态。",
       "enabled": true
     },
     {
