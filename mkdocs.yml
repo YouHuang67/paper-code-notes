@@ -67,6 +67,7 @@ nav:
   - 标签: tags.md
   - 论文阅读:
     - 导读: paper_reading/index.md
+    - OPD Survey: paper_reading/opd_survey.md
     - Qwen2.5-VL: paper_reading/qwen25_vl.md
     - Qwen3-VL: paper_reading/qwen3_vl.md
     - Qwen3-Omni: paper_reading/qwen3_omni.md

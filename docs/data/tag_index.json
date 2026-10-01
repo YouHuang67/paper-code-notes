@@ -2331,6 +2331,23 @@
     "organizations": "Meta"
   },
   {
+    "title": "OPD Survey",
+    "path": "paper_reading/opd_survey.md",
+    "type": "论文阅读",
+    "tags": [
+      "LLM Post Training",
+      "On-Policy Distillation",
+      "Knowledge Distillation",
+      "Reinforcement Learning",
+      "Survey"
+    ],
+    "summary": "梳理 OPD 从学生轨迹、divergence 与教师信号到 2026 稳定性、RL 融合和工业系统采用的主线",
+    "category": "LLM Post Training",
+    "date_arxiv": "2026-04",
+    "date_added": "2026-10-01",
+    "organizations": "Tencent"
+  },
+  {
     "title": "RefAdapt-DiT",
     "path": "paper_reading/refadapt_dit.md",
     "type": "论文阅读",
