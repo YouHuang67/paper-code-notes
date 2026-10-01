@@ -2362,5 +2362,71 @@
     "date_arxiv": "2026-09",
     "date_added": "2026-09-29",
     "organizations": "Tencent"
+  },
+  {
+    "title": "GKD",
+    "path": "paper_reading/gkd.md",
+    "type": "论文阅读",
+    "tags": ["LLM Post Training", "On-Policy Distillation", "Knowledge Distillation", "Imitation Learning"],
+    "summary": "以学生自生成轨迹和教师 token 分布统一 off-policy 与 on-policy 蒸馏，并以 λ 与 divergence 控制状态分布和监督目标",
+    "category": "LLM Post Training",
+    "date_arxiv": "2023-06",
+    "date_added": "2026-10-01",
+    "organizations": "Google DeepMind, Mila, University of Toronto"
+  },
+  {
+    "title": "MiniLLM",
+    "path": "paper_reading/minillm.md",
+    "type": "论文阅读",
+    "tags": ["LLM Post Training", "On-Policy Distillation", "Knowledge Distillation", "Reinforcement Learning"],
+    "summary": "将序列级 Reverse KL 转化为带未来回报的策略梯度，并通过单步词表期望降低蒸馏方差",
+    "category": "LLM Post Training",
+    "date_arxiv": "2023-06",
+    "date_added": "2026-10-01",
+    "organizations": "Tsinghua University, Microsoft Research"
+  },
+  {
+    "title": "DistiLLM 系列",
+    "path": "paper_reading/distillm.md",
+    "type": "论文阅读",
+    "tags": ["LLM Post Training", "On-Policy Distillation", "Knowledge Distillation", "Training Stability"],
+    "summary": "以 skew divergence、adaptive replay 和来源感知目标缓解 OPD 的零概率梯度与教师查询成本",
+    "category": "LLM Post Training",
+    "date_arxiv": "2024-02",
+    "date_added": "2026-10-01",
+    "organizations": "KAIST and collaborators"
+  },
+  {
+    "title": "ExOPD",
+    "path": "paper_reading/exopd.md",
+    "type": "论文阅读",
+    "tags": ["LLM Post Training", "On-Policy Distillation", "Reinforcement Learning", "Knowledge Distillation"],
+    "summary": "将 OPD 统一为带 KL 约束的 dense RL，并用 reward extrapolation 合并多教师或超越单个教师",
+    "category": "LLM Post Training",
+    "date_arxiv": "2026-02",
+    "date_added": "2026-10-01",
+    "organizations": "Renmin University of China, Tencent"
+  },
+  {
+    "title": "Revisiting OPD",
+    "path": "paper_reading/revisiting_opd.md",
+    "type": "论文阅读",
+    "tags": ["LLM Post Training", "On-Policy Distillation", "Training Stability", "Knowledge Distillation"],
+    "summary": "定位 sampled-token OPD 的信号失衡、前缀漂移和 tokenizer mismatch，并以教师 top-K 局部支持匹配修正",
+    "category": "LLM Post Training",
+    "date_arxiv": "2026-03",
+    "date_added": "2026-10-01",
+    "organizations": "CASIA, UCAS, Fudan University"
+  },
+  {
+    "title": "Rethinking OPD",
+    "path": "paper_reading/rethinking_opd.md",
+    "type": "论文阅读",
+    "tags": ["LLM Post Training", "On-Policy Distillation", "Training Stability", "Knowledge Distillation"],
+    "summary": "以思考模式兼容性、教师新信息和 top-k overlap 解释 OPD 成败，并提出冷启动与提示选择方案",
+    "category": "LLM Post Training",
+    "date_arxiv": "2026-04",
+    "date_added": "2026-10-01",
+    "organizations": "Tsinghua University, ShanghaiTech University, UIUC, Renmin University of China"
   }
 ]
