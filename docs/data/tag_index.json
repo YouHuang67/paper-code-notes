@@ -2428,5 +2428,38 @@
     "date_arxiv": "2026-04",
     "date_added": "2026-10-01",
     "organizations": "Tsinghua University, ShanghaiTech University, UIUC, Renmin University of China"
+  },
+  {
+    "title": "DeepSeek-V4 OPD",
+    "path": "paper_reading/deepseek_v4_opd.md",
+    "type": "论文阅读",
+    "tags": ["LLM Post Training", "On-Policy Distillation", "Knowledge Distillation", "Industrial Adoption"],
+    "summary": "聚焦 DeepSeek-V4 以 full-vocabulary Reverse KL 和教师调度合并多领域 specialist 的 OPD 后训练流程",
+    "category": "LLM Post Training",
+    "date_arxiv": "2026-04",
+    "date_added": "2026-10-02",
+    "organizations": "DeepSeek-AI"
+  },
+  {
+    "title": "Qwen3 OPD",
+    "path": "paper_reading/qwen3_opd.md",
+    "type": "论文阅读",
+    "tags": ["LLM Post Training", "On-Policy Distillation", "Knowledge Distillation", "Industrial Adoption"],
+    "summary": "聚焦 Qwen3 strong-to-weak OPD 的 off-policy cold start、教师 logits 对齐和 GPU-hours 对照",
+    "category": "LLM Post Training",
+    "date_arxiv": "2025-05",
+    "date_added": "2026-10-02",
+    "organizations": "Qwen Team"
+  },
+  {
+    "title": "MiMo-V2-Flash OPD",
+    "path": "paper_reading/mimo_v2_opd.md",
+    "type": "论文阅读",
+    "tags": ["LLM Post Training", "On-Policy Distillation", "Knowledge Distillation", "Industrial Adoption"],
+    "summary": "聚焦 MiMo-V2-Flash 的 Multi-Teacher On-Policy Distillation，以领域教师 KL reward 合并数学、代码、agent 和安全能力",
+    "category": "LLM Post Training",
+    "date_arxiv": "2026-01",
+    "date_added": "2026-10-02",
+    "organizations": "Xiaomi MiMo Team"
   }
 ]
