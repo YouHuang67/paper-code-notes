@@ -44,9 +44,13 @@ DistiLLM 的实验覆盖 GPT-2、OPT、OpenLLaMA 与 T5 学生，任务包括 Do
 
 DistiLLM-2 在指令跟随、数学推理、代码生成、偏好优化和视觉问答上评测。其表 2 在三个指令数据集上比较胜率，表 3、4 分别覆盖 GSM8K/MATH 与 HumanEval/MBPP。组件消融表明，来源感知的双目标优于对所有序列使用同一 divergence；论文还报告 speculative decoding 场景下的推理加速比较。实验覆盖多个模型族和任务，方法收益仍依赖 teacher/student 配置、α 课程与数据来源划分。
 
+第一篇论文的调度器在每个训练周期根据验证损失更新教师序列、学生序列与固定数据的比例，并把学生历史 rollout 写入 replay buffer。响应长度上限和教师—学生配对决定在线教师调用量。DistiLLM-2 保持轨迹数量一致，将教师生成序列使用 Forward SKL、学生生成序列使用 Reverse SRKL，并通过 α 课程改变混合分布；来源感知消融是验证该设计的主要证据。
+
 ## 讨论与边界
 
 SKL 的稳定性来自混合分布下界，代价是目标已不再等价于原始 Forward 或 Reverse KL，α 成为关键超参数。自适应 replay 会引入调度状态和额外实现复杂度。DistiLLM-2 的来源划分以整条序列为粒度；同一序列内部不同 token 的熵和模式数仍可能差异很大。两篇论文主要提供白盒教师实验，黑盒 API 和极长 agent 轨迹的证据有限。
+
+实验结果支持稳定性和吞吐的联合改进，尚不能把加速完全归因于 skew divergence。replay buffer、序列来源比例、验证集更新频率和 speculative decoding 都会改变教师查询成本。跨 tokenizer 词表比较、多教师合并和极长 agent 轨迹仍缺少直接受控证据。
 
 ## 可迁移设计点
 

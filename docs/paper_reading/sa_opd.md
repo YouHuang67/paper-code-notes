@@ -1,9 +1,11 @@
 ---
+title: SA-OPD：输入依赖的可疑信号过滤
 tags:
   - LLM Post Training
   - On-Policy Distillation
   - Vision Language Model
   - Data Selection
+category: LLM Post Training
 ---
 
 # When Teachers Mislead: Spurious-Signal-Aware On-Policy Distillation
@@ -15,7 +17,7 @@ tags:
 
 ## 概述
 
-SA-OPD 研究教师 token 信号与输入之间的关系。OPD 在学生自己采样的轨迹上使用教师逐 token 分布，但教师的判断可能来自与输入无关的语言先验、格式习惯或模板，而不是任务证据。这类信号可能产生大梯度，却不提供改善任务结果的方向。
+SA-OPD 研究教师 token 信号与输入之间的关系。OPD 在学生自己采样的轨迹上使用教师逐 token 分布，但教师的判断可能来自与输入无关的语言先验、格式习惯或模板，也可能缺少任务证据。这类信号可能产生大梯度，同时缺少改善任务结果的方向。
 
 论文定义 spurious signal，并提出同时依据 input-groundedness 和 distillation divergence 过滤 token：只有当 token 对输入的依赖弱、且蒸馏差异处于极端范围时才过滤。作者在 Qwen3/Qwen3.5 语言模型和视觉语言模型设置上进行实验，报告相对 Vanilla OPD 及其他 selective OPD 的稳定改进。
 
@@ -27,9 +29,9 @@ SA-OPD 将信号质量拆成两个维度：一是输入 groundedness，衡量蒸
 
 ## 2. 算法框架
 
-学生对输入 $x$ 采样 $y=(y_1,\ldots,y_L)$；冻结教师和学生分别在学生访问过的前缀 $(x,y_{<t})$ 上评分。Vanilla OPD 使用逐位置 reverse KL。对已采样 token，论文定义 $A_t=\log\pi_\theta(y_t\mid x,y_{<t})-\log\pi_T(y_t\mid x,y_{<t})$，将其作为 stop-gradient 系数时，更新方向与 $-A_t\nabla_\theta\log\pi_\theta(y_t\mid x,y_{<t})$ 成正比。$|A_t|$ 因而是该 token 的优化影响代理，不是整词表 KL，也不能单独代表信号可靠性。
+学生对输入 $x$ 采样 $y=(y_1,\ldots,y_L)$；冻结教师和学生分别在学生访问过的前缀 $(x,y_{<t})$ 上评分。Vanilla OPD 使用逐位置 reverse KL。对已采样 token，论文定义 $A_t=\log\pi_\theta(y_t\mid x,y_{<t})-\log\pi_T(y_t\mid x,y_{<t})$，将其作为 stop-gradient 系数时，更新方向与 $-A_t\nabla_\theta\log\pi_\theta(y_t\mid x,y_{<t})$ 成正比。$|A_t|$ 因此属于该 token 的优化影响代理。它只反映采样 token 的差异，无法替代整词表 KL，也无法单独代表信号可靠性。
 
-论文先用条件互信息 $I(X;A_t\mid Y_{<t})$ 定义“分歧有多依赖输入”，但它不可直接计算。实际代理是在**同一条学生生成前缀**上做两次教师—学生评分：一次保留原 prompt，得到 $A_t^{\mathrm{full}}$；另一次移除 prompt、保留响应前缀，得到 $A_t^{\mathrm{res}}$。二者的差 $\Delta_t^{\mathrm{IG}}=A_t^{\mathrm{full}}-A_t^{\mathrm{res}}$ 是 Input-Grounding Gap。差值小表示这条蒸馏方向在没有任务输入时仍出现，更可能来自模板或语言先验。这是论文采用的 no-prompt 对照，并非任意“轻微输入扰动”。
+论文先用条件互信息 $I(X;A_t\mid Y_{<t})$ 定义“分歧有多依赖输入”，但它不可直接计算。实际代理是在**同一条学生生成前缀**上做两次教师—学生评分：一次保留原 prompt，得到 $A_t^{\mathrm{full}}$；另一次移除 prompt、保留响应前缀，得到 $A_t^{\mathrm{res}}$。二者的差 $\Delta_t^{\mathrm{IG}}=A_t^{\mathrm{full}}-A_t^{\mathrm{res}}$ 是 Input-Grounding Gap。差值小表示这条蒸馏方向在没有任务输入时仍出现，更可能来自模板或语言先验。论文采用 no-prompt 对照，具体操作是移除 prompt 并保留响应前缀。
 
 每个 batch 内，方法取 $\Delta_t^{\mathrm{IG}}$ 最低的 $p_1$ 分位与 $|A_t^{\mathrm{full}}|$ 最高的 $p_2$ 分位的交集 $F$，只过滤这批同时“输入依赖弱、更新影响大”的 token。为避免固定分位在不同任务中过度删除监督，作者动态调整 $p_1,p_2$，使过滤损失质量占比
 

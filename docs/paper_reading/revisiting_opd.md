@@ -34,9 +34,15 @@ $$\hat\pi(v)=\frac{\pi_\theta(v)}{\sum_{u\in S}\pi_\theta(u)},\quad \hat q(v)=\f
 
 消融显示，教师 top-K、top-p rollout 和支持集内重新归一化需要组合使用；缺少归一化会导致训练快速崩溃，支持集过小或完全无约束 rollout 也会降低稳定性。作者观察到 sampled-token 在多数位置产生负奖励，少数正奖励 token 主导更新；长 rollout 后段的教师—学生 log-prob 差异更宽，提示局部指导可靠性随前缀深度下降。
 
+原文的单任务设置使用 Qwen2.5-7B-Instruct 学生、OpenThinker3-7B 教师和 DAPO-Math-17K，最大上下文长度为 16K；训练 batch 为 64 条轨迹，并拆成 8 个 micro-batch 估计梯度方差。Table 1 将 sampled-token OPD、special-token mask、LSM 和教师分数放在同一数学评测口径下，Table 3 逐项去除 top-K、top-p 与支持集归一化。附录进一步在 WebShop 与 ALFWorld/数学交替任务上验证方法，说明局部支持匹配的收益涉及 agent 轨迹，但跨任务幅度不同。
+
+作者还比较了 token-level、sequence-level 与 return-to-go 目标。折扣未来回报会把后缀噪声传播到早期 token，梯度方差随轨迹长度增加；局部支持的 token-level KL 保留较低方差。该结果解释了论文将 LSM 定位为 sampled-token OPD 的目标修正，并将完整 sequence-level Reverse KL 保留为另一类目标。
+
 ## 讨论与边界
 
 LSM 以教师 top-K 支持替代单点采样，降低单 token 波动，同时保留 token-level 更新的效率。实验主要集中于数学和一个 agent 环境，教师与学生规模接近；对跨 tokenizer、开放式生成和更长多轮任务的普适性仍待验证。论文的“各向异性优势导致梯度抵消”解释属于作者提出的假设，尚未由梯度方向分析直接证实。
+
+LSM 的支持集来自教师 top-K，因此 K、教师校准和 tokenizer 一致性共同决定目标质量。K 过小会丢失教师多模态分布，K 过大则回到高成本的局部 full-vocabulary 比较；论文在给定模型和任务上观察到多个 K 值接近，尚未给出随词表、响应长度或教师规模变化的缩放规律。top-p rollout 与 special-token masking 也与 LSM 绑定，单独迁移其中一个组件需要新的消融。
 
 ## 可迁移设计点
 

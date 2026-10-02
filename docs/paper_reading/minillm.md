@@ -42,9 +42,15 @@ R_t 是从当前位置开始的未来 log-ratio return；常数 −1 来源于 R
 
 分析实验显示，MiniLLM 的累计暴露偏差指标增长较慢，长文本超过 150 token 后误差趋于平稳。SST2 与 BoolQ 的 ECE 也比 KD 和 SeqKD 更接近教师。教师规模从 GPT-2 340M 增加到 1.5B 时，固定 120M 学生的 MiniLLM 性能持续提高。论文同时报告了多样性、长度分组和预训练损失消融。
 
+原文训练算法每步从指令数据采样 prompt，由学生 rollout 得到响应，再从固定数据抽取预训练批次；教师 log-prob 在学生前缀上计算。训练使用 response 长度截断、temperature=1 的学生采样和 PPO 风格 clipped importance ratio，另加预训练损失以维持语言建模能力。附录对 GPT-2、OPT、LLaMA 和 GPT-J 给出学习率、batch size、训练步数及五个随机种子结果，结论来自多模型族重复实验。
+
+MiniLLM 的关键消融比较了单步质量项、未来 return、teacher mix-in 强度和预训练损失。只使用当前 token 的 log-ratio 会丢失后续决策影响；完整 return 能改善序列级 Reverse KL，同时带来更高方差。teacher mix-in 过强会使学生回到固定教师分布，过弱则增加 rollout 噪声；预训练损失改善通用语言能力，同时改变蒸馏目标的最优点。
+
 ## 讨论与边界
 
 MiniLLM 的关键证据来自指令跟随和白盒教师条件，核心训练成本来自学生 rollout、词表期望和策略梯度方差。论文的 GPT-4 自动评分和人工评测均存在评测协议依赖，不能直接等同于所有生成任务的质量。Reverse KL 的 mode-seeking 性质可能削弱多样性；论文用 Dist-4 和语言模型损失观察到多样性仍被保留，但没有给出长程任务的统一保证。该方法适合解释 OPD 与 RL 的数学联系，复现时需要严格控制 clipping、baseline、长度处理和教师—学生 tokenizer 设置。
+
+MiniLLM 的 sequence-level 目标与 token-level logits KD 具有不同偏差—方差结构。单步词表期望降低当前 token 的估计噪声，未来 return 仍由学生采样轨迹决定；长响应、低概率 token 和教师学生长度差异会改变 return 的尺度。论文的主要数据来自 Dolly 15K 及指令跟随评测，数学、工具调用和多轮 agent 任务的证据范围有限。
 
 ## 可迁移设计点
 

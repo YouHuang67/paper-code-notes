@@ -36,9 +36,15 @@ $$J(\theta)=\mathbb E_{x,y\sim\pi_\theta}[r(x,y)-\beta D_{KL}(\pi_\theta\|\pi_{r
 
 强到弱实验使用 Qwen3-30B-A3B-Instruct-2507 教师和 Qwen3-1.7B/4B 学生。1.7B 学生在四个数学基准上的平均分从 SFT 的 13.5、OPD 的 23.1 提升到 ExOPD 的 25.4；4B 学生从 OPD 的 42.6 提升到 45.3。适度 λ=1.25 通常最好，λ=1.5 出现性能下降和长度膨胀。reward correction 在额外提供教师 pre-RL reference 时继续提升数学和代码平均准确率。
 
+原文同尺寸实验从 Qwen3-4B-Non-Thinking 基座开始，数学使用 DeepMath 过滤集约 57K 样本，代码数据约 25K 样本；领域教师分别在数学或代码上执行 RL。G-OPD 使用 batch size 1024、rollout n=1、最大响应长度 16,384、学习率 1e-5，训练 50 步；强到弱设置训练 100 步。λ 扫描包含 0、0.25、0.5、0.75、1、1.25、1.5，评测使用 temperature=1、top-p=1 和最大生成长度 16,384。
+
+多教师实验让数学和代码轨迹数量保持一致，并将 SFT、标准 OPD、ExOPD 与权重外推 ExPO 对照。Figure 5 显示 ExOPD 的训练 reward、响应长度和熵同时上升；Table 2 显示其跨域学生超过两个领域教师。附录比较了教师继续 RL 后的结果，用于检验教师训练不足这一替代解释。
+
 ## 讨论与边界
 
 ExOPD 的“超越教师”依赖隐式 reward 的可靠性和 λ 范围。论文观察到外推会增加输出长度与熵，过大 λ 可能放大 log-ratio 偏差并造成 reward hacking。多教师实验使用同一 base model 的领域 RL 变体，结果不能直接推广到完全不同架构或 tokenizer 的教师。reward correction 还需要教师 RL 前模型并增加前向开销。当前证据支持 ExOPD 作为 OPD 与 RL 融合的机制候选，长期泛化仍需独立复现。
+
+ExOPD 的关键超参数 λ 同时改变隐式 reward 强度、响应长度和熵。λ=1.25 在报告设置中稳定优于标准 OPD，λ=1.5 伴随长度膨胀和性能下降；该范围不能直接迁移到不同奖励尺度、响应上限或教师 tokenizer。reward correction 需要访问教师 pre-RL 模型，带来额外前向成本；黑盒教师、异构架构和长程工具轨迹仍缺少验证。
 
 ## 可迁移设计点
 

@@ -44,9 +44,15 @@ $$\mathbb E_{y\sim p_\theta}[(1-\alpha)r(y)-\alpha D(p_T\|p_\theta)(y|x)].$$
 
 RLAIF 实验在 XSum 上加入文本蕴含奖励。提高蒸馏权重会提升 ROUGE-2，同时奖励侧的事实一致性增益发生变化，说明联合目标需要调度。实验从 SFT 学生开始，论文没有证明随机初始化学生可以稳定进入相同训练区间。
 
+原文给出的训练条件使 λ 的含义可以直接复核。学生温度固定为 1 以鼓励 rollout 多样性，评测使用 greedy 或指定温度；XSum、WMT14 en-de、GSM8K 和 FLAN 分别覆盖摘要、翻译、数学推理和任务无关指令蒸馏。XSum 使用 T5-XL 教师与 T5-small、T5-base、T5-large 学生，学生规模相对教师约为 1/38、1/12 和 1/3.8。XSum 数据量实验使用 1K、10K、50K 子集，5% 子集的 on-policy GKD 超过使用完整人工摘要集的若干固定数据基线。
+
+论文还报告了 divergence 与评测采样温度的交互：温度采样时，mode-seeking 的 Reverse KL 或高 β JSD 通常带来更高 ROUGE-2，同时 Self-BLEU 上升；greedy 评测时不同 divergence 的差距缩小。GSM8K 中学生生成比例超过 25% 后准确率继续提高，说明 λ 影响状态覆盖与推理轨迹质量。附录的学习率搜索显示 Reverse KL 对较大学习率更敏感，默认值为 0.0003。
+
 ## 讨论与边界
 
 GKD 的主要贡献是把轨迹分布纳入蒸馏目标，并提供 λ 与 divergence 两个可解释旋钮。实验模型以 T5 为主，数据集与教师访问条件相对受控；对于超大 decoder-only 模型、黑盒教师和长多轮任务，论文未给出直接证据。教师在学生异常前缀上的校准质量也没有被单独测量。因而 GKD 适合作为 OPD 方法主线的基础定义，具体 divergence 的选择仍需结合任务和算力验证。
+
+这些结果支持学生前缀覆盖是独立变量的判断，尚不能把所有增益归因于 on-policy 本身。摘要和翻译的质量指标依赖参考文本，数学结果依赖 CoT 提示与外部计算器，FLAN 的提升来自 held-out MMLU/BBH 任务。论文没有统一报告 rollout 数、教师前向开销和跨 tokenizer 设置，GKD 的成本—质量曲线需要在 decoder-only 模型上重新测量。
 
 ## 可迁移设计点
 
