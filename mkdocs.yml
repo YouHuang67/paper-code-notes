@@ -68,6 +68,12 @@ nav:
   - 论文阅读:
     - 导读: paper_reading/index.md
     - OPD Survey: paper_reading/opd_survey.md
+    - Coconut: paper_reading/coconut.md
+    - 循环 Transformer 推理: paper_reading/looped_transformers_reasoning.md
+    - PonderLM-2: paper_reading/ponderlm2.md
+    - LoopFormer: paper_reading/loopformer.md
+    - Efficient Parallel Samplers: paper_reading/parallel_recurrent_samplers.md
+    - Hidden Decoding at Scale: paper_reading/hidden_decoding_at_scale.md
     - GKD: paper_reading/gkd.md
     - MiniLLM: paper_reading/minillm.md
     - DistiLLM 系列: paper_reading/distillm.md

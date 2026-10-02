@@ -2461,5 +2461,71 @@
     "date_arxiv": "2026-01",
     "date_added": "2026-10-02",
     "organizations": "Xiaomi MiMo Team"
+  },
+  {
+    "title": "Coconut",
+    "path": "paper_reading/coconut.md",
+    "type": "论文阅读",
+    "tags": ["Latent Reasoning", "Continuous Thought", "Chain-of-Thought", "LLM Reasoning"],
+    "summary": "将语言模型隐藏状态作为连续思维反馈给下一次前向，通过课程训练支持潜在空间推理与多路径搜索",
+    "category": "LLM Reasoning",
+    "date_arxiv": "2024-12",
+    "date_added": "2026-10-02",
+    "organizations": "Meta FAIR, UC San Diego"
+  },
+  {
+    "title": "Reasoning with Latent Thoughts",
+    "path": "paper_reading/looped_transformers_reasoning.md",
+    "type": "论文阅读",
+    "tags": ["Latent Reasoning", "Looped Transformer", "Recurrent Depth", "LLM Reasoning"],
+    "summary": "研究共享参数的循环 Transformer，以有效深度解释隐式思维和推理性能扩展",
+    "category": "LLM Reasoning",
+    "date_arxiv": "2025-02",
+    "date_added": "2026-10-02",
+    "organizations": "Google Research, Toyota Technological Institute at Chicago"
+  },
+  {
+    "title": "PonderLM-2",
+    "path": "paper_reading/ponderlm2.md",
+    "type": "论文阅读",
+    "tags": ["Latent Reasoning", "Continuous Thought", "Recurrent Computation", "LLM Pretraining"],
+    "summary": "把每个词元前的潜在思维纳入预训练，并用 Jacobi iteration 并行逼近递归隐藏状态",
+    "category": "LLM Reasoning",
+    "date_arxiv": "2025-09",
+    "date_added": "2026-10-02",
+    "organizations": "Shanghai Jiao Tong University, Shanghai AI Laboratory, Shanghai Innovation Institute"
+  },
+  {
+    "title": "LoopFormer",
+    "path": "paper_reading/loopformer.md",
+    "type": "论文阅读",
+    "tags": ["Latent Reasoning", "Looped Transformer", "Adaptive Depth", "Test-Time Compute"],
+    "summary": "用时间与步长调制及 shortcut consistency 训练可变深度循环 Transformer，支持预算条件化推理",
+    "category": "LLM Reasoning",
+    "date_arxiv": "2026-02",
+    "date_added": "2026-10-02",
+    "organizations": "University of Toronto, Vector Institute, University Health Network"
+  },
+  {
+    "title": "Efficient Parallel Samplers for Recurrent-Depth Models",
+    "path": "paper_reading/parallel_recurrent_samplers.md",
+    "type": "论文阅读",
+    "tags": ["Recurrent Depth", "Looped Transformer", "Diffusion Language Model", "LLM Inference"],
+    "summary": "以 diffusion forcing 并行生成与细化 recurrent-depth 模型的潜在状态，论文报告约 5 倍吞吐提升",
+    "category": "LLM Reasoning",
+    "date_arxiv": "2025-10",
+    "date_added": "2026-10-02",
+    "organizations": "ELLIS Institute Tübingen, Max Planck Institute for Intelligent Systems, Carnegie Mellon University"
+  },
+  {
+    "title": "Hidden Decoding at Scale",
+    "path": "paper_reading/hidden_decoding_at_scale.md",
+    "type": "论文阅读",
+    "tags": ["Latent Reasoning", "Sequence-Length Scaling", "Continued Pretraining", "Large Language Models"],
+    "summary": "通过多流序列扩展和 Stream-Factorized Attention，在 80B 与 617B MoE 的继续预训练中扩展逐 token 潜在计算，并用中间流 probes 分析表示变化",
+    "category": "LLM Reasoning",
+    "date_arxiv": "2026-07",
+    "date_added": "2026-10-03",
+    "organizations": "WeLM research team"
   }
 ]
