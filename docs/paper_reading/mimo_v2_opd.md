@@ -58,11 +58,17 @@ $$\hat A_{MOPD,t}=\operatorname{sg}[\log \frac{π_x^{domain}(y_t|x,y_{<t})}{π_�
 
 Figure 6 对比 ORM、无 ORM 的 MOPD 和联合 MOPD 在 AIME 2025 与 LiveCodeBench 上的训练曲线。该图用于隔离 token-level 教师优势与 outcome reward 的组合效果；报告未给出完整曲线数据表，因此可读出的证据是收敛趋势与最终点的相对关系。
 
+Table 7 的比较对象是同一统一学生在 MOPD 前后的结果，以及每个项目中表现最好的领域教师。它没有提供“单教师蒸馏”“静态教师数据 SFT”“参数合并”或“只使用 ORM”的完整数值基线，因此表格可以证明 MOPD 后的跨域结果与教师上界之间的关系，无法单独量化每个设计部件的增益。AIME 2025、HMMT 和 LiveCodeBench 的提升与 Figure 6 的训练曲线方向一致；BrowseComp 和 Creative Writing 的下降则构成对全域保真度的直接限制。
+
+报告的最终模型评测还受 MTP、混合滑动窗口架构、SGLang rollout 和领域 RL 教师质量影响。MOPD 页面中的结论只使用 §4.1、§4.4、§4.5、Table 7 和 Figure 6 的证据，不把 MiMo-V2-Flash 的整体 benchmark 分数当作 MOPD 单独效果。
+
 ## 机制分析与边界
 
 MOPD 的关键机制有三层：领域教师把不同能力封装成可调用策略，学生 rollout 将训练状态贴近部署分布，Reverse KL log-ratio 为每个生成 token 提供方向。importance ratio 截断控制采样策略和训练策略之间的偏差。Table 7 的负迁移表明，领域能力的统一仍受提示分类、教师覆盖和信号权重制约。
 
 报告提出迭代共进化：MOPD 后学生可重新进入领域 RL，形成更强教师，再用于下一轮蒸馏。该循环属于设计设想，Table 7 没有验证多轮收益、稳定性或成本曲线。SGLang、partial rollout 等内容属于支撑 on-policy 训练的系统条件，报告没有将它们单独作为 MOPD 算法消融。
+
+MiMo 报告还指出 MoE rollout 与训练阶段可能出现 expert routing 不一致，R3 通过回放 rollout 时的路由结果来保持两阶段一致；partial rollout 使用带陈旧度感知的截断 importance sampling。它们属于 MOPD 可运行性的训练条件，作用对象是策略更新和样本一致性，不能直接归为 MOPD 的教师目标。报告没有分别报告关闭 R3、partial rollout 或数据调度器后的 MOPD 结果，因此这些系统模块的独立贡献仍待验证。
 
 ## 可迁移设计点
 
