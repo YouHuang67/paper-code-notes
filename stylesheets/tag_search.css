@@ -1,0 +1,106 @@
+#tag-search-input {
+  width: 100%;
+  padding: 0.6rem 1rem;
+  font-size: 1rem;
+  border: 1px solid var(--md-default-fg-color--lighter);
+  border-radius: 4px;
+  background: var(--md-default-bg-color);
+  color: var(--md-default-fg-color);
+  margin-bottom: 1rem;
+  box-sizing: border-box;
+}
+
+#tag-search-input:focus {
+  outline: none;
+  border-color: var(--md-accent-fg-color);
+}
+
+.tag-search-card {
+  padding: 0.8rem 1rem;
+  margin-bottom: 0.6rem;
+  border: 1px solid var(--md-default-fg-color--lightest);
+  border-radius: 4px;
+  background: var(--md-default-bg-color);
+}
+
+.tag-search-title {
+  font-size: 1.05rem;
+  font-weight: 600;
+  text-decoration: none;
+  color: var(--md-accent-fg-color);
+}
+
+.tag-search-title:hover {
+  text-decoration: underline;
+}
+
+.tag-search-type {
+  font-size: 0.75rem;
+  padding: 0.15rem 0.5rem;
+  margin-left: 0.5rem;
+  border-radius: 3px;
+  background: var(--md-default-fg-color--lightest);
+  color: var(--md-default-fg-color--light);
+  vertical-align: middle;
+}
+
+.tag-search-tags {
+  margin-top: 0.4rem;
+}
+
+.tag-chip {
+  display: inline-block;
+  font-size: 0.75rem;
+  padding: 0.1rem 0.45rem;
+  margin-right: 0.3rem;
+  border-radius: 3px;
+  background: var(--md-default-fg-color--lightest);
+  color: var(--md-default-fg-color--light);
+}
+
+.tag-chip-match {
+  background: var(--md-accent-fg-color);
+  color: var(--md-accent-bg-color);
+}
+
+.tag-search-summary {
+  margin-top: 0.3rem;
+  margin-bottom: 0;
+  font-size: 0.9rem;
+  color: var(--md-default-fg-color--light);
+}
+
+.tag-search-empty,
+.tag-search-error {
+  color: var(--md-default-fg-color--light);
+  font-style: italic;
+}
+
+.tag-search-count {
+  font-size: 0.85rem;
+  color: var(--md-default-fg-color--light);
+  margin-bottom: 0.6rem;
+}
+
+.tag-search-dates {
+  margin-top: 0.3rem;
+  font-size: 0.78rem;
+  color: var(--md-default-fg-color--lighter);
+  display: flex;
+  gap: 1rem;
+}
+
+.tag-search-hint {
+  font-size: 0.8rem;
+  color: var(--md-default-fg-color--lighter);
+  margin-bottom: 0.75rem;
+  line-height: 1.6;
+}
+
+.tag-search-hint code {
+  font-size: 0.78rem;
+  padding: 0.05rem 0.3rem;
+  border-radius: 3px;
+  background: var(--md-default-fg-color--lightest);
+  color: var(--md-default-fg-color--light);
+}
