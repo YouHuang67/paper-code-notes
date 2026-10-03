@@ -19,7 +19,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
 from pathlib import Path
 
@@ -379,6 +379,23 @@ def build_digest(config: dict, ledger: dict) -> tuple[str, list[str]]:
     return digest, new_ids
 
 
+def submission_date(dates: list[str]) -> str | None:
+    days = [item[:10] for item in dates if item and len(item) >= 10]
+    return min(days) if days else None
+
+
+def is_new_submission(day: str, submitted: str | None) -> bool:
+    if not submitted:
+        return False
+    digest_day = datetime.fromisoformat(day).date()
+    submitted_day = datetime.fromisoformat(submitted).date()
+    # Monday's announcement includes Friday through Sunday. Other weekdays
+    # include the previous calendar day. arXiv ids stay on the submission
+    # month, so a new October 1 paper can still be 2609.*.
+    lag_days = 3 if digest_day.weekday() == 0 else 1
+    return digest_day - timedelta(days=lag_days) <= submitted_day <= digest_day
+
+
 def fetch_oai_new(day: str) -> list[dict]:
     ns = {
         "o": "http://www.openarchives.org/OAI/2.0/",
@@ -410,8 +427,13 @@ def fetch_oai_new(day: str) -> list[dict]:
                 continue
             raw = header.findtext("o:identifier", default="", namespaces=ns) or ""
             paper_id = raw.rsplit(":", 1)[-1].split("v")[0]
-            month_prefix = day[2:4] + day[5:7] + "."
-            if not paper_id.startswith(month_prefix) or paper_id in seen_ids:
+            if paper_id in seen_ids:
+                continue
+            dates = [
+                node.text or ""
+                for node in record.findall(".//dc:date", ns)
+            ]
+            if not is_new_submission(day, submission_date(dates)):
                 continue
             title = " ".join((record.findtext(".//dc:title", default="", namespaces=ns) or "").split())
             summary = " ".join((record.findtext(".//dc:description", default="", namespaces=ns) or "").split())

@@ -188,3 +188,5 @@ paper-code-notes/
 │   └── papers/
 └── mkdocs.yml
 ```
+
+日报的主题、落盘路径和微信汇报方式写在 `.codex/skills/paper-daily/SKILL.md`。`/paper` 里涉及日报、主题或 PE 时先读该文件。

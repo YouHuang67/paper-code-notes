@@ -4,6 +4,12 @@
   "maxResults": 30,
   "topics": [
     {
+      "name": "循环 Transformer 与潜式推理",
+      "scope": "对象必须是语言模型通过循环共享参数、recurrent depth 或连续潜在思维执行多步推理的基础方法，包括 latent reasoning、looped transformer、recurrent-depth 训练与推理、循环预算适配及其并行采样。",
+      "reject": "普通 CoT 提示工程、只研究垂类任务且未提出通用循环或潜式推理机制的工作、纯扩散语言模型、KV cache 或注意力优化、on-policy distillation（OPD）及一般知识蒸馏。",
+      "enabled": true
+    },
+    {
       "name": "视频后训练",
       "scope": "对象必须是视频生成模型的 post-training 或对齐。",
       "reject": "图像生成、文生图、机器人策略、语言模型。世界模型只有在后训练视频生成模型时才收。",
