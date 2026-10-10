@@ -65,6 +65,9 @@ extra_css:
 nav:
   - 首页: index.md
   - 标签: tags.md
+  - 日报:
+    - 日报首页: daily/index.md
+    - 2026-09-25: daily/2026-09-25.md
   - 论文阅读:
     - 导读: paper_reading/index.md
     - OPD Survey: paper_reading/opd_survey.md
