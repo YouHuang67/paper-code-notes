@@ -30,6 +30,7 @@ BRIDGE_DIR = Path("/mnt/d/projects/cli-wechat-bridge")
 NODE_BIN = Path("/home/hy/.local/opt/node-v24.19.0-linux-x64/bin/node")
 BRIDGE_DATA_DIR = Path("/home/hy/.local/share/cli-wechat-bridge")
 CRON_MARK = "# paper-daily"
+CRON_LOG = ROOT / "refs" / "scans" / "paper-daily-cron.log"
 RSS_CATEGORIES = ("cs.CV", "cs.LG", "cs.CL", "cs.AI", "cs.MM")
 MIN_GAP_SECONDS = 4
 _last_request_at = 0.0
@@ -207,7 +208,7 @@ def system_prompt(config: dict) -> str:
         "你是论文日报分类器。只收对象与「收」完全一致的论文。标题或摘要里出现相近的词不够。拿不准就不收。\n"
         "每篇最多一个主题。topic 必须是下面的主题名原文，不能自造。\n"
         f"全部主题合计不超过 {limit} 篇。\n"
-        "line 以英文短名开头，接中文冒号，再一句中文说明解决的问题和核心做法。不要写「属于」。不要用「非」或「不是」把论文收进来。\n"
+        "line 以英文短名开头，接中文冒号，用 2 个短句交代动机、核心做法和直接结论，尽量保留论文中的对象、方法和实验范围；不要只写泛化评价，不要编造论文未给出的数字。不要写「属于」。不要用「非」或「不是」把论文收进来。\n"
         "只返回 JSON：{\"picks\":[{\"id\":\"\",\"topic\":\"\",\"line\":\"\"}]}\n\n"
         + "\n\n".join(blocks)
     )
@@ -515,7 +516,7 @@ def cmd_run(args: argparse.Namespace) -> None:
 def cron_line(config: dict) -> str:
     hour, minute = parse_clock(config.get("checkTime") or "14:30")
     script = Path(__file__).resolve()
-    return f"{minute} {hour} * * 1-5 {sys.executable} {script} run {CRON_MARK}"
+    return f"{minute} {hour} * * 1-5 {sys.executable} {script} run >> {CRON_LOG} 2>&1 {CRON_MARK}"
 
 
 def sync_cron(config: dict) -> None:

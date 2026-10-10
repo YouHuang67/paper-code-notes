@@ -51,11 +51,8 @@
 }
 
 .daily-filter {
-  position: sticky;
-  top: calc(var(--site-header-height) + var(--site-tabs-height) + 0.5rem);
-  z-index: 2;
-  padding: 0.7rem;
-  margin: 1rem 0;
+  padding: 0.45rem 0.65rem;
+  margin: 0.8rem 0 1.2rem;
   border: 1px solid var(--md-default-fg-color--lightest);
   border-radius: 0.5rem;
   background: var(--md-default-bg-color);
@@ -87,6 +84,25 @@
   padding: 0.2rem 1rem 0.8rem;
   border-left: 3px solid var(--md-accent-fg-color);
   background: var(--md-default-fg-color--lightest);
+}
+
+.daily-to-top {
+  position: fixed;
+  right: 1rem;
+  bottom: 1rem;
+  z-index: 3;
+  width: 2.4rem;
+  height: 2.4rem;
+  border: 1px solid var(--md-accent-fg-color);
+  border-radius: 50%;
+  background: var(--md-default-bg-color);
+  color: var(--md-accent-fg-color);
+  cursor: pointer;
+  opacity: 0.82;
+}
+
+.daily-to-top:hover {
+  opacity: 1;
 }
 
 /* subtitle / description text */
