@@ -71,6 +71,12 @@ nav:
     - 2026-09-25: daily/2026-09-25.md
   - 论文阅读:
     - 导读: paper_reading/index.md
+    - Video/Image-to-Code:
+      - BVB: paper_reading/bvb.md
+      - VideoCoCo: paper_reading/videococo.md
+      - CoaG: paper_reading/coag.md
+      - LEGO-Anything: paper_reading/lego_anything.md
+      - 4DCODEBENCH: paper_reading/4dcodebench.md
     - OPD Survey: paper_reading/opd_survey.md
     - Coconut: paper_reading/coconut.md
     - 循环 Transformer 推理: paper_reading/looped_transformers_reasoning.md

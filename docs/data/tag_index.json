@@ -2527,5 +2527,60 @@
     "date_arxiv": "2026-07",
     "date_added": "2026-10-03",
     "organizations": "WeLM research team"
+  },
+  {
+    "title": "BVB",
+    "path": "paper_reading/bvb.md",
+    "type": "论文阅读",
+    "tags": ["Video-to-Code", "Executable Scene Reconstruction", "Video Understanding", "Benchmark", "Agent"],
+    "summary": "以 Blender 可执行场景重建评测视频时空理解，Dual VQA 与 V-JEPA Latent Similarity 分别衡量事实保留和感知相似度",
+    "category": "Video/Image-to-Code",
+    "date_arxiv": "2026-09",
+    "date_added": "2026-10-11",
+    "organizations": "University of Rochester, Sony Group Corporation, Carnegie Mellon University, University of Washington"
+  },
+  {
+    "title": "VideoCoCo",
+    "path": "paper_reading/videococo.md",
+    "type": "论文阅读",
+    "tags": ["Video-to-Code", "Executable Scene Reconstruction", "Video Generation", "Physical Consistency", "Agent"],
+    "summary": "先由 Blender 代码生成确定性过程草稿，再经条件视频编辑实现写实外观；VideoCoCo-3K 支持草稿条件编辑器适配",
+    "category": "Video/Image-to-Code",
+    "date_arxiv": "2026-07",
+    "date_added": "2026-10-11",
+    "organizations": "CUHK, USTC, SCUT, HKU, NTU, PKU, SJTU, CMU, THU, HUST, MBZUAI"
+  },
+  {
+    "title": "CoaG",
+    "path": "paper_reading/coag.md",
+    "type": "论文阅读",
+    "tags": ["Video-to-Code", "Executable Scene Reconstruction", "Video Generation", "3D Layout Control", "LoRA"],
+    "summary": "用地面网格、人物圆柱与相机轨迹构造视频控制信号，并以自动恢复的合成数据适配 Wan2.2-Fun-Control",
+    "category": "Video/Image-to-Code",
+    "date_arxiv": "2026-09",
+    "date_added": "2026-10-11",
+    "organizations": "University of Washington"
+  },
+  {
+    "title": "LEGO-Anything",
+    "path": "paper_reading/lego_anything.md",
+    "type": "论文阅读",
+    "tags": ["Image-to-Code", "Executable Scene Reconstruction", "3D Reconstruction", "Coding Agent", "Benchmark"],
+    "summary": "编码 Agent 通过 Blender 执行—渲染—修订将单图恢复为场景程序；LEGO-Bench 评价结果并以 LEGO-Plugin 缓解迭代回归",
+    "category": "Video/Image-to-Code",
+    "date_arxiv": "2026-09",
+    "date_added": "2026-10-11",
+    "organizations": "University of Maryland, College Park, Amazon Web Services"
+  },
+  {
+    "title": "4DCODEBENCH",
+    "path": "paper_reading/4dcodebench.md",
+    "type": "论文阅读",
+    "tags": ["Video-to-Code", "Executable Scene Reconstruction", "4D Inverse Graphics", "Physical Dynamics", "Benchmark"],
+    "summary": "以可执行图形程序重建视频中的动态三维场景，结合 100 个真实视频与 100 个有 4D 真值的模拟场景评测 18 个模型",
+    "category": "Video/Image-to-Code",
+    "date_arxiv": "2026-10",
+    "date_added": "2026-10-11",
+    "organizations": "Johns Hopkins University, Stanford University, Max Planck Institute for Intelligent Systems, Massachusetts Institute of Technology"
   }
 ]
