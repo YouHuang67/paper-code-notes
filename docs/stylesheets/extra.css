@@ -87,12 +87,26 @@
 }
 
 .daily-filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.28rem;
   padding: 0.25rem 0.65rem;
   border: 1px solid var(--md-default-fg-color--lightest);
   border-radius: 999px;
   background: transparent;
   color: var(--md-default-fg-color);
   cursor: pointer;
+}
+
+.daily-filter-chip-count {
+  color: var(--md-default-fg-color--lighter);
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.daily-filter-chip.active .daily-filter-chip-count {
+  color: inherit;
+  opacity: 0.8;
 }
 
 .daily-filter-reset {
