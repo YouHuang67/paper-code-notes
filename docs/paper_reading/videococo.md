@@ -51,6 +51,31 @@ VideoCoCo-3K 由 agent 生成 Blender 草稿与配套目标视频，构成约 3,
 
 代码草稿的优势在于把过程约束显式化，编辑器则负责外观实现；两阶段责任划分清楚，便于分别分析动态与视觉误差。代价是推理时增加 agent 编程与模拟环节，整体能力受 Blender 场景表达与执行稳定性约束。论文指出复杂湍流等过程仍难以零样本构造。评测结果主要来自指定基准和 OmniWeaving 编辑管线，不能直接外推到所有视频生成模型或任意物理场景。
 
+## 训练配置与数据生成细节
+
+数据管线先由来源 prompt 触发可执行模拟引擎，再由 instruction agent 生成编辑指令。对每个三元组，Seedance 2.0 作为 teacher editor 根据草稿和指令生成写实目标：
+
+\[
+y_i=G_T(d_i,e_i),\qquad
+\mathcal{D}_{\mathrm{VideoCoCo\text{-}3K}}=\{(d_i,e_i,y_i)\}_{i=1}^{3000}.
+\]
+
+评测 prompt 及其近重复样本从训练数据排除，原始 prompt 与 Blender 程序保留为元数据。该划分让训练目标保留过程监督，同时降低 benchmark 泄漏风险。teacher 生成的目标仍会把 teacher 的视觉偏差带入监督，论文没有提供人工筛选规模或逐样本物理真值标注。
+
+推理链路为 \(p\rightarrow c\rightarrow d\rightarrow e\rightarrow\hat v\)：编码 agent 从文本 prompt \(p\) 合成 Blender 程序 \(c\)，沙箱执行得到草稿 \(d\)，instruction agent 生成编辑指令 \(e\)，适配后的编辑器输出 \(\hat v\)。用户只提供文本，系统自动构造中间产物。草稿使用低保真白模表达逐帧状态，编辑器负责把这一状态映射到材质、光照和真实外观。
+
+论文将 OmniWeaving 作为底座，比较 tuning-free、full-tune 和 LoRA-tune。表 3 中 tuning-free 已将平均 PhyGenBench 分数从 0.48 提升到 0.51，说明输入草稿本身提供动态约束；full-tune 为 0.54，LoRA-tune 为 0.56。LoRA 在 mechanics、optics、thermal、material 四项分别为 0.56、0.61、0.51、0.53，full tuning 对应 0.51、0.61、0.51、0.49。
+
+## 评测口径与结果解读
+
+PhyGenBench 使用 GPT-4o 作为多模态裁判，按 mechanics、optics、thermal、material dynamics 四类输出 0–1 一致性分数。VBench-2.0 采用预注册子集的物理维度，mechanics 覆盖重力、浮力和应力，thermotics 覆盖汽化和冻结，material 覆盖混色与溶解。VideoCoCo 在 VBench-2.0 上将 OmniWeaving 平均分从 52.18% 提到 77.88%；mechanics 为 92.31%，thermotics 为 72.92%，material 为 68.42%。
+
+相对最强开源基线 Wan2.2-TI2V-5B，VideoCoCo 在 PhyGenBench 平均分上高出 0.014；Wan2.2 在 thermal 上为 0.533，高于 VideoCoCo 的 0.511。相对 OmniWeaving，VideoCoCo 对 material 和 thermal 的增益最大，这与代码草稿直接承载过程动态的设计相符。该解释得到分项结果支持，但仍受 benchmark prompt 分布和裁判模型影响。
+
+## 运行代价与边界
+
+ 两阶段结构增加了代码生成、Blender 执行和视频编辑的推理延迟。模拟器支持的刚体、简单接触和有限过程表达较好，复杂湍流等现象仍受表达能力限制。LoRA 的优势来自论文当前数据规模、底座和适配策略组合，不能直接推广为所有编辑器上的普遍结论。论文评测聚焦物理合理性，视觉保真和多样性由所用视频生成管线共同决定。
+
 ## 可迁移设计点
 
 - 可执行中间表示能把连续过程作为生成条件，并提供比文本计划和稀疏关键帧更密集的时空约束。
