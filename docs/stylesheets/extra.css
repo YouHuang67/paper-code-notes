@@ -51,21 +51,63 @@
 }
 
 .daily-filter {
-  padding: 0.45rem 0.65rem;
+  padding: 0.8rem 1rem;
   margin: 0.8rem 0 1.2rem;
   border: 1px solid var(--md-default-fg-color--lightest);
   border-radius: 0.5rem;
   background: var(--md-default-bg-color);
 }
 
+.daily-filter-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.daily-filter-help {
+  margin: 0.25rem 0 0.6rem;
+  color: var(--md-default-fg-color--light);
+  font-size: 0.8rem;
+}
+
+.daily-filter-group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+  margin-top: 0.55rem;
+}
+
+.daily-filter-label {
+  min-width: 5.2rem;
+  color: var(--md-default-fg-color--light);
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
 .daily-filter-chip {
-  margin: 0.2rem;
-  padding: 0.25rem 0.6rem;
+  padding: 0.25rem 0.65rem;
   border: 1px solid var(--md-default-fg-color--lightest);
   border-radius: 999px;
   background: transparent;
   color: var(--md-default-fg-color);
   cursor: pointer;
+}
+
+.daily-filter-reset {
+  padding: 0.2rem 0.55rem;
+  border: 1px solid var(--md-default-fg-color--lightest);
+  border-radius: 0.35rem;
+  background: transparent;
+  color: var(--md-default-fg-color--light);
+  cursor: pointer;
+  font-size: 0.78rem;
+}
+
+.daily-filter-reset:hover {
+  border-color: var(--md-accent-fg-color);
+  color: var(--md-accent-fg-color);
 }
 
 .daily-filter-chip.active {
