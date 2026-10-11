@@ -34,9 +34,22 @@ document.addEventListener("DOMContentLoaded", function () {
   function countFor(group, value) {
     var key = group.getAttribute("data-filter-group");
     var selected = selections[key];
-    var candidateValues = value === "all" ? [] : selected.concat(selected.indexOf(value) === -1 ? [value] : []);
+    var currentCards = cards.filter(function (card) {
+      return groups.every(function (otherGroup) {
+        var otherKey = otherGroup.getAttribute("data-filter-group");
+        var otherSelected = selections[otherKey];
+        return otherSelected.length === 0 || otherSelected.indexOf(card.getAttribute("data-" + otherKey)) !== -1;
+      });
+    });
+    if (selected.length > 0) {
+      if (value === "all") return currentCards.length;
+      if (selected.indexOf(value) === -1) return 0;
+      return currentCards.filter(function (card) {
+        return card.getAttribute("data-" + key) === value;
+      }).length;
+    }
     return cards.filter(function (card) {
-      return matchesOtherGroups(card, key) && (value === "all" || candidateValues.indexOf(card.getAttribute("data-" + key)) !== -1);
+      return matchesOtherGroups(card, key) && (value === "all" || card.getAttribute("data-" + key) === value);
     }).length;
   }
 
