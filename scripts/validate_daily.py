@@ -12,6 +12,8 @@ DAILY_DIR = ROOT / "docs" / "daily"
 CARD_RE = re.compile(r'<article\s+markdown="1"\s+class="daily-paper-card"(?P<attrs>[^>]*)>')
 ATTR_RE = re.compile(r'(?P<name>data-(?:topic|org|coverage|task))="(?P<value>[^"]+)"')
 REQUIRED_SECTIONS = ("**问题**：", "**方法**：", "**实验范围**：", "**判断**：")
+ALLOWED_ORG = {"大公司参与", "产业研究机构", "高校/研究机构"}
+ALLOWED_COVERAGE = {"跨任务通用", "任务内通用", "细分任务"}
 
 
 def validate(path: Path) -> list[str]:
@@ -25,6 +27,10 @@ def validate(path: Path) -> list[str]:
         missing = [name for name in ("data-topic", "data-org", "data-coverage", "data-task") if not attrs.get(name)]
         if missing:
             errors.append(f"{path}:{number}: missing {', '.join(missing)}")
+        if attrs.get("data-org") and attrs["data-org"] not in ALLOWED_ORG:
+            errors.append(f"{path}:{number}: unsupported data-org {attrs['data-org']}")
+        if attrs.get("data-coverage") and attrs["data-coverage"] not in ALLOWED_COVERAGE:
+            errors.append(f"{path}:{number}: unsupported data-coverage {attrs['data-coverage']}")
         end = text.find("</article>", card.end())
         body = text[card.end():end if end != -1 else len(text)]
         if "**标签**：" not in body:

@@ -4,6 +4,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
   var groups = Array.prototype.slice.call(filter.querySelectorAll(".daily-filter-group"));
   var cards = Array.prototype.slice.call(document.querySelectorAll(".daily-paper-card"));
+  var sections = Array.prototype.slice.call(document.querySelectorAll(".md-content h2"));
   var count = document.getElementById("daily-filter-count");
   var selections = {};
 
@@ -73,6 +74,20 @@ document.addEventListener("DOMContentLoaded", function () {
       });
       card.hidden = !show;
       if (show) visible += 1;
+    });
+    sections.forEach(function (heading) {
+      if (heading.textContent.indexOf("当日概览") !== -1) return;
+      var hasVisibleCard = false;
+      var sibling = heading.nextElementSibling;
+      while (sibling && sibling.tagName !== "H2") {
+        if ((sibling.matches && sibling.matches(".daily-paper-card:not([hidden])")) ||
+            (sibling.querySelector && sibling.querySelector(".daily-paper-card:not([hidden])"))) {
+          hasVisibleCard = true;
+          break;
+        }
+        sibling = sibling.nextElementSibling;
+      }
+      heading.hidden = !hasVisibleCard;
     });
     if (count) count.textContent = visible + " 篇匹配";
     renderChipCounts();
