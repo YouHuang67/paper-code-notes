@@ -56,7 +56,7 @@ class PipelineTests(unittest.TestCase):
     def test_valid_announcement_without_configured_category_is_no_matches(self):
         html = listing().replace('Computer Vision (cs.CV)', 'Machine Learning (cs.LG)')
         with patch.object(p, 'DATA', self.data), patch.object(p, 'config', return_value={'categories': ['cs.CV']}), \
-             patch.object(p, 'ArxivClient.get', return_value=html.encode()):
+             patch.object(p.ArxivClient, 'get', return_value=html.encode()):
             result = p.prepare('2026-10-01')
         self.assertEqual(result['status'], 'no_matches')
         self.assertEqual(result['source_count'], 0)
