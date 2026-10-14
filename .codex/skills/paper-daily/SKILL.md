@@ -6,7 +6,7 @@ description: >-
 
 # 论文日报主题
 
-每日推送读 `scripts/paper-daily.json`。分类不靠 arXiv 关键词，由 DeepSeek 按每条 `scope` 和 `reject` 判断论文对象。微信正文由 `scripts/paper_daily.py` 生成。定时是北京时间工作日 9:30，命令是 `python3 scripts/paper_daily.py run`。抓取结果在 `refs/scans/`，不入库。
+每日推送读 `scripts/paper-daily.json`。分类由 DeepSeek 按每条 `scope` 和 `reject` 判断论文对象，完整流水线由 `scripts/daily_pipeline.py` 管理。`scripts/paper_daily.py` 是主题和 cron 管理兼容入口；定时任务调用 `scripts/daily_job.sh`，状态与审计保存在 `refs/scans/daily-runs/YYYY-MM-DD/`。日报只有在公开网页内容指纹和微信桥接 `ok=true` 回执都成立后才记入账本。
 
 ## 添加主题
 
@@ -27,13 +27,15 @@ description: >-
 
 ## 归类规则
 
-DeepSeek 使用 system prompt。其中每个主题有「收」和「不收」。模型每次看到论文标题和摘要前 280 字。每篇最多一个主题。全部主题一天合计不超过 `maxResults`（当前 30）。句子保留英文术语，中文只补方法和判断。解释里写了「非」或「不是」的论文丢掉。没有论文的主题合成一行「无更新」。
+DeepSeek 使用 system prompt。其中每个主题有「收」和「不收」。模型接收完整摘要，每篇最多一个主题，并经过独立复核。入选论文继续读取 v1 PDF 正文，正文证据、结构化解读和审查结果全部缓存。全部主题一天合计不超过 `maxResults`（当前 30）；没有通过证据校验的结果进入失败状态，不生成空日报。
 
 ## 版式
 
 消息以 `[论文]` 开头。日期、【主题】、每条「— 句子」各自成段，段之间空一行。主题用全角【】，论文用长横线。不要用圆点。
 
-`/paper` 每轮用户消息末尾有一句括号附注。先按用户要求做。只有用户提到日报时，再打开 `refs/scans/daily/index.md`，按日期读 `by-date/`，优先今天。不要读 `refs/scans/daily/` 下的时间戳目录。不要在回复里复述附注。`/main` 没有这句。
+`scripts/paper_daily.py` 生成摘要正文。发送流程附加日报网页地址时，必须把“日报网页”单独放一行，下一段只放完整裸 URL。URL 必须从行首开始；链接前不加项目符号、编号、括号、Markdown 包装或“链接：”等前缀，行尾不加标点。发送前按 `docs/design/wechat-link-delivery-sop.md` 检查最终消息正文。
+
+`/paper` 需要查询日报时读取 `refs/scans/daily-runs/YYYY-MM-DD/report.md` 与 `state.json`，并以公开 `docs/daily/` 页面为最终链接。历史 `refs/scans/daily/` 目录仅作兼容读取，不再作为生成目标。
 
 ## 当前主题
 

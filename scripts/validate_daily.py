@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import html
 import re
 import sys
 from pathlib import Path
@@ -13,7 +14,7 @@ DAILY_DIR = ROOT / "docs" / "daily"
 CARD_RE = re.compile(r'<article\s+markdown="1"\s+class="daily-paper-card"(?P<attrs>[^>]*)>')
 ATTR_RE = re.compile(r'(?P<name>data-(?:topic|org|coverage|task))="(?P<value>[^"]+)"')
 REQUIRED_SECTIONS = ("**问题**：", "**方法**：", "**实验范围**：", "**判断**：")
-ALLOWED_ORG = {"大型机构独占", "大型机构+高校/非大型机构", "高校/非大型机构独占", "单位未列出"}
+ALLOWED_ORG = {"大型机构独占", "大型机构+高校/非大型机构", "高校/非大型机构独占", "单位未列出", "单位层级待核实"}
 ALLOWED_COVERAGE = {"跨任务通用", "任务内通用", "细分任务"}
 ORG_SCALE_PATH = ROOT / "scripts" / "daily-institution-scale.json"
 
@@ -44,9 +45,11 @@ def validate(path: Path) -> list[str]:
     errors: list[str] = []
     cards = list(CARD_RE.finditer(text))
     if not cards:
+        if 'daily-content-' in text:
+            errors.append(f'{path}: generated daily has no paper cards')
         return errors
     for number, card in enumerate(cards, 1):
-        attrs = {match.group("name"): match.group("value") for match in ATTR_RE.finditer(card.group("attrs"))}
+        attrs = {match.group("name"): html.unescape(match.group("value")) for match in ATTR_RE.finditer(card.group("attrs"))}
         missing = [name for name in ("data-topic", "data-org", "data-coverage", "data-task") if not attrs.get(name)]
         if missing:
             errors.append(f"{path}:{number}: missing {', '.join(missing)}")
@@ -55,16 +58,21 @@ def validate(path: Path) -> list[str]:
         if attrs.get("data-coverage") and attrs["data-coverage"] not in ALLOWED_COVERAGE:
             errors.append(f"{path}:{number}: unsupported data-coverage {attrs['data-coverage']}")
         end = text.find("</article>", card.end())
+        if end == -1 or (number < len(cards) and end > cards[number].start()):
+            errors.append(f'{path}:{number}: missing article closure')
         body = text[card.end():end if end != -1 else len(text)]
         if "**标签**：" not in body:
             errors.append(f"{path}:{number}: missing **标签**")
         if "**作者单位**：" not in body:
             errors.append(f"{path}:{number}: missing **作者单位**")
-        label_line = next((line for line in body.splitlines() if line.startswith("**标签**：")), "")
+        label_line = html.unescape(next((line for line in body.splitlines() if line.startswith("**标签**：")), ""))
         author_units_line = next((line for line in body.splitlines() if line.startswith("**作者单位**：")), "")
-        author_units = author_units_line.removeprefix("**作者单位**：")
+        author_units = html.unescape(author_units_line.removeprefix("**作者单位**："))
         if attrs.get("data-org") and f"机构组合=`{attrs['data-org']}`" not in label_line:
             errors.append(f"{path}:{number}: 机构组合标签与 data-org 不一致")
+        for key, label in [('topic', '主题'), ('coverage', '覆盖面'), ('task', '任务类型')]:
+            if attrs.get('data-' + key) and f'{label}=`{attrs["data-" + key]}`' not in label_line:
+                errors.append(f'{path}:{number}: {label} label differs from attribute')
         if author_units and attrs.get("data-org"):
             expected = expected_org_category(author_units, large_institutions, other_institutions)
             if attrs["data-org"] != expected:

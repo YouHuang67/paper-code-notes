@@ -66,6 +66,10 @@ extra_css:
 nav:
   - 首页: index.md
   - 标签: tags.md
+  - 规范:
+    - 日报规范: design/daily-report-spec.md
+    - 日报交付流程: design/daily-delivery-pipeline.md
+    - 微信链接交付 SOP: design/wechat-link-delivery-sop.md
   - 日报:
     - 日报首页: daily/index.md
     - 2026-09-25: daily/2026-09-25.md

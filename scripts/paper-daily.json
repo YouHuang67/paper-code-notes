@@ -1,6 +1,30 @@
 {
   "timezone": "Asia/Shanghai",
   "checkTime": "09:30",
+  "publicBaseUrl": "https://YouHuang67.github.io/paper-code-notes",
+  "categories": [
+    "cs.CV",
+    "cs.LG",
+    "cs.CL",
+    "cs.AI",
+    "cs.MM"
+  ],
+  "classificationBatchSize": 12,
+  "deepseekConcurrency": 4,
+  "wechatMaxItems": 8,
+  "deepseekModel": "deepseek-chat",
+  "noAnnouncementDatesET": [
+    "2026-01-01",
+    "2026-01-19",
+    "2026-06-19",
+    "2026-07-03",
+    "2026-09-07",
+    "2026-10-12",
+    "2026-11-26",
+    "2026-12-25",
+    "2026-12-29",
+    "2026-12-31"
+  ],
   "maxResults": 30,
   "topics": [
     {
