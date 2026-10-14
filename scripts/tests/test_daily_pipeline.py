@@ -6,6 +6,7 @@ import tempfile
 import io
 import os
 import subprocess
+import sys
 import unittest
 from datetime import date, datetime
 from pathlib import Path
@@ -117,6 +118,39 @@ class PipelineTests(unittest.TestCase):
         with patch.object(p, 'DATA', self.data), patch.object(p, 'now', return_value=datetime(2026, 10, 14, 9, 29, tzinfo=p.SHANGHAI)), patch.object(p, 'deliver') as send:
             p.tick('2026-10-14')
             send.assert_not_called()
+
+    def test_at_delivery_deadline_triggers_delivery(self):
+        self.state('published')
+        with patch.object(p, 'DATA', self.data), patch.object(p, 'now', return_value=datetime(2026, 10, 14, 9, 30, tzinfo=p.SHANGHAI)), \
+             patch.object(p, 'deliver', return_value={'status': 'delivered'}) as send:
+            p.tick('2026-10-14')
+            send.assert_called_once_with('2026-10-14')
+
+    def test_arxiv_rate_limit_persists_retry_after(self):
+        directory = self.data / 'source'
+        client = p.ArxivClient(directory)
+        error = p.urllib.error.HTTPError('https://arxiv.org/list/cs/new', 429, 'limited', {'Retry-After': '90'}, None)
+        with patch.object(p.urllib.request, 'urlopen', side_effect=error), patch.object(p.time, 'sleep'):
+            with self.assertRaises(p.Pending): client.raw('https://arxiv.org/list/cs/new')
+        retry = p.read(directory / 'retry.json')
+        self.assertEqual(retry['http_status'], 429)
+        self.assertGreaterEqual((datetime.fromisoformat(retry['retry_at']) - p.now()).total_seconds(), 50)
+
+    def test_successful_arxiv_response_clears_retry_backoff(self):
+        directory = self.data / 'source'; directory.mkdir()
+        p.atomic(directory / 'retry.json', {'failures': 3, 'retry_at': '2026-10-15T00:00:00+08:00'})
+        response = type('Response', (), {'geturl': lambda self: 'https://arxiv.org/list/cs/new',
+                                         'read': lambda self: b'ok', '__enter__': lambda self: self,
+                                         '__exit__': lambda self, *args: None})()
+        with patch.object(p.urllib.request, 'urlopen', return_value=response):
+            self.assertEqual(p.ArxivClient(directory).raw('https://arxiv.org/list/cs/new'), b'ok')
+        self.assertFalse((directory / 'retry.json').exists())
+
+    def test_cron_runs_each_minute_during_delivery_window(self):
+        sys.path.insert(0, str(ROOT / 'scripts'))
+        import paper_daily
+        line = paper_daily.cron_line(p.config())
+        self.assertIn('* 8-12 * * 1-5', line)
 
     def test_pdf_line_break_normalization_preserves_numbers(self):
         p.evidence_valid({'evidence': [{'claim': 'data', 'quote': 'Training on DeepMath-103K gives 35.5 percent.'}]},

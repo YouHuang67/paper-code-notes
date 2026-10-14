@@ -32,7 +32,7 @@ def parse_clock(value: str) -> tuple[int, int]:
 
 def cron_line(settings: dict) -> str:
     # System cron uses the machine timezone; refuse silent timezone mismatches.
-    return f"*/5 8-12 * * 1-5 /bin/bash {shlex.quote(str(ROOT / 'scripts/daily_job.sh'))} >> {shlex.quote(str(CRON_LOG))} 2>&1 {CRON_MARK}"
+    return f"* 8-12 * * 1-5 /bin/bash {shlex.quote(str(ROOT / 'scripts/daily_job.sh'))} >> {shlex.quote(str(CRON_LOG))} 2>&1 {CRON_MARK}"
 
 
 def sync_cron(settings: dict) -> None:

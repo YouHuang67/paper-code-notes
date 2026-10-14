@@ -17,7 +17,8 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import urllib.robotparser
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
+from email.utils import parsedate_to_datetime
 from html.parser import HTMLParser
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -27,7 +28,7 @@ DATA = ROOT / 'refs/scans/daily-runs'
 UA = 'PaperDaily/1.0 (+local personal research)'
 SHANGHAI = ZoneInfo('Asia/Shanghai')
 ET = ZoneInfo('America/New_York')
-PROMPT_VERSION = 'daily-v2-fulltext-20261014'
+PROMPT_VERSION = 'daily-v3-fulltext-20261015'
 
 
 class Pending(RuntimeError):
@@ -93,7 +94,28 @@ class ArxivClient:
                 final_host = urllib.parse.urlsplit(response.geturl()).netloc
                 if final_host != urllib.parse.urlsplit(url).netloc:
                     raise RuntimeError('arXiv cross-host redirect requires separate robots policy')
-                return response.read()
+                data = response.read()
+                (self.directory / 'retry.json').unlink(missing_ok=True)
+                return data
+        except urllib.error.HTTPError as error:
+            if error.code in (429, 503):
+                retry_path = self.directory / 'retry.json'
+                previous = read(retry_path, {})
+                retry_header = error.headers.get('Retry-After')
+                try:
+                    wait = max(1, int(retry_header)) if retry_header else 0
+                except ValueError:
+                    try:
+                        retry_date = parsedate_to_datetime(retry_header)
+                        wait = max(1, int((retry_date - datetime.now(timezone.utc)).total_seconds()))
+                    except (TypeError, ValueError):
+                        wait = 0
+                failures = int(previous.get('failures', 0)) + 1
+                wait = max(wait, min(3600, 60 * (2 ** min(failures - 1, 5))))
+                retry_at = now() + timedelta(seconds=wait)
+                atomic(retry_path, {'failures': failures, 'retry_at': retry_at.isoformat(), 'http_status': error.code})
+                raise Pending(f'arXiv HTTP {error.code}; retry at {retry_at.isoformat()}') from error
+            raise
         finally:
             self.last_request = time.monotonic()
 
@@ -505,6 +527,12 @@ def prepare(day: str) -> dict:
         return state
     source = ArxivClient(directory / 'source')
     try:
+        retry = read(directory / 'source/retry.json', {})
+        if retry.get('retry_at') and now() < datetime.fromisoformat(retry['retry_at']):
+            state = {'day': day, 'status': 'pending', 'reason': f"arXiv retry backoff until {retry['retry_at']}",
+                     'retry_at': retry['retry_at']}
+            atomic(directory / 'state.json', state)
+            return state
         categories = settings.get('categories', ['cs.CV', 'cs.LG', 'cs.CL', 'cs.AI', 'cs.MM'])
         snapshot = read(directory / 'candidate-snapshot.json', {})
         if snapshot.get('categories') == categories and snapshot.get('day') == day:
@@ -546,7 +574,10 @@ def prepare(day: str) -> dict:
         atomic(directory / 'state.json', state)
         return state
     except Pending as error:
+        retry = read(directory / 'source/retry.json', {})
         state = {'day': day, 'status': 'pending', 'reason': str(error)}
+        if retry.get('retry_at'):
+            state['retry_at'] = retry['retry_at']
     except Exception as error:
         state = {'day': day, 'status': 'failed', 'error': type(error).__name__,
                  'reason': str(error) if isinstance(error, (ValueError, RuntimeError)) else 'source or provider request failed'}
