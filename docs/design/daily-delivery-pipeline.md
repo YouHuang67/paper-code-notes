@@ -16,7 +16,7 @@
 
 状态文件位于 `refs/scans/daily-runs/YYYY-MM-DD/state.json`。`prepared` 表示本地报告已完成；`publishing` 表示 Git 已推送、公开网页仍待核验；`published` 表示内容指纹已公开；`delivered` 表示成功微信回执已经确认并写入账本。
 
-`pending` 表示来源或部署尚未就绪，`failed` 表示来源、解析或模型处理失败，两者继续重试。周末和配置中的美国东部节假日为 `skip_no_announcement`；全体候选完整判定且没有通过复核时为 `no_matches`；候选均已在账本时为 `already_processed`。这些终态保留审计，不发送空日报。
+`pending` 表示来源或部署尚未就绪，`failed` 表示来源、解析或模型处理失败，两者继续重试。周末和配置中的美国东部节假日为 `skip_no_announcement`；完整公告中没有配置类别论文，或全体候选均未通过复核时为 `no_matches`；候选均已在账本时为 `already_processed`。这些终态保留审计，不发送空日报。
 
 DeepSeek 对每个候选完整摘要返回判定、理由、主题、连续原文引句和排除条件。接受项独立复核后，顺序下载 v1 PDF，正文按 24000 字符分块读取。所有分块证据进入解读和审查，引用必须存在于原文。输出截断、空对象、漏 ID、伪造引句和审查失败均阻止发布。成功输出按输入哈希和提示版本缓存，重复运行会复用结果。
 

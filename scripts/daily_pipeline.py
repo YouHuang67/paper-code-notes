@@ -514,7 +514,10 @@ def prepare(day: str) -> dict:
             papers = parse_announcements(listing, day, categories)
             atomic(directory / 'candidate-snapshot.json', {'day': day, 'categories': categories, 'papers': papers})
         if not papers:
-            raise Pending('announcement exists but no configured category papers')
+            state = {'day': day, 'status': 'no_matches', 'source_count': 0,
+                     'reason': 'complete announcement has no configured-category papers'}
+            atomic(directory / 'state.json', state)
+            return state
         previous = read(ROOT / 'refs/scans/daily-ledger.json', {'seen': {}}).get('seen', {})
         papers = [p for p in papers if p['id'] not in previous]
         if not papers:
@@ -728,8 +731,10 @@ def main(argv=None):
         if args.command != 'status' and not args.dry_run:
             lines = ['# 日报运行索引', '', '报告、状态和模型审计统一保存于 `refs/scans/daily-runs/`。', '']
             for path in sorted(DATA.glob('????-??-??/state.json'), reverse=True):
+                if path.parent.name > now().date().isoformat():
+                    continue
                 entry = read(path)
-                lines.append(f'- {path.parent.name}: {entry.get("status")}；报告 `../daily-runs/{path.parent.name}/report.md`；状态 `../daily-runs/{path.parent.name}/state.json`')
+                lines.append(f'- {path.parent.name}: {entry.get("status")}；[报告](../daily-runs/{path.parent.name}/report.md)；[状态](../daily-runs/{path.parent.name}/state.json)')
             atomic(ROOT / 'refs/scans/daily/index.md', '\n'.join(lines) + '\n')
     print(json.dumps(result, ensure_ascii=False, indent=2))
 
