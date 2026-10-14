@@ -48,3 +48,5 @@ python3 scripts/daily_pipeline.py tick
 回归验证执行 `python3 -m unittest discover -s scripts/tests -v`、`python3 scripts/validate_daily.py` 和 `.venv/bin/python -m mkdocs build`。详细规则见 [日报规范](daily-report-spec.md)，链接版式见 [微信链接交付 SOP](wechat-link-delivery-sop.md)。研究原始证据位于本机 `refs/research/daily-delivery-pipeline/`。
 
 2026-10-14 实测：当天 `/list/cs/new` 请求仍返回 10-12 日期，系统进入 `pending` 并保持静默。`scripts/daily_smoke.py` 在已采集的官方快照上验证 OPD 正例、驾驶蒸馏负例和 KV cache 负例，随后处理 112686 字符论文正文并生成通过审核的单篇本地报告。该冒烟报告不作为当天日报发布。
+
+本地临时 Git 仓库的发布回归确认只推送当天页面、索引和导航，并保留工作区未提交编辑；该测试使用本地 bare 仓库，不向外部发送。全部 18 项回归通过。微信成功/失败回执、旧页面阻止发送和成功回执恢复均通过故障注入验证；本次没有真实当天日报可发送，因此未执行新的微信日报端到端发送。

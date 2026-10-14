@@ -4,6 +4,8 @@ import importlib.util
 import json
 import tempfile
 import io
+import os
+import subprocess
 import unittest
 from datetime import date, datetime
 from pathlib import Path
@@ -154,6 +156,41 @@ class PipelineTests(unittest.TestCase):
         self.assertTrue(validate_daily.validate(file))
         file.write_text(page.replace('任务类型=`视频生成`', '任务类型=`驾驶规划`'))
         self.assertTrue(validate_daily.validate(file))
+
+    def test_publication_pushes_only_daily_paths_and_preserves_user_edits(self):
+        repo = self.data / 'repo'; repo.mkdir()
+        remote = self.data / 'remote.git'
+        data = repo / 'refs/scans/daily-runs'
+        environment = {'GIT_AUTHOR_NAME': 'Daily Test', 'GIT_AUTHOR_EMAIL': 'daily@example.invalid',
+                       'GIT_COMMITTER_NAME': 'Daily Test', 'GIT_COMMITTER_EMAIL': 'daily@example.invalid'}
+        def git(args, cwd=repo):
+            return p.run_command(['git', *args], cwd)
+        original = p.run_command
+        def commands(args, cwd=repo, env=None):
+            if args[1:3] == ['-m', 'mkdocs']:
+                return ''  # The production MkDocs build is verified separately.
+            return original(args, cwd, env)
+        with patch.dict(os.environ, environment):
+            git(['init', '--bare', '--initial-branch=main', str(remote)], self.data)
+            git(['init', '-b', 'main'])
+            p.atomic(repo / 'docs/daily/index.md', '# 日报\n\n## 日期归档\n')
+            p.atomic(repo / 'mkdocs.yml', 'site_name: Test\nnav:\n  - 日报:\n    - 日报首页: daily/index.md\n')
+            p.atomic(repo / 'docs/unrelated.md', 'committed\n')
+            git(['add', 'docs', 'mkdocs.yml']); git(['commit', '-m', 'Initialize daily publication fixture'])
+            git(['remote', 'add', 'origin', str(remote)]); git(['push', 'origin', 'main'])
+            p.atomic(repo / 'docs/unrelated.md', 'user unfinished edit\n')
+            directory = data / '2026-10-14'
+            artifacts = p.write_artifacts('2026-10-14', [row()], directory, p.config())
+            p.atomic(directory / 'state.json', {'day': '2026-10-14', 'status': 'prepared', **artifacts})
+            with patch.object(p, 'ROOT', repo), patch.object(p, 'DATA', data), \
+                 patch.object(p, 'config', return_value={}), patch.object(p, 'public_content_matches', return_value=False), \
+                 patch.object(p, 'run_command', side_effect=commands):
+                result = p.publish('2026-10-14')
+            self.assertEqual(result['status'], 'publishing')
+            self.assertEqual((repo / 'docs/unrelated.md').read_text(), 'user unfinished edit\n')
+            changed = git(['diff-tree', '--no-commit-id', '--name-only', '-r', result['publication_commit']], data / 'publisher').splitlines()
+            self.assertEqual(sorted(changed), ['docs/daily/2026-10-14.md', 'docs/daily/index.md', 'mkdocs.yml'])
+            self.assertEqual(git(['rev-parse', 'main'], remote), result['publication_commit'])
 
 
 if __name__ == '__main__':
