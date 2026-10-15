@@ -28,7 +28,9 @@ DATA = ROOT / 'refs/scans/daily-runs'
 UA = 'PaperDaily/1.0 (+local personal research)'
 SHANGHAI = ZoneInfo('Asia/Shanghai')
 ET = ZoneInfo('America/New_York')
-PROMPT_VERSION = 'daily-v3-fulltext-20261015'
+PROMPT_VERSION = 'daily-v4-updated-listings-20261015'
+LISTING_PARSER_VERSION = 2
+LISTING_URL = 'https://arxiv.org/list/cs/new?skip=0&show=2000'
 
 
 class Pending(RuntimeError):
@@ -161,20 +163,49 @@ def plain(source: str) -> str:
     return ' '.join(' '.join(parser.parts).split())
 
 
-def parse_announcements(source: str, day: str, categories: list[str]) -> list[dict]:
+def announcement_day(source: str) -> str:
     heading = re.search(r'Showing new listings for\s+([^<]+)', source)
     if not heading:
         raise Pending('announcement date heading missing')
-    source_day = datetime.strptime(html.unescape(heading.group(1)).strip(), '%A, %d %B %Y').date().isoformat()
+    try:
+        return datetime.strptime(html.unescape(heading.group(1)).strip(), '%A, %d %B %Y').date().isoformat()
+    except ValueError as error:
+        raise Pending('announcement date heading malformed') from error
+
+
+def announcement_sections(source: str) -> list[tuple[str, re.Match[str]]]:
+    sections = []
+    for match in re.finditer(
+        r'<h3\b[^>]*>\s*(New|Cross|Replacement) submissions\s*'
+        r'\(showing\s+(\d+)\s+of\s+(\d+)\s+entries\)</h3>(.*?)(?=<h3\b|</dl>)',
+        source, re.S | re.I,
+    ):
+        sections.append((match.group(1).casefold(), match))
+    return sections
+
+
+def selected_announcement(source: str) -> tuple[str, re.Match[str] | None]:
+    sections = announcement_sections(source)
+    if not sections:
+        if re.search(r'Total of\s+0\s+entries', source, re.I):
+            return 'none', None
+        raise Pending('announcement section missing')
+    priority = {'new': 0, 'cross': 1, 'replacement': 2}
+    ordered = sorted(sections, key=lambda item: priority[item[0]])
+    return next(((kind, match) for kind, match in ordered if int(match.group(3)) > 0), ordered[0])
+
+
+def parse_announcements(source: str, day: str, categories: list[str]) -> list[dict]:
+    source_day = announcement_day(source)
     if source_day != day:
         raise Pending(f'announcement page date {source_day}; expected {day}')
-    section = re.search(r'<h3>New submissions\s*\(showing\s+(\d+)\s+of\s+(\d+)\s+entries\)</h3>(.*?)(?=<h3>|</dl>)', source, re.S)
-    if not section:
-        raise Pending('new-submission section missing')
-    shown, total = map(int, section.group(1, 2))
+    selected_kind, section = selected_announcement(source)
+    if section is None:
+        return []
+    shown, total = map(int, section.group(2, 3))
     if shown != total:
         raise RuntimeError('announcement list incomplete; pagination required')
-    rows = re.findall(r'<dt>(.*?)</dt>\s*<dd>(.*?)</dd>', section.group(3), re.S)
+    rows = re.findall(r'<dt\b[^>]*>(.*?)</dt>\s*<dd\b[^>]*>(.*?)</dd>', section.group(4), re.S | re.I)
     if len(rows) != total:
         raise RuntimeError('announcement count mismatch')
     papers = []
@@ -190,11 +221,65 @@ def parse_announcements(source: str, day: str, categories: list[str]) -> list[di
         if not set(categories).intersection(found_categories):
             continue
         paper_id = match.group(1)
+        version_match = re.search(r'/html/' + re.escape(paper_id) + r'v(\d+)', identifier + body)
         papers.append({'id': paper_id, 'title': plain(title.group(1)).removeprefix('Title:').strip(),
                        'authors': [plain(a) for a in re.findall(r'<a\b[^>]*>(.*?)</a>', authors.group(1), re.S)],
                        'summary': plain(abstract.group(1)), 'categories': found_categories,
-                       'announcement_date': day, 'url': f'https://arxiv.org/abs/{paper_id}', 'version': 1})
+                       'announcement_date': day, 'listing_kind': selected_kind,
+                       'url': f'https://arxiv.org/abs/{paper_id}',
+                       'version': int(version_match.group(1)) if version_match else (None if selected_kind in ('cross', 'replacement') else 1)})
     return papers
+
+
+def cached_listing(directory: Path, day: str) -> str | None:
+    """Return a same-day source only when its bytes match the acquisition log."""
+    path = directory / 'cs-new.html'
+    log = directory / 'sources.jsonl'
+    if not path.is_file() or not log.is_file():
+        return None
+    payload = path.read_bytes()
+    digest = hashlib.sha256(payload).hexdigest()
+    matching = []
+    for line in log.read_text(encoding='utf-8', errors='replace').splitlines():
+        try:
+            record = json.loads(line)
+        except ValueError:
+            continue
+        if record.get('url') == LISTING_URL and record.get('file') == path.name:
+            matching.append(record)
+    if not matching or matching[-1].get('sha256') != digest:
+        return None
+    source = payload.decode(errors='replace')
+    try:
+        return source if announcement_day(source) == day else None
+    except Pending:
+        return None
+
+
+def paper_metadata_fingerprint(paper: dict) -> str:
+    return fingerprint({key: paper.get(key) for key in ('title', 'authors', 'summary', 'categories')})
+
+
+def already_processed(paper: dict, seen: dict) -> bool:
+    previous = seen.get(paper['id'])
+    if previous is None:
+        return False
+    kind = paper.get('listing_kind', 'new')
+    if kind not in ('replacement', 'cross'):
+        return True
+    if not isinstance(previous, dict):
+        # Legacy receipts only contain timestamps; the announced update has
+        # not been recorded with a version and may represent new content.
+        return False
+    current_version = paper.get('version')
+    previous_version = previous.get('version')
+    if current_version is not None and previous_version is not None:
+        if int(current_version) < int(previous_version):
+            return True
+        if int(current_version) > int(previous_version):
+            return False
+    return (previous.get('announcement_date') == paper.get('announcement_date')
+            and previous.get('metadata_hash') == paper_metadata_fingerprint(paper))
 
 
 class DeepSeek:
@@ -323,14 +408,17 @@ def classify(papers: list[dict], settings: dict, ds: DeepSeek) -> list[dict]:
 
 def paper_text(paper: dict, source: ArxivClient, directory: Path) -> str:
     directory.mkdir(parents=True, exist_ok=True)
-    pdf = directory / f"{paper['id']}v1.pdf"
-    text_path = directory / f"{paper['id']}v1.txt"
+    version = paper.get('version', 1)
+    version_suffix = f"v{int(version)}" if version is not None else 'latest'
+    pdf = directory / f"{paper['id']}{version_suffix}.pdf"
+    text_path = directory / f"{paper['id']}{version_suffix}.txt"
     if text_path.exists() and pdf.exists():
         cached = text_path.read_text()
         if len(cached.strip()) < 1500:
             raise RuntimeError('cached paper extraction too short; manual OCR required')
         return cached
-    payload = source.get(f"https://arxiv.org/pdf/{paper['id']}v1", pdf.name)
+    pdf_url = f"https://arxiv.org/pdf/{paper['id']}{version_suffix if version is not None else ''}"
+    payload = source.get(pdf_url, pdf.name)
     if not payload.startswith(b'%PDF'):
         raise RuntimeError('paper response is not PDF')
     pdf.write_bytes(payload)
@@ -458,9 +546,12 @@ def render_page(day: str, rows: list[dict]) -> tuple[str, str]:
     for row in rows:
         row['org'] = org_category(row['affiliations'])
     content_id = fingerprint({'day': day, 'rows': rows, 'version': PROMPT_VERSION})
+    listing_kinds = {row['paper'].get('listing_kind', 'new') for row in rows}
+    update_label = {'new': '新投稿', 'cross': '交叉列表', 'replacement': '替换版本'}
+    update_text = '、'.join(update_label.get(kind, kind) for kind in sorted(listing_kinds))
     lines = ['---', 'hide:', '  - toc', '---', '', f'# {day} 论文日报', '',
              f'<span id="daily-content-{content_id}" data-daily-date="{day}"></span>', '',
-             f'本期入选 {len(rows)} 篇。条目依据首次公告元数据与论文 v1 正文，保留研究问题、方法、实验和判断。', '']
+             f'本期入选 {len(rows)} 篇，来源区段：{update_text}。条目依据公告元数据与论文正文，保留研究问题、方法、实验和判断。', '']
     labels = {'topic': '主题', 'org': '机构组合', 'coverage': '覆盖面', 'task': '任务类型'}
     lines += ['<div class="daily-filter" id="daily-filter" aria-label="日报筛选">',
               '<div class="daily-filter-toolbar"><strong>筛选论文</strong><button class="daily-filter-reset" type="button">清除筛选</button></div>']
@@ -475,12 +566,16 @@ def render_page(day: str, rows: list[dict]) -> tuple[str, str]:
         lines += [f'## {safe_markdown(topic)}', '']
         for row in [r for r in rows if r['topic'] == topic]:
             paper = row['paper']
+            version = paper['version'] if 'version' in paper else 1
+            version_suffix = f'v{int(version)}' if version is not None else ''
+            version_label = version_suffix or '当前版本'
+            update_kind = update_label.get(paper.get('listing_kind', 'new'), paper.get('listing_kind', 'new'))
             attrs = ' '.join(f'data-{k}="{html.escape(row[k], quote=True)}"' for k in labels)
             lines += [f'<article markdown="1" class="daily-paper-card" {attrs}>', '',
                       f"### {safe_markdown(paper['title'])}", '',
-                      f"[arXiv:{paper['id']}v1](https://arxiv.org/abs/{paper['id']}v1) · [论文 PDF](https://arxiv.org/pdf/{paper['id']}v1)", '',
+                      f"[arXiv:{paper['id']}{version_suffix}](https://arxiv.org/abs/{paper['id']}{version_suffix}) · [论文 PDF](https://arxiv.org/pdf/{paper['id']}{version_suffix})", '',
                       f"**作者**：{safe_markdown('；'.join(paper['authors']))}", '',
-                      f'**首次公告**：{day}；**阅读版本**：v1', '',
+                      f'**公告日期**：{day}；**更新类型**：{update_kind}；**阅读版本**：{version_label}', '',
                       '**标签**：' + '；'.join(f'{labels[k]}=`{safe_markdown(row[k])}`' for k in labels), '',
                       '**作者单位**：' + safe_markdown('；'.join(row['affiliations']) or '论文首页未列出作者单位'), '']
             for key, label in [('problem', '问题'), ('method', '方法'), ('experiment', '实验范围'), ('judgment', '判断')]:
@@ -492,7 +587,11 @@ def render_page(day: str, rows: list[dict]) -> tuple[str, str]:
 
 
 def render_message(day: str, rows: list[dict], url: str, max_items: int = 8) -> str:
-    lines = [day + f' 论文日报 · {len(rows)} 篇', '']
+    update_label = {'new': '新投稿', 'cross': '交叉列表', 'replacement': '替换版本'}
+    kinds = {row['paper'].get('listing_kind', 'new') for row in rows}
+    update_text = '、'.join(update_label.get(kind, kind) for kind in sorted(kinds))
+    suffix = f' · {update_text}' if update_text else ''
+    lines = [day + f' 论文日报 · {len(rows)} 篇{suffix}', '']
     visible = rows[:max_items]
     for topic in dict.fromkeys(r['topic'] for r in visible):
         lines += [f'【{topic}】']
@@ -527,29 +626,46 @@ def prepare(day: str) -> dict:
         return state
     source = ArxivClient(directory / 'source')
     try:
-        retry = read(directory / 'source/retry.json', {})
-        if retry.get('retry_at') and now() < datetime.fromisoformat(retry['retry_at']):
-            state = {'day': day, 'status': 'pending', 'reason': f"arXiv retry backoff until {retry['retry_at']}",
-                     'retry_at': retry['retry_at']}
-            atomic(directory / 'state.json', state)
-            return state
         categories = settings.get('categories', ['cs.CV', 'cs.LG', 'cs.CL', 'cs.AI', 'cs.MM'])
         snapshot = read(directory / 'candidate-snapshot.json', {})
-        if snapshot.get('categories') == categories and snapshot.get('day') == day:
+        if (snapshot.get('categories') == categories and snapshot.get('day') == day
+                and snapshot.get('listing_parser_version') == LISTING_PARSER_VERSION):
             papers = snapshot['papers']
+            listing_kind = snapshot.get('listing_kind') or next((p.get('listing_kind') for p in papers if p.get('listing_kind')), 'new')
         else:
-            listing = source.get('https://arxiv.org/list/cs/new?skip=0&show=2000', 'cs-new.html').decode(errors='replace')
-            papers = parse_announcements(listing, day, categories)
-            atomic(directory / 'candidate-snapshot.json', {'day': day, 'categories': categories, 'papers': papers})
+            listing = cached_listing(directory / 'source', day)
+            papers = None
+            if listing is not None:
+                try:
+                    listing_kind, _ = selected_announcement(listing)
+                    papers = parse_announcements(listing, day, categories)
+                except (Pending, RuntimeError):
+                    listing = None
+            if listing is None:
+                retry = read(directory / 'source/retry.json', {})
+                if retry.get('retry_at') and now() < datetime.fromisoformat(retry['retry_at']):
+                    state = {'day': day, 'status': 'pending', 'reason': f"arXiv retry backoff until {retry['retry_at']}",
+                             'retry_at': retry['retry_at']}
+                    atomic(directory / 'state.json', state)
+                    return state
+                listing = source.get('https://arxiv.org/list/cs/new?skip=0&show=2000', 'cs-new.html').decode(errors='replace')
+                listing_kind, _ = selected_announcement(listing)
+                papers = parse_announcements(listing, day, categories)
+            else:
+                (directory / 'source/retry.json').unlink(missing_ok=True)
+            atomic(directory / 'candidate-snapshot.json', {'day': day, 'categories': categories, 'papers': papers,
+                                                            'listing_kind': listing_kind,
+                                                            'listing_parser_version': LISTING_PARSER_VERSION})
         if not papers:
             state = {'day': day, 'status': 'no_matches', 'source_count': 0,
+                     'listing_kind': listing_kind,
                      'reason': 'complete announcement has no configured-category papers'}
             atomic(directory / 'state.json', state)
             return state
         previous = read(ROOT / 'refs/scans/daily-ledger.json', {'seen': {}}).get('seen', {})
-        papers = [p for p in papers if p['id'] not in previous]
+        papers = [p for p in papers if not already_processed(p, previous)]
         if not papers:
-            state = {'day': day, 'status': 'already_processed'}
+            state = {'day': day, 'status': 'already_processed', 'listing_kind': listing_kind}
             atomic(directory / 'state.json', state)
             return state
         atomic(directory / 'candidates.json', papers)
@@ -557,6 +673,7 @@ def prepare(day: str) -> dict:
         decisions = classify(papers, settings, ds)
         if not decisions:
             state = {'day': day, 'status': 'no_matches', 'source_count': len(papers),
+                     'listing_kind': listing_kind,
                      'reason': 'all candidates received explicit decisions; none survived independent review'}
             atomic(directory / 'state.json', state)
             return state
@@ -570,7 +687,7 @@ def prepare(day: str) -> dict:
             analyses = [task.result() for task in tasks]
         artifacts = write_artifacts(day, analyses, directory, settings)
         state = {'day': day, 'status': 'prepared', 'prepared_at': now().isoformat(), **artifacts,
-                 'source_count': len(papers), 'prompt_version': PROMPT_VERSION}
+                 'source_count': len(papers), 'listing_kind': listing_kind, 'prompt_version': PROMPT_VERSION}
         atomic(directory / 'state.json', state)
         return state
     except Pending as error:
@@ -695,8 +812,19 @@ def deliver(day: str, dry_run: bool = False) -> dict:
     ledger_path = ROOT / 'refs/scans/daily-ledger.json'
     ledger = read(ledger_path, {'seen': {}})
     stamp = now().isoformat()
+    report_rows = {row['id']: row for row in read(directory / 'report.json', [])}
     for paper_id in state['ids']:
-        ledger.setdefault('seen', {})[paper_id] = stamp
+        paper = report_rows.get(paper_id, {}).get('paper')
+        if paper is None:
+            ledger.setdefault('seen', {})[paper_id] = stamp
+        else:
+            ledger.setdefault('seen', {})[paper_id] = {
+                'delivered_at': stamp,
+                'listing_kind': paper.get('listing_kind', state.get('listing_kind', 'new')),
+                'version': paper.get('version'),
+                'announcement_date': paper.get('announcement_date'),
+                'metadata_hash': paper_metadata_fingerprint(paper),
+            }
     atomic(ledger_path, ledger)
     state['status'] = 'delivered'
     state['delivered_at'] = stamp

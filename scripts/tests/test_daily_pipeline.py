@@ -18,10 +18,11 @@ p = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(p)
 
 
-def listing(day='Thursday, 01 October 2026', shown=1, total=1):
+def listing(day='Thursday, 01 October 2026', shown=1, total=1, kind='New', version=1):
+    html_link = f'<a href="https://arxiv.org/html/2609.40360v{version}">html</a>' if version is not None else ''
     return f'''<h3>Showing new listings for {day}</h3><dl>
-<h3>New submissions (showing {shown} of {total} entries)</h3>
-<dt><a href="/abs/2609.40360">id</a></dt><dd>
+<h3>{kind} submissions (showing {shown} of {total} entries)</h3>
+<dt><a href ="/abs/2609.40360" title="Abstract">arXiv:2609.40360</a> (replaced) {html_link}</dt><dd>
 <div class="list-title mathjax"><span>Title:</span> Cross month video</div>
 <div class="list-authors"><a>Alice</a></div>
 <div class="list-subjects">Computer Vision (cs.CV)</div>
@@ -53,6 +54,64 @@ class PipelineTests(unittest.TestCase):
         result = p.parse_announcements(listing(), '2026-10-01', ['cs.CV'])
         self.assertEqual([r['id'] for r in result], ['2609.40360'])
         self.assertIn('reinforcement learning', result[0]['summary'])
+        self.assertEqual(result[0]['listing_kind'], 'new')
+    def test_replacement_only_listing_is_valid_daily_source(self):
+        result = p.parse_announcements(listing(kind='Replacement', version=3), '2026-10-01', ['cs.CV'])
+        self.assertEqual([r['id'] for r in result], ['2609.40360'])
+        self.assertEqual(result[0]['listing_kind'], 'replacement')
+        self.assertEqual(result[0]['version'], 3)
+    def test_real_arxiv_replacement_only_html_fixture(self):
+        source = (ROOT / 'scripts/tests/fixtures/arxiv_replacements_only.html').read_text()
+        result = p.parse_announcements(source, '2026-10-15', ['cs.CL', 'cs.AI', 'cs.LG'])
+        self.assertEqual([r['id'] for r in result], ['2311.04902'])
+        self.assertEqual(result[0]['version'], 3)
+    def test_replacement_without_html_link_uses_latest_version(self):
+        result = p.parse_announcements(listing(kind='Replacement', version=None), '2026-10-01', ['cs.CV'])
+        self.assertIsNone(result[0]['version'])
+    def test_new_section_has_priority_over_replacement(self):
+        replacement = listing(kind='Replacement').split('<dl>', 1)[1].split('</dl>', 1)[0]
+        source = listing().replace('</dl>', replacement + '</dl>')
+        result = p.parse_announcements(source, '2026-10-01', ['cs.CV'])
+        self.assertTrue(all(r['listing_kind'] == 'new' for r in result))
+    def test_same_day_source_cache_requires_matching_audit_hash(self):
+        source_dir = self.data / 'source'
+        source_dir.mkdir()
+        source = listing()
+        path = source_dir / 'cs-new.html'
+        path.write_text(source)
+        digest = p.hashlib.sha256(source.encode()).hexdigest()
+        (source_dir / 'sources.jsonl').write_text(json.dumps({'url': p.LISTING_URL, 'file': path.name, 'sha256': digest}) + '\n')
+        self.assertEqual(p.cached_listing(source_dir, '2026-10-01'), source)
+        path.write_text(source + 'tampered')
+        self.assertIsNone(p.cached_listing(source_dir, '2026-10-01'))
+    def test_prepare_reuses_audited_same_day_source_without_fetch(self):
+        source_dir = self.data / '2026-10-01' / 'source'
+        source_dir.mkdir(parents=True)
+        source = listing()
+        (source_dir / 'cs-new.html').write_text(source)
+        digest = p.hashlib.sha256(source.encode()).hexdigest()
+        (source_dir / 'sources.jsonl').write_text(json.dumps({'url': p.LISTING_URL, 'file': 'cs-new.html', 'sha256': digest}) + '\n')
+        settings = {'categories': ['cs.CV']}
+        with patch.object(p, 'DATA', self.data), patch.object(p, 'config', return_value=settings), \
+             patch.object(p, 'DeepSeek', return_value=object()), patch.object(p, 'classify', return_value=[]), \
+             patch.object(p.ArxivClient, 'get', side_effect=AssertionError('same-day source was fetched again')):
+            result = p.prepare('2026-10-01')
+        self.assertEqual(result['status'], 'no_matches')
+        self.assertEqual(result['listing_kind'], 'new')
+    def test_replacement_fingerprint_stays_stable_across_dates(self):
+        paper = {'id': '2609.40360', 'title': 'x', 'authors': ['a'], 'summary': 's', 'categories': ['cs.CV'],
+                 'listing_kind': 'replacement', 'announcement_date': '2026-10-01'}
+        other = dict(paper, announcement_date='2026-10-02')
+        self.assertEqual(p.paper_metadata_fingerprint(paper), p.paper_metadata_fingerprint(other))
+    def test_replacement_version_ledger_allows_newer_version(self):
+        paper = {'id': '2609.40360', 'version': 4, 'listing_kind': 'replacement', 'title': 'x',
+                 'authors': ['a'], 'summary': 's', 'categories': ['cs.CV'], 'announcement_date': '2026-10-02'}
+        seen = {'2609.40360': {'version': 3, 'announcement_date': '2026-10-01',
+                               'metadata_hash': p.paper_metadata_fingerprint(dict(paper, version=3))}}
+        self.assertFalse(p.already_processed(paper, seen))
+        same_day = dict(paper, version=3, announcement_date='2026-10-01')
+        self.assertTrue(p.already_processed(same_day, seen))
+        self.assertFalse(p.already_processed(paper, {'2609.40360': 'old timestamp'}))
     def test_stale_page_is_pending(self):
         with self.assertRaises(p.Pending):
             p.parse_announcements(listing(), '2026-10-14', ['cs.CV'])
@@ -84,6 +143,11 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual(message.count('— '), 8)
         self.assertEqual(message.splitlines()[-1], url)
         self.assertLess(len(message), 1200)
+    def test_message_identifies_replacement_updates(self):
+        item = row()
+        item['paper']['listing_kind'] = 'replacement'
+        message = p.render_message('2026-10-14', [item], 'https://example.com/daily/')
+        self.assertIn('替换版本', message.splitlines()[0])
     def test_page_fingerprint_stable(self):
         rows = [row()]
         a, ident = p.render_page('2026-10-14', rows)
@@ -92,6 +156,13 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual(a, b)
         self.assertIn('daily-content-' + ident, a)
         self.assertIn('daily-filter', a)
+    def test_latest_update_render_uses_unversioned_arxiv_links(self):
+        item = row()
+        item['paper']['listing_kind'] = 'replacement'
+        item['paper']['version'] = None
+        page, _ = p.render_page('2026-10-14', [item])
+        self.assertIn('https://arxiv.org/abs/2609.40360)', page)
+        self.assertIn('阅读版本**：当前版本', page)
     def test_http_200_stale_page_does_not_send(self):
         self.state()
         with patch.object(p, 'DATA', self.data), patch.object(p, 'public_content_matches', return_value=False), patch.object(p, 'run_command') as call:
