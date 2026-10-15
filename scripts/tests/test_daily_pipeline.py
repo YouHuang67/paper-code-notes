@@ -249,6 +249,12 @@ class PipelineTests(unittest.TestCase):
             second = p.paper_text(paper, object(), directory)
         self.assertEqual(first, second)
         self.assertEqual(command.call_count, 1)
+    def test_paper_text_does_not_cache_non_pdf_response(self):
+        directory = self.data / 'papers'
+        with self.assertRaises(RuntimeError):
+            p.paper_text({'id': '2609.40360', 'version': 2},
+                         type('Source', (), {'get': lambda self, url, filename: b'not a pdf'})(), directory)
+        self.assertFalse((directory / '2609.40360v2.pdf').exists())
 
     def test_truncated_provider_response_never_cached(self):
         ds = object.__new__(p.DeepSeek)

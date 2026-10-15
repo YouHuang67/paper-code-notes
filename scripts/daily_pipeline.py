@@ -417,11 +417,16 @@ def paper_text(paper: dict, source: ArxivClient, directory: Path) -> str:
         if len(cached.strip()) < 1500:
             raise RuntimeError('cached paper extraction too short; manual OCR required')
         return cached
-    if not pdf.exists():
+    if pdf.exists():
+        payload = pdf.read_bytes()
+    else:
         pdf_url = f"https://arxiv.org/pdf/{paper['id']}{version_suffix if version is not None else ''}"
-        pdf.write_bytes(source.get(pdf_url, pdf.name))
-    if not pdf.read_bytes().startswith(b'%PDF'):
+        payload = source.get(pdf_url, pdf.name)
+    if not payload.startswith(b'%PDF'):
+        pdf.unlink(missing_ok=True)
         raise RuntimeError('paper response is not PDF')
+    if not pdf.exists():
+        pdf.write_bytes(payload)
     run_command(['pdftotext', '-raw', str(pdf), str(text_path)])
     text = text_path.read_text()
     if len(text.strip()) < 1500:
