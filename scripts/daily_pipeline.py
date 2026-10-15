@@ -338,7 +338,7 @@ class DeepSeek:
                 if isinstance(error, ValueError):
                     payload['messages'] = payload['messages'][:2] + [{'role': 'user', 'content':
                         '上次输出未通过校验：' + str(error) + '。重新完整输出 JSON。quote 必须直接复制输入的连续自然语言原文；'
-                        '作者单位必须保留论文正文中的原始语言和拼写，不能翻译，不能补充正文未列出的单位。公式写入 notes/方法字段，quote 使用支持该公式的连续文字。'}]
+                        '作者单位必须保留论文正文中的原始语言和拼写，不能翻译，不能补充正文未列出的单位。公式写入 notes/方法字段，quote 使用支持该公式的连续文字。数字、百分号和其他符号必须按正文原样复制。'}]
                 time.sleep(3 * (attempt + 1))
         raise RuntimeError('unreachable')
 
@@ -411,22 +411,37 @@ def paper_text(paper: dict, source: ArxivClient, directory: Path) -> str:
     version = paper.get('version', 1)
     version_suffix = f"v{int(version)}" if version is not None else 'latest'
     pdf = directory / f"{paper['id']}{version_suffix}.pdf"
-    text_path = directory / f"{paper['id']}{version_suffix}.txt"
+    text_path = directory / f"{paper['id']}{version_suffix}-raw.txt"
     if text_path.exists() and pdf.exists():
         cached = text_path.read_text()
         if len(cached.strip()) < 1500:
             raise RuntimeError('cached paper extraction too short; manual OCR required')
         return cached
-    pdf_url = f"https://arxiv.org/pdf/{paper['id']}{version_suffix if version is not None else ''}"
-    payload = source.get(pdf_url, pdf.name)
-    if not payload.startswith(b'%PDF'):
+    if not pdf.exists():
+        pdf_url = f"https://arxiv.org/pdf/{paper['id']}{version_suffix if version is not None else ''}"
+        pdf.write_bytes(source.get(pdf_url, pdf.name))
+    if not pdf.read_bytes().startswith(b'%PDF'):
         raise RuntimeError('paper response is not PDF')
-    pdf.write_bytes(payload)
-    run_command(['pdftotext', '-layout', str(pdf), str(text_path)])
+    run_command(['pdftotext', '-raw', str(pdf), str(text_path)])
     text = text_path.read_text()
     if len(text.strip()) < 1500:
         raise RuntimeError('paper text extraction too short; manual OCR required')
     return text
+
+
+def normalize_evidence_text(value: str) -> str:
+    """Normalize PDF line wraps while preserving numbers and punctuation."""
+    normalized = ' '.join(value.casefold().split())
+    # PDF extraction may retain, remove, or space a line-ending word hyphen.
+    # Ignore hyphens only between letters; keep signs such as ``-103K`` and
+    # symbols such as ``3%`` intact so substantive changes still fail.
+    normalized = re.sub(r'(?<=[a-z])-\s*(?=[a-z])', '', normalized)
+    return re.sub(r'-\s+(?=\d)', '-', normalized)
+
+
+def normalize_evidence_quote(value: str) -> str:
+    """Normalize model-quoted soft hyphens while preserving word hyphens."""
+    return normalize_evidence_text(value)
 
 
 def evidence_valid(result: dict, text: str):
@@ -435,13 +450,11 @@ def evidence_valid(result: dict, text: str):
     evidence = result.get('evidence')
     if not isinstance(evidence, list) or not evidence:
         raise ValueError('source evidence required')
-    normalized = ' '.join(text.split()).casefold()
-    normalized = re.sub(r'-\s+', '-', normalized)
+    normalized = normalize_evidence_text(text)
     for item in evidence:
         if not isinstance(item, dict) or not isinstance(item.get('quote'), str) or not isinstance(item.get('claim'), str):
             raise ValueError('evidence requires claim and quote')
-        quote = ' '.join(item['quote'].split()).casefold()
-        quote = re.sub(r'-\s+', '-', quote)
+        quote = normalize_evidence_quote(item['quote'])
         if len(quote) < 15 or quote not in normalized:
             raise ValueError('quote absent from supplied paper text')
 
@@ -488,7 +501,7 @@ def analyze(paper: dict, decision: dict, text: str, ds: DeepSeek) -> dict:
             '只保留本段提供的信息。返回 JSON {"notes":"详细中文证据笔记",'
             '"evidence":[{"claim":"事实","quote":"本段原文连续引句"}]}。'
             '每个正文分段至少提供一条连续自然语言引句；若本段只有参考文献或版式噪声，notes 说明原因并返回一条可核验的段落标题引句。'
-            'quote 只复制连续自然语言句子，禁止拼接或加入省略号，禁止重排公式；公式及解读写入 notes。',
+            'quote 逐字复制连续自然语言原文，保留百分号、数字和标点，禁止改写、拼接、加入省略号或重排公式；公式及解读写入 notes。',
             {'paper': paper, 'chunk': number + 1, 'total_chunks': len(chunks), 'text': chunk},
             lambda r: notes_valid(r, chunk)))
     notes = {'paper': paper, 'topic': decision['topic'], 'source_front_matter': text[:6000], 'chunks': findings}

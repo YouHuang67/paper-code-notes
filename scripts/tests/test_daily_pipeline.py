@@ -225,10 +225,30 @@ class PipelineTests(unittest.TestCase):
 
     def test_pdf_line_break_normalization_preserves_numbers(self):
         p.evidence_valid({'evidence': [{'claim': 'data', 'quote': 'Training on DeepMath-103K gives 35.5 percent.'}]},
-                         'Training on DeepMath- 103K gives 35.5 percent.')
+                         'Training on DeepMath-\n 103K gives 35.5 percent.')
+        p.evidence_valid({'evidence': [{'claim': 'method', 'quote': 'The representation is pre-trained.'}]},
+                         'The represen-\n tation is pre-trained.')
+        p.evidence_valid({'evidence': [{'claim': 'abbreviation', 'quote': 'This non-AR model is efficient.'}]},
+                         'This non-\n AR model is efficient.')
+        with self.assertRaises(ValueError):
+            p.evidence_valid({'evidence': [{'claim': 'percentage', 'quote': 'Up to 3 percent on HealthBench.'}]},
+                             'Up to 3% on HealthBench.')
         with self.assertRaises(ValueError):
             p.evidence_valid({'evidence': [{'claim': 'data', 'quote': 'Training on DeepMath-103K gives 55.5 percent.'}]},
-                             'Training on DeepMath- 103K gives 35.5 percent.')
+                             'Training on DeepMath-\n 103K gives 35.5 percent.')
+    def test_paper_text_uses_raw_extraction_and_reuses_cached_pdf(self):
+        directory = self.data / 'papers'; directory.mkdir()
+        pdf = directory / '2609.40360v2.pdf'; pdf.write_bytes(b'%PDF test')
+        paper = {'id': '2609.40360', 'version': 2}
+        def extract(args, **kwargs):
+            self.assertEqual(args[1], '-raw')
+            Path(args[-1]).write_text('paper body ' * 200)
+            return ''
+        with patch.object(p, 'run_command', side_effect=extract) as command:
+            first = p.paper_text(paper, object(), directory)
+            second = p.paper_text(paper, object(), directory)
+        self.assertEqual(first, second)
+        self.assertEqual(command.call_count, 1)
 
     def test_truncated_provider_response_never_cached(self):
         ds = object.__new__(p.DeepSeek)
