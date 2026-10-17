@@ -311,6 +311,8 @@ class PipelineTests(unittest.TestCase):
         with patch.object(p, 'DATA', self.data), patch.object(p, 'ROOT', self.data), patch.object(p, 'config', return_value={}), patch.object(p, 'public_content_matches', return_value=True), patch.object(p, 'receipt_status', return_value=True), patch.object(p, 'run_command') as call:
             result = p.deliver('2026-10-14')
             self.assertEqual(result['status'], 'delivered')
+            self.assertEqual(result['delivery_run_id'], '2026-10-14-daily-' + result['content_id'][:12])
+            self.assertEqual(result['delivered_content_id'], result['content_id'])
             call.assert_not_called()
             self.assertIn('2610.10000', p.read(self.data / 'refs/scans/daily-ledger.json')['seen'])
 

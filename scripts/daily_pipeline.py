@@ -1398,6 +1398,8 @@ def deliver(day: str, dry_run: bool = False) -> dict:
     atomic(ledger_path, ledger)
     state['status'] = 'delivered'
     state['delivered_at'] = stamp
+    state['delivery_run_id'] = run_id
+    state['delivered_content_id'] = state['content_id']
     state.pop('last_error', None)
     state.pop('last_error_at', None)
     state.pop('delivery_retry_at', None)

@@ -16,7 +16,7 @@ arXiv 公告按美国东部时间周日至周四晚间形成。脚本把前一�
 
 ## 状态与恢复
 
-状态保存在 `refs/scans/daily-runs/YYYY-MM-DD/state.json`。正常路径为 `waiting_announcement → prepared → publishing → published → delivered`。`prepared` 表示本地报告已验证；`publishing` 表示发布任务正在执行；`published` 表示公开页面已出现当前内容指纹；`delivered` 需要本次微信 `run_id` 的 `ok=true` 回执。只有确认页面可访问且包含该指纹，脚本才调用微信桥接；只有回执成功，才写入去重账本。
+状态保存在 `refs/scans/daily-runs/YYYY-MM-DD/state.json`。正常路径为 `waiting_announcement → prepared → publishing → published → delivered`。`prepared` 表示本地报告已验证；`publishing` 表示发布任务正在执行；`published` 表示公开页面已出现当前内容指纹；`delivered` 需要本次微信 `run_id` 的 `ok=true` 回执。只有确认页面可访问且包含该指纹，脚本才调用微信桥接；只有回执成功，才写入去重账本，并保存 `delivery_run_id` 与 `delivered_content_id`。页面修订后的 `content_id` 可变化，原发送标识继续用于核对回执。
 
 来源日期不匹配、分页不完整、下载或证据失败、模型失败、网页未部署及微信回执缺失都会留存状态并按退避重试。来源持续返回其他日期时，连续三次后将该日标记 `requires_operator`；健康检查把它列入 `manual_review`，后续日期继续处理。已送达日期不因网页修订再次发送。
 
