@@ -27,13 +27,15 @@ description: >-
 
 ## 归类规则
 
-DeepSeek 使用 system prompt。其中每个主题有「收」和「不收」。模型接收完整摘要，每篇最多一个主题，并经过独立复核。入选论文继续读取 v1 PDF 正文，正文证据、结构化解读和审查结果全部缓存。全部主题一天合计不超过 `maxResults`（当前 30）；没有通过证据校验的结果进入失败状态，不生成空日报。
+DeepSeek 使用 system prompt。其中每个主题有「收」和「不收」。模型接收完整摘要，每篇最多一个主题，并经过独立复核。入选论文继续读取公告版本 PDF 正文，正文证据、结构化解读和审查结果全部缓存。全部主题一天合计不超过 `maxResults`（当前 30）；没有通过证据校验的结果进入失败状态，不生成空日报。
+
+机构类别按高校、企业、科研机构、个人、其他和待核实逐单位判定。网页每篇论文独立成卡，只筛选主题、机构类型和通用/垂类层级。字段与证据校验遵守 `docs/design/daily-report-spec.md`，恢复与交付遵守 `docs/design/daily-delivery-pipeline.md`。
 
 ## 版式
 
-消息以 `[论文]` 开头。日期、【主题】、每条「— 句子」各自成段，段之间空一行。主题用全角【】，论文用长横线。不要用圆点。
+消息首行包含日期、论文日报和入选篇数。日期、【主题】、每条「— 句子」按生成器版式排列。主题用全角【】，论文用长横线。不要用圆点。
 
-`scripts/paper_daily.py` 生成摘要正文。发送流程附加日报网页地址时，必须把“日报网页”单独放一行，下一段只放完整裸 URL。URL 必须从行首开始；链接前不加项目符号、编号、括号、Markdown 包装或“链接：”等前缀，行尾不加标点。发送前按 `docs/design/wechat-link-delivery-sop.md` 检查最终消息正文。
+`scripts/daily_pipeline.py` 的 `render_message` 生成摘要正文。发送流程附加日报网页地址时，必须把“日报网页”单独放一行，下一段只放完整裸 URL。URL 必须从行首开始；链接前不加项目符号、编号、括号、Markdown 包装或“链接：”等前缀，行尾不加标点。发送前按 `docs/design/wechat-link-delivery-sop.md` 检查最终消息正文。
 
 `/paper` 需要查询日报时读取 `refs/scans/daily-runs/YYYY-MM-DD/report.md` 与 `state.json`，并以公开 `docs/daily/` 页面为最终链接。历史 `refs/scans/daily/` 目录仅作兼容读取，不再作为生成目标。
 

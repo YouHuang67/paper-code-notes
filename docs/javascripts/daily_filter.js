@@ -4,9 +4,17 @@ document.addEventListener("DOMContentLoaded", function () {
 
   var groups = Array.prototype.slice.call(filter.querySelectorAll(".daily-filter-group"));
   var cards = Array.prototype.slice.call(document.querySelectorAll(".daily-paper-card"));
-  var sections = Array.prototype.slice.call(document.querySelectorAll(".md-content h2"));
   var count = document.getElementById("daily-filter-count");
   var selections = {};
+
+  function valuesFor(card, key) {
+    var value = card.getAttribute("data-" + key) || "";
+    return key === "org" ? value.split("+") : [value];
+  }
+
+  function hasValue(card, key, value) {
+    return value === "all" || valuesFor(card, key).indexOf(value) !== -1;
+  }
 
   groups.forEach(function (group) {
     selections[group.getAttribute("data-filter-group")] = [];
@@ -28,7 +36,7 @@ document.addEventListener("DOMContentLoaded", function () {
       var key = group.getAttribute("data-filter-group");
       if (key === currentKey) return true;
       var selected = selections[key];
-      return selected.length === 0 || selected.indexOf(card.getAttribute("data-" + key)) !== -1;
+      return selected.length === 0 || selected.some(function (value) { return hasValue(card, key, value); });
     });
   }
 
@@ -39,18 +47,20 @@ document.addEventListener("DOMContentLoaded", function () {
       return groups.every(function (otherGroup) {
         var otherKey = otherGroup.getAttribute("data-filter-group");
         var otherSelected = selections[otherKey];
-        return otherSelected.length === 0 || otherSelected.indexOf(card.getAttribute("data-" + otherKey)) !== -1;
+        return otherSelected.length === 0 || otherSelected.some(function (value) {
+          return hasValue(card, otherKey, value);
+        });
       });
     });
     if (selected.length > 0) {
       if (value === "all") return currentCards.length;
       if (selected.indexOf(value) === -1) return 0;
       return currentCards.filter(function (card) {
-        return card.getAttribute("data-" + key) === value;
+        return hasValue(card, key, value);
       }).length;
     }
     return cards.filter(function (card) {
-      return matchesOtherGroups(card, key) && (value === "all" || card.getAttribute("data-" + key) === value);
+      return matchesOtherGroups(card, key) && hasValue(card, key, value);
     }).length;
   }
 
@@ -70,24 +80,10 @@ document.addEventListener("DOMContentLoaded", function () {
       var show = groups.every(function (group) {
         var key = group.getAttribute("data-filter-group");
         var selected = selections[key];
-        return selected.length === 0 || selected.indexOf(card.getAttribute("data-" + key)) !== -1;
+        return selected.length === 0 || selected.some(function (value) { return hasValue(card, key, value); });
       });
       card.hidden = !show;
       if (show) visible += 1;
-    });
-    sections.forEach(function (heading) {
-      if (heading.textContent.indexOf("当日概览") !== -1) return;
-      var hasVisibleCard = false;
-      var sibling = heading.nextElementSibling;
-      while (sibling && sibling.tagName !== "H2") {
-        if ((sibling.matches && sibling.matches(".daily-paper-card:not([hidden])")) ||
-            (sibling.querySelector && sibling.querySelector(".daily-paper-card:not([hidden])"))) {
-          hasVisibleCard = true;
-          break;
-        }
-        sibling = sibling.nextElementSibling;
-      }
-      heading.hidden = !hasVisibleCard;
     });
     if (count) count.textContent = visible + " 篇匹配";
     renderChipCounts();

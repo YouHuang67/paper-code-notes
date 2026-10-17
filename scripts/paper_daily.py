@@ -32,7 +32,7 @@ def parse_clock(value: str) -> tuple[int, int]:
 
 def cron_line(settings: dict) -> str:
     # System cron uses the machine timezone; refuse silent timezone mismatches.
-    return f"* 8-12 * * 1-5 /bin/bash {shlex.quote(str(ROOT / 'scripts/daily_job.sh'))} >> {shlex.quote(str(CRON_LOG))} 2>&1 {CRON_MARK}"
+    return f"* 8-23 * * 1-5 /bin/bash {shlex.quote(str(ROOT / 'scripts/daily_job.sh'))} >> {shlex.quote(str(CRON_LOG))} 2>&1 {CRON_MARK}"
 
 
 def sync_cron(settings: dict) -> None:
@@ -52,7 +52,7 @@ def sync_cron(settings: dict) -> None:
 def main():
     parser = argparse.ArgumentParser(description='Prepare, publish and deliver daily papers')
     sub = parser.add_subparsers(dest='command', required=True)
-    for name in ('prepare', 'publish', 'deliver', 'tick', 'status', 'run'):
+    for name in ('prepare', 'publish', 'deliver', 'tick', 'status', 'health', 'retry', 'repair', 'run'):
         command = sub.add_parser(name)
         command.add_argument('--day')
         command.add_argument('--dry-run', action='store_true')
@@ -68,7 +68,7 @@ def main():
     remove.add_argument('name')
     args = parser.parse_args()
     settings = load_config()
-    if args.command in ('prepare', 'publish', 'deliver', 'tick', 'status', 'run'):
+    if args.command in ('prepare', 'publish', 'deliver', 'tick', 'status', 'health', 'retry', 'repair', 'run'):
         import daily_pipeline
         forwarded = ['tick' if args.command == 'run' else args.command]
         if args.day: forwarded += ['--day', args.day]

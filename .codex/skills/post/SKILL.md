@@ -27,9 +27,11 @@ description: >-
 6. 按 `$doc` 做逻辑连续性和读者经济性两轮审阅，再逐项核对下方完整性清单。缺少论文关键内容时先补齐，不能以精炼为由略过。完成构建和差异检查。
 7. 提交报告、`mkdocs.yml`、`docs/data/tag_index.json` 中本次实际改动的文件；新报告须核对 HEAD 中三处均已登记。说明用简短英文，不要 `Co-authored-by`。
 8. 执行 `git push origin main`。网页由 `.github/workflows/deploy.yml` 在 `main` 被推送后构建。不要手推 `gh-pages`。推送后用 `git status -sb` 确认没有领先 `origin/main`。
-9. 回复笔记路径、来源档位、提交号，以及页面地址 `https://YouHuang67.github.io/paper-code-notes/paper_reading/<短名>/`。Actions 未成功时写明还没构建完，不要说已经能看到。
+9. 回复笔记路径、来源档位、提交号，以及页面地址。发给微信的回复中，每个页面 URL 必须以完整 `https://` 裸地址独占一行，并从行首开始；不得在 URL 前加项目符号、序号、括号、Markdown 链接包装或“链接：”标签，也不得在行尾添加标点。页面名称放在上一行。Actions 未成功时写明还没构建完，不要说已经能看到。
 
 日报页面与论文页面分开维护。`refs/scans/` 内容不写进 `docs/`。
+
+微信消息中的页面链接遵守 `docs/design/wechat-link-delivery-sop.md`。发送前核对最终消息正文的 URL 行格式；仓库内 Markdown 页面链接不受此纯文本约束。
 
 ## 报告完整性
 

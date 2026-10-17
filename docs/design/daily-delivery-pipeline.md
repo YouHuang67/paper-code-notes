@@ -2,53 +2,59 @@
 
 ## 交付目标
 
-北京时间 09:30 推送简文和当天完整日报网页。网页包含入选论文的完整标题、作者、原文摘要、公告对应的论文版本链接、问题、方法、实验范围、判断及可核验引句。微信最多显示八条短摘要，其余入选论文可在网页阅读；一天最多入选三十篇，按主题轮流选取。
+有 arXiv 更新的工作日，北京时间 09:30 开始交付简讯和完整日报网页；周末、官方无公告日及无符合主题论文的日期不发空日报。网页按论文独立成卡，提供作者、公告版本、摘要、作者单位及分类、问题、方法、实验范围、判断和正文证据。筛选只含主题、机构类型和通用/垂类层级。
 
-美国东部时间周日至周四 20:00 的 arXiv 公告对应北京周一至周五。夏令时北京 08:00、冬令时 09:00 开始可见。任务在公告后五分钟开始准备，08:00–12:59 每分钟检查。发送门槛为 09:30；来源、模型或部署延迟时，任务记录延迟并继续尝试。本机、cron、微信桥接和网络需保持运行。
+arXiv 公告按美国东部时间周日至周四晚间形成。脚本把前一日 20:00 ET 换算为上海时间，并等待五分钟后检查列表日期；夏令时通常在 08:05 开始准备，冬令时通常在 09:05 开始准备。cron 在工作日 08:00–23:59 每分钟启动恢复检查，09:30 是首次发送门槛。实际送达时间受来源、模型、部署和微信桥接影响，状态保存真实时间。
 
-## 今天问题复盘
+## 旧问题与修复
 
-2026-10-12 旧流程以 904 个输入、46 个 DeepSeek 批次选出 30 篇，微信发送了 3061 字，但未生成对应网页。模型只接收截断摘要，语言模型稀疏计算和驾驶蒸馏混入其他主题。2026-10-13 OAI 来源返回零条后，旧流程直接发送了十四字的空日报，未确认这是正常无公告还是来源失败。10:02 与 12:41 的微信交互回复成功，完成了问题描述和计划，未完成流程修复。
+旧分类依据机构规模名单，规模信息无法区分高校、企业、科研机构和个人；未知名称因此无法形成有意义的机构筛选。新分析为题名页作者单位逐项返回类型，规则校验明显名称线索，独立审查再核对类型与论文证据。作者单位不完整或分类依据不足时保留“待核实”。机构类别只说明署名性质。
 
-官方公布美国东部时间 2026-10-12 为假日，因此对应北京 10-13 需要跳过。这支持节假日解释；单凭旧 OAI 零条记录不能证明全部故障原因。此次实现分别处理公告日期、模型证据、网页部署和微信成功回执。
+旧日报还为每篇论文生成具体任务标签和三档覆盖面标签，页面出现多余筛选。新页面把论文逐篇平铺，具体任务只写在各自论文的解读里，层级字段只用“通用”或“垂类”。
 
-## 状态与门禁
+发布构建现在按 arXiv ID 绑定状态、报告行和逐篇检查点，并按原入选顺序输出；并发完成顺序不参与论文配对。日报校验器把已批准运行报告、检查点、PDF 正文、网页字段和内容指纹连起来核对。历史已送达报告若没有检查点，恢复只接受 ID 顺序一致且 PDF、正文抽取、单位署名和引句全部通过验证的资料。
 
-状态文件位于 `refs/scans/daily-runs/YYYY-MM-DD/state.json`。`prepared` 表示本地报告已完成；`publishing` 表示 Git 已推送、公开网页仍待核验；`published` 表示内容指纹已公开；`delivered` 表示成功微信回执已经确认并写入账本。
+## 状态与恢复
 
-`pending` 表示来源或部署尚未就绪，`failed` 表示来源、解析或模型处理失败，两者继续重试。周末和配置中的美国东部节假日为 `skip_no_announcement`；完整公告中没有配置类别论文，或全体候选均未通过复核时为 `no_matches`；候选均已在账本时为 `already_processed`。这些终态保留审计，不发送空日报。
+状态保存在 `refs/scans/daily-runs/YYYY-MM-DD/state.json`。正常路径为 `waiting_announcement → prepared → publishing → published → delivered`。`prepared` 表示本地报告已验证；`publishing` 表示发布任务正在执行；`published` 表示公开页面已出现当前内容指纹；`delivered` 需要本次微信 `run_id` 的 `ok=true` 回执。只有确认页面可访问且包含该指纹，脚本才调用微信桥接；只有回执成功，才写入去重账本。
 
-DeepSeek 对每个候选完整摘要返回判定、理由、主题、连续原文引句和排除条件。接受项独立复核后，按公告版本下载 PDF；公告未提供版本链接时下载当前版本，正文按 24000 字符分块读取。所有分块证据进入解读和审查，引用必须存在于原文。输出截断、空对象、漏 ID、伪造引句和审查失败均阻止发布。成功输出按输入哈希和提示版本缓存，重复运行会复用结果。
+来源日期不匹配、分页不完整、下载或证据失败、模型失败、网页未部署及微信回执缺失都会留存状态并按退避重试。来源持续返回其他日期时，连续三次后将该日标记 `requires_operator`；健康检查把它列入 `manual_review`，后续日期继续处理。已送达日期不因网页修订再次发送。
 
-09:30 之后的每分钟调度都会重新检查网页指纹；页面一旦就绪即发送。每日报告处理优先级最高的非空区段：新投稿、交叉列表、替换版本；页面只有替换版本时仍记录 `listing_kind=replacement` 并继续处理。已保存且日期、审计哈希匹配的 `source/cs-new.html` 优先作为当天快照，恢复任务无需重复抓取。arXiv 返回 HTTP 429 或 503 时，任务遵循 `Retry-After` 并用指数退避保存下次请求时间，避免重试风暴。
+独立 watchdog 检查 09:30 后仍未完成的当日报告并通过独立锁发送一次延迟通知。微信桥接出现 `prepare failed` 时，脚本等待失败之后的入站上下文刷新；其他失败遵循退避时间。调度锁避免同时运行多个准备任务，延迟通知使用独立锁。
 
-发布使用专属 worktree `refs/scans/daily-runs/publisher`，只提交当天页面、索引和导航。发送前请求公开网页，验证 HTTP 成功且包含本次 SHA-256 指纹。微信使用日期加内容指纹构成稳定 `run_id`，桥接日志中的 `digest_sent ... ok=true` 才表示成功；RPC 正常返回本身不能证明已送达。相同回执可恢复账本并避免重发。
+## 机构与论文层级规则
 
-## 运维命令
+机构别名和明确名称模式位于 `scripts/daily-institution-types.json`。University、College、Institute of Technology 等明确高校线索，以及已核验别名和公司法定后缀由本地规则识别。Lab、Institute 等泛称不单独代表机构性质；DeepSeek 根据完整单位名给出类型，名称规则与模型冲突时拒绝分析结果，缺少可靠证据时显示“待核实”。ROR 官方词表用于说明类别语义；运行时不依赖在线 ROR 查询。
 
-在仓库根目录执行：
+作者单位只从论文题名、作者和摘要开始处的署名区提取。城市、州、邮编和国家等独立地址片段不作为机构。机构类型由逐单位分类生成页面组合，联合署名支持按其中任一类型筛选。
+
+“通用”用于跨多个不同领域验证的方法或直接服务于跨领域训练机制；“垂类”用于应用范围集中于一个领域的方法。具体任务名留在论文卡片正文，不另建任务维度。
+
+## 2026-10-12 至 2026-10-19 交付核对
+
+- **10 月 12 日**：旧版简讯已发送，归档只有论文 ID 和摘要，没有 PDF、正文解读或对应网页；不重发无法核验的内容。
+- **10 月 13 日**：对应的美国东部 10 月 12 日列在配置的无公告日期中，跳过日报。
+- **10 月 14 日**：目标公告日为美国东部 10 月 13 日。该运行目录的官方列表快照标题已经是 10 月 16 日；2026-10-17 对 `https://arxiv.org/list/cs/new/2026-10-13?skip=0&show=2000` 的查询返回 HTTP 404；该路由结果只证明本次查询失败，历史公告的其他官方入口仍需核验。arXiv robots 对 `/api` 路径不允许访问，因此没有替代 API 快照。该日保留人工核验状态，不生成或发送猜测日报。
+- **10 月 15 日**：4 篇简讯于 10 月 16 日 09:07:40 成功发送；报告行顺序与状态 ID 一致，四份公告版本 PDF 和正文抽取可用。网页修订保留 `delivered`、原送达时间和一次发送记录。
+- **10 月 16 日**：23 篇简讯于 10 月 16 日 21:35:49 成功发送；23 个检查点按论文 ID 对应状态顺序。HTML 与 Markdown 转义还原后，原网页四项解读字段与报告一致。本次按 arXiv ID 同步文风修订、机构类型及层级字段，再重建网页与内容指纹；保留原微信送达记录。
+- **10 月 17、18 日**：周末，无日报任务。下一次计划检查为 10 月 19 日 09:30；本机 cron 时区为 `Asia/Shanghai`，工作日每分钟运行至 23:59，健康检查未发现会阻塞该日期的未完成交付。
+
+修订页面是否完成以新内容指纹、GitHub Actions 成功状态和公开 URL 响应为准。简讯是否送达以状态时间和对应 `run_id` 的桥接成功回执为准。修网页时不得重复发送已经确认的简讯。
+
+## 操作命令
 
 ```bash
 python3 scripts/paper_daily.py install
-python3 scripts/daily_pipeline.py status --day 2026-10-14
-python3 scripts/daily_pipeline.py prepare --day 2026-10-14
-python3 scripts/daily_pipeline.py publish --day 2026-10-14
-python3 scripts/daily_pipeline.py deliver --day 2026-10-14 --dry-run
 python3 scripts/daily_pipeline.py tick
+python3 scripts/daily_pipeline.py status --day YYYY-MM-DD
+python3 scripts/daily_pipeline.py health
+python3 scripts/daily_pipeline.py retry --day YYYY-MM-DD
+python3 scripts/daily_pipeline.py repair --day YYYY-MM-DD
+python3 scripts/validate_daily.py
 ```
 
-`prepare` 调用真实 DeepSeek 并产生本地文件；`--dry-run` 的准备阶段同样会调用模型。`publish --dry-run` 只读状态；`deliver --dry-run` 验证网页门禁但不发微信。手动 `deliver` 允许补发；自动 `tick` 执行 09:30 时间门禁。
+`status`、`health` 和 `--dry-run` 用于只读诊断。`retry` 重开失败分析代次并复用成功检查点。`repair` 从逐篇检查点或可审计的已送达报告重建本地文件；它保留送达状态，不调用微信。
 
-`daily_job.sh` 在专属 `exec-paper-daily` tmux 中执行一次 `tick`，退出后会话自行结束。文件锁防止手动命令与 cron 并发。日志为 `refs/scans/paper-daily-cron.log`。检查 `crontab -l` 和 cron 服务状态；不要清理其他 tmux 会话。
+本次修订的 71 项回归、27 篇来源及指纹校验、MkDocs 构建已通过；构建使用仓库 `.venv/bin/python`，其他历史页面仍有既有链接与锚点提示。
 
-## 审计与维护
-
-运行目录保存 `source/`、`candidates.json`、`decisions.json`、`confirmed.json`、`papers/`、`ds/`、`report.md`、`report.json` 和 `wechat.txt`。同一天重试会复用日期和审计哈希匹配的源快照及已核验候选快照；日报页面标明当天公告区段。微信旧索引 `refs/scans/daily/index.md` 同步指向新运行目录。密钥从 `DEEPSEEK_API_KEY` 或被忽略的 `refs/deepseek_api` 读取；本机兼容读取 `.bashrc` 的 DeepSeek 专用 token，前提是配置的服务域名为 `api.deepseek.com`。密钥不写入审计。
-
-每年按 [arXiv availability](https://info.arxiv.org/help/availability.html) 更新 `noAnnouncementDatesET`。arXiv robots 的当前最短请求间隔为十五秒，下载始终串行。机构原文可核实、名单规模尚未核实的条目使用“单位层级待核实”。当前页面请求最多显示 2000 条；列表不完整时阻止运行，后续需要完整分页支持。微信日志轮转后若丢失回执且本地账本尚未写入，人工核对历史发送记录再恢复状态。
-
-回归验证执行 `python3 -m unittest discover -s scripts/tests -v`、`python3 scripts/validate_daily.py` 和 `.venv/bin/python -m mkdocs build`。详细规则见 [日报规范](daily-report-spec.md)，链接版式见 [微信链接交付 SOP](wechat-link-delivery-sop.md)。研究原始证据位于本机 `refs/research/daily-delivery-pipeline/`。
-
-2026-10-14 实测：当天 `/list/cs/new` 请求仍返回 10-12 日期，系统进入 `pending` 并保持静默。`scripts/daily_smoke.py` 在已采集的官方快照上验证 OPD 正例、驾驶蒸馏负例和 KV cache 负例，随后处理 112686 字符论文正文并生成通过审核的单篇本地报告。该冒烟报告不作为当天日报发布。
-
-本地临时 Git 仓库的发布回归确认只推送当天页面、索引和导航，并保留工作区未提交编辑；该测试使用本地 bare 仓库，不向外部发送。微信成功/失败回执、旧页面阻止发送和成功回执恢复均通过故障注入验证；本次没有真实当天日报可发送，因此未执行新的微信日报端到端发送。
+代码回归执行 `python3 -m unittest discover -s scripts/tests -v`；部署前执行日报结构和来源校验、`git diff --check` 与 MkDocs 构建。微信链接版式见 [交付 SOP](wechat-link-delivery-sop.md)，页面字段见 [日报规范](daily-report-spec.md)。

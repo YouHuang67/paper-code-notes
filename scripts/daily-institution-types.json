@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "categories": ["高校", "企业", "科研机构", "个人", "其他", "待核实"],
+  "known": {
+    "高校": ["MBZUAI", "KAIST", "HKUST", "Georgia Tech", "Georgia Institute of Technology"],
+    "企业": [
+      "Adobe", "Alibaba", "Amazon", "ByteDance", "China Telecom", "Hugging Face", "Huawei",
+      "HiThink Research", "Hithink Research", "Lovart AI", "NAVER", "NEC Laboratories America",
+      "Scale AI", "Tencent", "Visa Research", "Vivix Group", "Yandex"
+    ],
+    "科研机构": [
+      "Chinese Academy of Sciences",
+      "National Institute of Informatics",
+      "Shanghai AI Laboratory",
+      "Shanghai Artificial Intelligence Laboratory"
+    ],
+    "个人": ["Independent Researcher"]
+  },
+  "patterns": {
+    "高校": ["\\b(university|universität|universite|université|universidade|universidad|universitas|college|institute of technology)\\b"],
+    "企业": ["\\b(incorporated|inc\\.?|limited|ltd\\.?|llc|corp(?:oration)?|company|co\\.?)\\b"],
+    "科研机构": ["\\bacademy of sciences\\b"]
+  }
+}
