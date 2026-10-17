@@ -180,6 +180,8 @@ class PipelineTests(unittest.TestCase):
         self.assertIsNone(p.affiliation_type_rule('Toyota Research Institute'))
         self.assertEqual(p.affiliation_type_rule('Chinese Academy of Sciences'), '科研机构')
         self.assertEqual(p.affiliation_type_rule('Georgia Institute of Technology'), '高校')
+        self.assertEqual(p.affiliation_type_rule('Shenzhen Future Network of Intelligence Institute (FNii-Shenzhen)'), '高校')
+        self.assertEqual(p.affiliation_type_rule('Guangdong Provincial Key Laboratory of Future Networks of Intelligence, CUHK(SZ)'), '高校')
         self.assertEqual(p.affiliation_type_rule('Independent Researcher'), '个人')
         self.assertTrue(p.affiliation_is_address('Atlanta, GA, USA'))
         self.assertTrue(p.affiliation_is_address('Nagoya, Aichi, Japan'))

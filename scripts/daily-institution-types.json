@@ -1,12 +1,41 @@
 {
   "schema_version": 1,
-  "categories": ["高校", "企业", "科研机构", "个人", "其他", "待核实"],
+  "categories": [
+    "高校",
+    "企业",
+    "科研机构",
+    "个人",
+    "其他",
+    "待核实"
+  ],
   "known": {
-    "高校": ["MBZUAI", "KAIST", "HKUST", "Georgia Tech", "Georgia Institute of Technology"],
+    "高校": [
+      "MBZUAI",
+      "KAIST",
+      "HKUST",
+      "Georgia Tech",
+      "Georgia Institute of Technology",
+      "Shenzhen Future Network of Intelligence Institute (FNii-Shenzhen)",
+      "Guangdong Provincial Key Laboratory of Future Networks of Intelligence, CUHK(SZ)"
+    ],
     "企业": [
-      "Adobe", "Alibaba", "Amazon", "ByteDance", "China Telecom", "Hugging Face", "Huawei",
-      "HiThink Research", "Hithink Research", "Lovart AI", "NAVER", "NEC Laboratories America",
-      "Scale AI", "Tencent", "Visa Research", "Vivix Group", "Yandex"
+      "Adobe",
+      "Alibaba",
+      "Amazon",
+      "ByteDance",
+      "China Telecom",
+      "Hugging Face",
+      "Huawei",
+      "HiThink Research",
+      "Hithink Research",
+      "Lovart AI",
+      "NAVER",
+      "NEC Laboratories America",
+      "Scale AI",
+      "Tencent",
+      "Visa Research",
+      "Vivix Group",
+      "Yandex"
     ],
     "科研机构": [
       "Chinese Academy of Sciences",
@@ -14,11 +43,33 @@
       "Shanghai AI Laboratory",
       "Shanghai Artificial Intelligence Laboratory"
     ],
-    "个人": ["Independent Researcher"]
+    "个人": [
+      "Independent Researcher"
+    ]
   },
   "patterns": {
-    "高校": ["\\b(university|universität|universite|université|universidade|universidad|universitas|college|institute of technology)\\b"],
-    "企业": ["\\b(incorporated|inc\\.?|limited|ltd\\.?|llc|corp(?:oration)?|company|co\\.?)\\b"],
-    "科研机构": ["\\bacademy of sciences\\b"]
-  }
+    "高校": [
+      "\\b(university|universität|universite|université|universidade|universidad|universitas|college|institute of technology)\\b"
+    ],
+    "企业": [
+      "\\b(incorporated|inc\\.?|limited|ltd\\.?|llc|corp(?:oration)?|company|co\\.?)\\b"
+    ],
+    "科研机构": [
+      "\\bacademy of sciences\\b"
+    ]
+  },
+  "evidence": [
+    {
+      "affiliations": [
+        "Shenzhen Future Network of Intelligence Institute (FNii-Shenzhen)",
+        "Guangdong Provincial Key Laboratory of Future Networks of Intelligence, CUHK(SZ)"
+      ],
+      "type": "高校",
+      "basis": "研究院官网注明依托香港中文大学（深圳）建设；大学官网将省重点实验室列为科研平台。按高校依托研究单元归类。",
+      "sources": [
+        "https://www.cuhk.edu.cn/en/article/7735",
+        "https://fnii.cuhk.edu.cn/recruitment/95"
+      ]
+    }
+  ]
 }
